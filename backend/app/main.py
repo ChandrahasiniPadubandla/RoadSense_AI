@@ -1,32 +1,38 @@
-from fastapi import FastAPI, Depends
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
 
-from app.database.connection import get_db
+from app.routers import zones
+from app.routers import roads
+from app.routers import traffic
+from app.routers import accidents
 
 
 app = FastAPI(
-    title="AI-Based Smart Traffic & Accident Prediction System",
+    title="RoadSense AI",
+    description="AI-Based Smart Traffic & Accident Prediction System",
     version="1.0.0"
 )
 
 
+app.include_router(zones.router)
+
+app.include_router(roads.router)
+
+app.include_router(traffic.router)
+
+app.include_router(accidents.router)
+
+
 @app.get("/")
 def root():
+
     return {
-        "message": "Smart Traffic API is running"
+        "message": "RoadSense AI API is running"
     }
 
 
 @app.get("/health")
-def health_check(db: Session = Depends(get_db)):
-
-    result = db.execute(
-        text("SELECT 1")
-    )
+def health():
 
     return {
-        "status": "healthy",
-        "database": "connected",
-        "result": result.scalar()
+        "status": "healthy"
     }
