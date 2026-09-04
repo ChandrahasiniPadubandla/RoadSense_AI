@@ -10,6 +10,7 @@ from app.database.models import (
 
 from app.schemas.traffic import (
     TrafficCreate,
+    TrafficUpdate,
     TrafficResponse
 )
 
@@ -147,3 +148,103 @@ def get_road_traffic(
     )
 
     return records
+
+
+# UPDATE TRAFFIC RECORD
+@router.put(
+    "/{traffic_id}",
+    response_model=TrafficResponse
+)
+def update_traffic_record(
+    traffic_id: int,
+    traffic_data: TrafficUpdate,
+    db: Session = Depends(get_db)
+):
+    record = (
+        db.query(TrafficRecord)
+        .filter(TrafficRecord.traffic_id == traffic_id)
+        .first()
+    )
+
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="Traffic record not found"
+        )
+
+    if traffic_data.road_id is not None:
+        road = (
+            db.query(Road)
+            .filter(Road.road_id == traffic_data.road_id)
+            .first()
+        )
+        if not road:
+            raise HTTPException(
+                status_code=404,
+                detail="Road not found"
+            )
+        record.road_id = traffic_data.road_id
+
+    if traffic_data.timestamp is not None:
+        record.timestamp = traffic_data.timestamp
+
+    if traffic_data.vehicle_count is not None:
+        record.vehicle_count = traffic_data.vehicle_count
+
+    if traffic_data.average_speed is not None:
+        record.average_speed = traffic_data.average_speed
+
+    if traffic_data.traffic_density is not None:
+        record.traffic_density = traffic_data.traffic_density
+
+    if traffic_data.congestion_level is not None:
+        record.congestion_level = traffic_data.congestion_level
+
+    if traffic_data.road_condition is not None:
+        record.road_condition = traffic_data.road_condition
+
+    if traffic_data.weather_condition is not None:
+        record.weather_condition = traffic_data.weather_condition
+
+    if traffic_data.rainfall is not None:
+        record.rainfall = traffic_data.rainfall
+
+    if traffic_data.temperature is not None:
+        record.temperature = traffic_data.temperature
+
+    if traffic_data.visibility is not None:
+        record.visibility = traffic_data.visibility
+
+    if traffic_data.is_holiday is not None:
+        record.is_holiday = traffic_data.is_holiday
+
+    db.commit()
+    db.refresh(record)
+
+    return record
+
+
+# DELETE TRAFFIC RECORD
+@router.delete("/{traffic_id}")
+def delete_traffic_record(
+    traffic_id: int,
+    db: Session = Depends(get_db)
+):
+    record = (
+        db.query(TrafficRecord)
+        .filter(TrafficRecord.traffic_id == traffic_id)
+        .first()
+    )
+
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="Traffic record not found"
+        )
+
+    db.delete(record)
+    db.commit()
+
+    return {
+        "message": "Traffic record deleted successfully"
+    }

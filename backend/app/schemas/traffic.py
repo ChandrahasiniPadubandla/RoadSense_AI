@@ -119,6 +119,21 @@ class TrafficCreate(BaseModel):
     is_holiday: bool = False
 
 
+class TrafficUpdate(BaseModel):
+    road_id: Optional[int] = None
+    timestamp: Optional[datetime] = None
+    vehicle_count: Optional[int] = Field(default=None, ge=0)
+    average_speed: Optional[float] = Field(default=None, ge=0)
+    traffic_density: Optional[float] = Field(default=None, ge=0, le=100)
+    congestion_level: Optional[str] = None
+    road_condition: Optional[str] = None
+    weather_condition: Optional[str] = None
+    rainfall: Optional[float] = Field(default=None, ge=0)
+    temperature: Optional[float] = None
+    visibility: Optional[float] = Field(default=None, ge=0)
+    is_holiday: Optional[bool] = None
+
+
 class TrafficResponse(BaseModel):
 
     traffic_id: int
