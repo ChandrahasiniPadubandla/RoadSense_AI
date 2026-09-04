@@ -5,6 +5,28 @@ from geoalchemy2 import Geography
 from app.database.connection import Base
 
 
+class Role(Base):
+    __tablename__ = "roles"
+
+    role_id = Column(Integer, primary_key=True)
+    role_name = Column(String(50), unique=True, nullable=False)
+    description = Column(Text)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    user_id = Column(Integer, primary_key=True)
+    role_id = Column(Integer, ForeignKey("roles.role_id"), nullable=False)
+    name = Column(String(100), nullable=False)
+    email = Column(String(150), unique=True, nullable=False)
+    password_hash = Column(Text, nullable=False)
+    phone = Column(String(20))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+
 class TrafficZone(Base):
     __tablename__ = "traffic_zones"
 
@@ -103,14 +125,6 @@ class TrafficRecord(Base):
 
     road = relationship("Road")
 
-class User(Base):
-    __tablename__ = "users"
-
-    user_id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
 class Accident(Base):
     __tablename__ = "accidents"
 
@@ -155,3 +169,15 @@ class Accident(Base):
     created_at = Column(DateTime)
 
     road = relationship("Road")
+
+
+class AccidentHotspot(Base):
+    __tablename__ = "accident_hotspots"
+
+    hotspot_id = Column(Integer, primary_key=True)
+    zone_id = Column(Integer, ForeignKey("traffic_zones.zone_id"))
+    location = Column(Geography(geometry_type="POINT", srid=4326))
+    accident_count = Column(Integer, default=0)
+    risk_score = Column(Numeric(5, 2))
+    risk_level = Column(String(20))
+    calculated_at = Column(DateTime)
