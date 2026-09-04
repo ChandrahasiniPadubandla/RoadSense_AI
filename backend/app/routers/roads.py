@@ -78,3 +78,63 @@ def get_road(
         )
 
     return road
+
+
+@router.put(
+    "/{road_id}",
+    response_model=RoadResponse
+)
+def update_road(
+    road_id: int,
+    road: RoadCreate,
+    db: Session = Depends(get_db)
+):
+    db_road = (
+        db.query(Road)
+        .filter(Road.road_id == road_id)
+        .first()
+    )
+
+    if not db_road:
+        raise HTTPException(
+            status_code=404,
+            detail="Road not found"
+        )
+
+    db_road.zone_id = road.zone_id
+    db_road.road_name = road.road_name
+    db_road.road_type = road.road_type
+    db_road.road_capacity = road.road_capacity
+    db_road.speed_limit = road.speed_limit
+    db_road.road_condition = road.road_condition
+    db_road.number_of_lanes = road.number_of_lanes
+
+    db.commit()
+    db.refresh(db_road)
+
+    return db_road
+
+
+@router.delete("/{road_id}")
+def delete_road(
+    road_id: int,
+    db: Session = Depends(get_db)
+):
+    db_road = (
+        db.query(Road)
+        .filter(Road.road_id == road_id)
+        .first()
+    )
+
+    if not db_road:
+        raise HTTPException(
+            status_code=404,
+            detail="Road not found"
+        )
+
+    db.delete(db_road)
+    db.commit()
+
+    return {
+        "message": "Road deleted successfully"
+    }

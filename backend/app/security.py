@@ -5,8 +5,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pwdlib import PasswordHash
 import jwt
+from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 DEFAULT_JWT_SECRET = "roadsense-ai-jwt-secret-key-change-in-production"
 password_hash = PasswordHash.recommended()
