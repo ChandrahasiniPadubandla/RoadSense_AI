@@ -7,6 +7,7 @@ from app.database.connection import get_db
 from app.database.models import Accident, Road
 from app.schemas.accident import (
     AccidentCreate,
+    AccidentUpdate,
     AccidentResponse
 )
 from app.security import get_current_user
@@ -102,6 +103,37 @@ def get_accidents(
     return [_format_accident_response(accident) for accident in accidents]
 
 
+# GET ACCIDENTS BY ROAD ID
+@router.get(
+    "/road/{road_id}",
+    response_model=list[AccidentResponse]
+)
+def get_accidents_by_road(
+    road_id: int,
+    db: Session = Depends(get_db)
+):
+    road = (
+        db.query(Road)
+        .filter(Road.road_id == road_id)
+        .first()
+    )
+
+    if not road:
+        raise HTTPException(
+            status_code=404,
+            detail="Road not found"
+        )
+
+    accidents = (
+        db.query(Accident)
+        .filter(Accident.road_id == road_id)
+        .order_by(Accident.accident_datetime.desc())
+        .all()
+    )
+
+    return [_format_accident_response(accident) for accident in accidents]
+
+
 # GET ACCIDENT BY ID
 @router.get(
     "/{accident_id}",
@@ -127,3 +159,100 @@ def get_accident(
         )
 
     return _format_accident_response(accident)
+
+
+# UPDATE ACCIDENT
+@router.put(
+    "/{accident_id}",
+    response_model=AccidentResponse
+)
+def update_accident(
+    accident_id: int,
+    accident_data: AccidentUpdate,
+    db: Session = Depends(get_db)
+):
+    db_accident = (
+        db.query(Accident)
+        .filter(Accident.accident_id == accident_id)
+        .first()
+    )
+
+    if not db_accident:
+        raise HTTPException(
+            status_code=404,
+            detail="Accident not found"
+        )
+
+    if accident_data.road_id is not None:
+        road = (
+            db.query(Road)
+            .filter(Road.road_id == accident_data.road_id)
+            .first()
+        )
+        if not road:
+            raise HTTPException(
+                status_code=404,
+                detail="Road not found"
+            )
+        db_accident.road_id = accident_data.road_id
+
+    if accident_data.latitude is not None and accident_data.longitude is not None:
+        db_accident.location = WKTElement(
+            f"POINT({accident_data.longitude} {accident_data.latitude})",
+            srid=4326
+        )
+
+    if accident_data.accident_time is not None:
+        db_accident.accident_datetime = accident_data.accident_time
+
+    if accident_data.weather_condition is not None:
+        db_accident.weather_condition = accident_data.weather_condition
+
+    if accident_data.road_condition is not None:
+        db_accident.road_condition = accident_data.road_condition
+
+    if accident_data.vehicle_count is not None:
+        db_accident.vehicle_count = accident_data.vehicle_count
+
+    if accident_data.severity is not None:
+        db_accident.severity = accident_data.severity
+
+    if accident_data.fatalities is not None:
+        db_accident.fatalities = accident_data.fatalities
+
+    if accident_data.injuries is not None:
+        db_accident.injuries = accident_data.injuries
+
+    if accident_data.description is not None:
+        db_accident.description = accident_data.description
+
+    db.commit()
+    db.refresh(db_accident)
+
+    return _format_accident_response(db_accident)
+
+
+# DELETE ACCIDENT
+@router.delete("/{accident_id}")
+def delete_accident(
+    accident_id: int,
+    db: Session = Depends(get_db)
+):
+    db_accident = (
+        db.query(Accident)
+        .filter(Accident.accident_id == accident_id)
+        .first()
+    )
+
+    if not db_accident:
+        raise HTTPException(
+            status_code=404,
+            detail="Accident not found"
+        )
+
+    db.delete(db_accident)
+    db.commit()
+
+    return {
+        "message": "Accident record deleted successfully"
+    }
