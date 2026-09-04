@@ -28,6 +28,18 @@ class User(Base):
     updated_at = Column(DateTime)
 
 
+class PasswordResetOTP(Base):
+    __tablename__ = "password_reset_otps"
+
+    otp_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    otp_hash = Column(String(64), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+    user = relationship("User")
+
+
 class TrafficZone(Base):
     __tablename__ = "traffic_zones"
 

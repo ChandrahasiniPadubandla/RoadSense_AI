@@ -1,12 +1,12 @@
-import os
 from uuid import UUID
-import jwt
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 
 from app.database.connection import get_db
-from app.models import User, Role
+from app.models import PasswordResetOTP, User, Role
+from app.email import EmailDeliveryError, send_password_reset_otp
 from app.schemas.auth import (
     RegisterRequest,
     UserUpdateRequest,
@@ -21,8 +21,9 @@ from app.security import (
     verify_password,
     create_access_token,
     get_current_user,
-    create_password_reset_token,
-    get_jwt_settings
+    create_otp,
+    hash_otp,
+    verify_otp
 )
 
 
@@ -244,21 +245,40 @@ def forgot_password(
 ):
     user = (
         db.query(User)
-        .filter(User.email == user_data.email)
+        .filter(User.email == user_data.email, User.is_active.is_(True))
         .first()
     )
 
+    # Avoid exposing whether an email address has an account.
     if not user:
+        return {"message": "If that email is registered, an OTP has been sent"}
+
+    otp = create_otp()
+    db.query(PasswordResetOTP).filter(
+        PasswordResetOTP.user_id == user.user_id
+    ).delete(synchronize_session=False)
+    db.add(PasswordResetOTP(
+        user_id=user.user_id,
+        otp_hash=hash_otp(otp),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        created_at=datetime.now(timezone.utc)
+    ))
+    db.commit()
+
+    try:
+        send_password_reset_otp(str(user.email), otp)
+    except EmailDeliveryError:
+        db.query(PasswordResetOTP).filter(
+            PasswordResetOTP.user_id == user.user_id
+        ).delete(synchronize_session=False)
+        db.commit()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to send password reset email"
         )
 
-    reset_token = create_password_reset_token(user.user_id)
-
     return {
-        "message": "Password reset token generated",
-        "reset_token": reset_token
+        "message": "If that email is registered, an OTP has been sent"
     }
 
 
@@ -267,63 +287,34 @@ def reset_password(
     reset_data: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ):
-    try:
-        secret_key, algorithm = get_jwt_settings()
-
-        payload = jwt.decode(
-            reset_data.token,
-            secret_key,
-            algorithms=[algorithm]
-        )
-
-        if payload.get("purpose") != "password_reset":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid password reset token"
-            )
-
-        user_id_raw = payload.get("user_id")
-
-        if user_id_raw is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid password reset token"
-            )
-
-        try:
-            user_id = UUID(str(user_id_raw))
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid password reset token"
-            )
-
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Password reset token has expired"
-        )
-
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid password reset token"
-        )
-
     user = (
         db.query(User)
-        .filter(User.user_id == user_id)
+        .filter(User.email == reset_data.email, User.is_active.is_(True))
         .first()
     )
 
-    if not user:
+    otp_record = None
+    if user:
+        otp_record = (
+            db.query(PasswordResetOTP)
+            .filter(PasswordResetOTP.user_id == user.user_id)
+            .order_by(PasswordResetOTP.created_at.desc())
+            .first()
+        )
+
+    if (
+        not user
+        or not otp_record
+        or otp_record.expires_at < datetime.now(timezone.utc)
+        or not verify_otp(reset_data.otp, otp_record.otp_hash)
+    ):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired OTP"
         )
 
     user.password_hash = hash_password(reset_data.new_password)
-
+    db.delete(otp_record)
     db.commit()
 
     return {

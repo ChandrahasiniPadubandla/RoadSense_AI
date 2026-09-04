@@ -1,4 +1,7 @@
 import os
+import hashlib
+import hmac
+import secrets
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -112,3 +115,17 @@ def create_password_reset_token(user_id: UUID | str | int) -> str:
         secret_key,
         algorithm=algorithm
     )
+
+
+def create_otp() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_otp(otp: str) -> str:
+    """Hash an OTP with the application secret before storing it."""
+    secret_key, _ = get_jwt_settings()
+    return hmac.new(secret_key.encode(), otp.encode(), hashlib.sha256).hexdigest()
+
+
+def verify_otp(otp: str, expected_hash: str) -> bool:
+    return hmac.compare_digest(hash_otp(otp), expected_hash)
