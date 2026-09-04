@@ -1,13 +1,14 @@
+import os
+from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pwdlib import PasswordHash
 import jwt
-import os
-from datetime import datetime, timedelta, timezone
-from dotenv import load_dotenv
 
 load_dotenv()
 
+DEFAULT_JWT_SECRET = "roadsense-ai-jwt-secret-key-change-in-production"
 password_hash = PasswordHash.recommended()
 
 
@@ -20,9 +21,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 
 def get_jwt_settings() -> tuple[str, str]:
-    secret_key = os.getenv("JWT_SECRET_KEY")
-    if not secret_key:
-        raise RuntimeError("JWT_SECRET_KEY is not configured")
+    secret_key = os.getenv("JWT_SECRET_KEY") or DEFAULT_JWT_SECRET
 
     return secret_key, os.getenv("JWT_ALGORITHM", "HS256")
 

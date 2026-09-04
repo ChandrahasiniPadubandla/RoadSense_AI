@@ -51,9 +51,9 @@ class AccidentResponse(BaseModel):
 
     road_id: int
 
-    latitude: float
+    latitude: Optional[float] = None
 
-    longitude: float
+    longitude: Optional[float] = None
 
     accident_time: datetime
 

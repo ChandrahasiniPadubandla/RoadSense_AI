@@ -14,8 +14,8 @@ class ZoneResponse(BaseModel):
     zone_id: int
     zone_name: str
     description: Optional[str] = None
-    latitude: float
-    longitude: float
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     created_at: Optional[datetime] = None
 
     class Config:

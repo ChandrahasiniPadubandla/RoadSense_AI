@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 
+from app.security import get_current_user
 from app.routers import zones
 from app.routers import roads
 from app.routers import traffic
@@ -13,13 +14,25 @@ app = FastAPI(
 )
 app.include_router(auth_router)
 
-app.include_router(zones.router)
+app.include_router(
+    zones.router,
+    dependencies=[Depends(get_current_user)]
+)
 
-app.include_router(roads.router)
+app.include_router(
+    roads.router,
+    dependencies=[Depends(get_current_user)]
+)
 
-app.include_router(traffic.router)
+app.include_router(
+    traffic.router,
+    dependencies=[Depends(get_current_user)]
+)
 
-app.include_router(accidents.router)
+app.include_router(
+    accidents.router,
+    dependencies=[Depends(get_current_user)]
+)
 
 
 @app.get("/")
