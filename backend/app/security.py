@@ -76,3 +76,20 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
+def create_password_reset_token(user_id: int) -> str:
+    secret_key = os.getenv("JWT_SECRET_KEY")
+    algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+
+    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    payload = {
+        "user_id": user_id,
+        "purpose": "password_reset",
+        "exp": expire
+    }
+
+    return jwt.encode(
+        payload,
+        secret_key,
+        algorithm=algorithm
+    )

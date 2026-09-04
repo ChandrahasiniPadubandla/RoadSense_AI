@@ -1,14 +1,24 @@
+import os
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+
 from app.database.connection import get_db
 from app.models import User, Role
-from app.schemas.auth import RegisterRequest, LoginRequest, UserResponse
+from app.schemas.auth import (
+    RegisterRequest,
+    LoginRequest,
+    UserResponse,
+    ForgotPasswordRequest,
+    ResetPasswordRequest
+)
 from app.security import (
     hash_password,
     verify_password,
     create_access_token,
-    get_current_user
+    get_current_user,
+    create_password_reset_token
 )
 
 
@@ -140,3 +150,86 @@ def get_me(
         )
 
     return user
+@router.post("/forgot-password")
+def forgot_password(
+    user_data: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.email == user_data.email)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    reset_token = create_password_reset_token(user.user_id)
+
+    return {
+        "message": "Password reset token generated",
+        "reset_token": reset_token
+    }
+@router.post("/reset-password")
+def reset_password(
+    reset_data: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        secret_key = os.getenv("JWT_SECRET_KEY")
+        algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+
+        payload = jwt.decode(
+            reset_data.token,
+            secret_key,
+            algorithms=[algorithm]
+        )
+
+        if payload.get("purpose") != "password_reset":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid password reset token"
+            )
+
+        user_id = payload.get("user_id")
+
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid password reset token"
+            )
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Password reset token has expired"
+        )
+
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password reset token"
+        )
+
+    user = (
+        db.query(User)
+        .filter(User.user_id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    user.password_hash = hash_password(reset_data.new_password)
+
+    db.commit()
+
+    return {
+        "message": "Password reset successful"
+    }
