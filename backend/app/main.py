@@ -4,14 +4,14 @@ from app.routers import zones
 from app.routers import roads
 from app.routers import traffic
 from app.routers import accidents
-
+from app.routers.auth import router as auth_router
 
 app = FastAPI(
     title="RoadSense AI",
     description="AI-Based Smart Traffic & Accident Prediction System",
     version="1.0.0"
 )
-
+app.include_router(auth_router)
 
 app.include_router(zones.router)
 
