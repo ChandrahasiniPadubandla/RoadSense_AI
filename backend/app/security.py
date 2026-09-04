@@ -1,10 +1,14 @@
+import os
+from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pwdlib import PasswordHash
 import jwt
-import os
-from datetime import datetime, timedelta, timezone
 
+load_dotenv()
+
+DEFAULT_JWT_SECRET = "roadsense-ai-jwt-secret-key-change-in-production"
 password_hash = PasswordHash.recommended()
 
 
@@ -17,7 +21,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(user_id: int) -> str:
-    secret_key = os.getenv("JWT_SECRET_KEY")
+    secret_key = os.getenv("JWT_SECRET_KEY") or DEFAULT_JWT_SECRET
     algorithm = os.getenv("JWT_ALGORITHM", "HS256")
     expire_minutes = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
@@ -46,7 +50,7 @@ def get_current_user(
     token = credentials.credentials
 
     try:
-        secret_key = os.getenv("JWT_SECRET_KEY")
+        secret_key = os.getenv("JWT_SECRET_KEY") or DEFAULT_JWT_SECRET
         algorithm = os.getenv("JWT_ALGORITHM", "HS256")
 
         payload = jwt.decode(
@@ -77,7 +81,7 @@ def get_current_user(
             detail="Invalid token"
         )
 def create_password_reset_token(user_id: int) -> str:
-    secret_key = os.getenv("JWT_SECRET_KEY")
+    secret_key = os.getenv("JWT_SECRET_KEY") or DEFAULT_JWT_SECRET
     algorithm = os.getenv("JWT_ALGORITHM", "HS256")
 
     expire = datetime.now(timezone.utc) + timedelta(minutes=15)

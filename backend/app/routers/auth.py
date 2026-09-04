@@ -8,6 +8,7 @@ from app.database.connection import get_db
 from app.models import User, Role
 from app.schemas.auth import (
     RegisterRequest,
+    UserUpdateRequest,
     LoginRequest,
     UserResponse,
     ForgotPasswordRequest,
@@ -150,6 +151,87 @@ def get_me(
         )
 
     return user
+
+
+@router.put(
+    "/me",
+    response_model=UserResponse
+)
+def update_me(
+    user_data: UserUpdateRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.user_id == user_id, User.is_active.is_(True))
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    updates = user_data.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one field is required"
+        )
+
+    if "email" in updates:
+        existing_user = (
+            db.query(User)
+            .filter(User.email == updates["email"], User.user_id != user_id)
+            .first()
+        )
+
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+
+    if "password" in updates:
+        user.password_hash = hash_password(updates.pop("password"))
+
+    for field, value in updates.items():
+        setattr(user, field, value)
+
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+@router.delete("/me")
+def delete_me(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.user_id == user_id, User.is_active.is_(True))
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    user.is_active = False
+    db.commit()
+
+    return {
+        "message": "User account deactivated"
+    }
+
+
 @router.post("/forgot-password")
 def forgot_password(
     user_data: ForgotPasswordRequest,

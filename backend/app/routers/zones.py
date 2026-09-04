@@ -14,6 +14,24 @@ router = APIRouter(
 )
 
 
+def _format_zone_response(zone: TrafficZone) -> ZoneResponse:
+    lat = None
+    lon = None
+    if zone.location is not None:
+        point = to_shape(zone.location)
+        lat = point.y
+        lon = point.x
+
+    return ZoneResponse(
+        zone_id=zone.zone_id,
+        zone_name=zone.zone_name,
+        description=zone.description,
+        latitude=lat,
+        longitude=lon,
+        created_at=zone.created_at
+    )
+
+
 # CREATE ZONE
 @router.post("/", response_model=ZoneResponse)
 def create_zone(
@@ -35,16 +53,7 @@ def create_zone(
     db.commit()
     db.refresh(db_zone)
 
-    point = to_shape(db_zone.location)
-
-    return ZoneResponse(
-        zone_id=db_zone.zone_id,
-        zone_name=db_zone.zone_name,
-        description=db_zone.description,
-        latitude=point.y,
-        longitude=point.x,
-        created_at=db_zone.created_at
-    )
+    return _format_zone_response(db_zone)
 
 
 # GET ALL ZONES
@@ -53,24 +62,7 @@ def get_zones(
     db: Session = Depends(get_db)
 ):
     zones = db.query(TrafficZone).all()
-
-    result = []
-
-    for zone in zones:
-        point = to_shape(zone.location)
-
-        result.append(
-            ZoneResponse(
-                zone_id=zone.zone_id,
-                zone_name=zone.zone_name,
-                description=zone.description,
-                latitude=point.y,
-                longitude=point.x,
-                created_at=zone.created_at
-            )
-        )
-
-    return result
+    return [_format_zone_response(zone) for zone in zones]
 
 
 # GET ONE ZONE
@@ -91,16 +83,7 @@ def get_zone(
             detail="Traffic zone not found"
         )
 
-    point = to_shape(zone.location)
-
-    return ZoneResponse(
-        zone_id=zone.zone_id,
-        zone_name=zone.zone_name,
-        description=zone.description,
-        latitude=point.y,
-        longitude=point.x,
-        created_at=zone.created_at
-    )
+    return _format_zone_response(zone)
 
 
 # UPDATE ZONE
@@ -133,16 +116,7 @@ def update_zone(
     db.commit()
     db.refresh(db_zone)
 
-    point = to_shape(db_zone.location)
-
-    return ZoneResponse(
-        zone_id=db_zone.zone_id,
-        zone_name=db_zone.zone_name,
-        description=db_zone.description,
-        latitude=point.y,
-        longitude=point.x,
-        created_at=db_zone.created_at
-    )
+    return _format_zone_response(db_zone)
 
 
 # DELETE ZONE

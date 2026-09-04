@@ -8,6 +8,13 @@ class RegisterRequest(BaseModel):
     phone: str | None = None
 
 
+class UserUpdateRequest(BaseModel):
+    name: str | None = None
+    email: EmailStr | None = None
+    password: str | None = None
+    phone: str | None = None
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str

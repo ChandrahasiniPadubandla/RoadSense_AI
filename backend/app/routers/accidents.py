@@ -9,6 +9,7 @@ from app.schemas.accident import (
     AccidentCreate,
     AccidentResponse
 )
+from app.security import get_current_user
 
 
 router = APIRouter(
@@ -17,11 +18,38 @@ router = APIRouter(
 )
 
 
+def _format_accident_response(accident: Accident) -> AccidentResponse:
+    lat = None
+    lon = None
+    if accident.location is not None:
+        point = to_shape(accident.location)
+        lat = point.y
+        lon = point.x
+
+    return AccidentResponse(
+        accident_id=accident.accident_id,
+        road_id=accident.road_id,
+        latitude=lat,
+        longitude=lon,
+        accident_time=getattr(accident, "accident_datetime", None) or getattr(accident, "accident_time", None),
+        weather_condition=accident.weather_condition,
+        road_condition=accident.road_condition,
+        vehicle_count=accident.vehicle_count,
+        severity=accident.severity,
+        fatalities=accident.fatalities,
+        injuries=accident.injuries,
+        description=accident.description,
+        created_by=accident.created_by,
+        created_at=accident.created_at
+    )
+
+
 # CREATE ACCIDENT
 @router.post("/", response_model=AccidentResponse)
 def create_accident(
     accident: AccidentCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user)
 ):
 
     # Check whether road exists
@@ -46,38 +74,22 @@ def create_accident(
     db_accident = Accident(
         road_id=accident.road_id,
         location=location,
-        accident_time=accident.accident_time,
+        accident_datetime=accident.accident_time,
         weather_condition=accident.weather_condition,
         road_condition=accident.road_condition,
         vehicle_count=accident.vehicle_count,
         severity=accident.severity,
         fatalities=accident.fatalities,
         injuries=accident.injuries,
-        description=accident.description
+        description=accident.description,
+        created_by=current_user_id
     )
 
     db.add(db_accident)
     db.commit()
     db.refresh(db_accident)
 
-    point = to_shape(db_accident.location)
-
-    return AccidentResponse(
-        accident_id=db_accident.accident_id,
-        road_id=db_accident.road_id,
-        latitude=point.y,
-        longitude=point.x,
-        accident_time=db_accident.accident_time,
-        weather_condition=db_accident.weather_condition,
-        road_condition=db_accident.road_condition,
-        vehicle_count=db_accident.vehicle_count,
-        severity=db_accident.severity,
-        fatalities=db_accident.fatalities,
-        injuries=db_accident.injuries,
-        description=db_accident.description,
-        created_by=db_accident.created_by,
-        created_at=db_accident.created_at
-    )
+    return _format_accident_response(db_accident)
 
 
 # GET ALL ACCIDENTS
@@ -87,33 +99,7 @@ def get_accidents(
 ):
 
     accidents = db.query(Accident).all()
-
-    result = []
-
-    for accident in accidents:
-
-        point = to_shape(accident.location)
-
-        result.append(
-            AccidentResponse(
-                accident_id=accident.accident_id,
-                road_id=accident.road_id,
-                latitude=point.y,
-                longitude=point.x,
-                accident_time=accident.accident_time,
-                weather_condition=accident.weather_condition,
-                road_condition=accident.road_condition,
-                vehicle_count=accident.vehicle_count,
-                severity=accident.severity,
-                fatalities=accident.fatalities,
-                injuries=accident.injuries,
-                description=accident.description,
-                created_by=accident.created_by,
-                created_at=accident.created_at
-            )
-        )
-
-    return result
+    return [_format_accident_response(accident) for accident in accidents]
 
 
 # GET ACCIDENT BY ID
@@ -140,21 +126,4 @@ def get_accident(
             detail="Accident not found"
         )
 
-    point = to_shape(accident.location)
-
-    return AccidentResponse(
-        accident_id=accident.accident_id,
-        road_id=accident.road_id,
-        latitude=point.y,
-        longitude=point.x,
-        accident_time=accident.accident_time,
-        weather_condition=accident.weather_condition,
-        road_condition=accident.road_condition,
-        vehicle_count=accident.vehicle_count,
-        severity=accident.severity,
-        fatalities=accident.fatalities,
-        injuries=accident.injuries,
-        description=accident.description,
-        created_by=accident.created_by,
-        created_at=accident.created_at
-    )
+    return _format_accident_response(accident)
