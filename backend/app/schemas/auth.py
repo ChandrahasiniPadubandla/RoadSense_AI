@@ -20,6 +20,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class LoginResponse(BaseModel):
+    message: str
+    access_token: str
+    token_type: str = "bearer"
+
+
 class UserResponse(BaseModel):
     user_id: int
     name: str

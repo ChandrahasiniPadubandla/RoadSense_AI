@@ -4,6 +4,9 @@ from pwdlib import PasswordHash
 import jwt
 import os
 from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
+
+load_dotenv()
 
 password_hash = PasswordHash.recommended()
 
@@ -16,9 +19,16 @@ def verify_password(password: str, hashed_password: str) -> bool:
     return password_hash.verify(password, hashed_password)
 
 
-def create_access_token(user_id: int) -> str:
+def get_jwt_settings() -> tuple[str, str]:
     secret_key = os.getenv("JWT_SECRET_KEY")
-    algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+    if not secret_key:
+        raise RuntimeError("JWT_SECRET_KEY is not configured")
+
+    return secret_key, os.getenv("JWT_ALGORITHM", "HS256")
+
+
+def create_access_token(user_id: int) -> str:
+    secret_key, algorithm = get_jwt_settings()
     expire_minutes = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
     )
@@ -46,8 +56,7 @@ def get_current_user(
     token = credentials.credentials
 
     try:
-        secret_key = os.getenv("JWT_SECRET_KEY")
-        algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+        secret_key, algorithm = get_jwt_settings()
 
         payload = jwt.decode(
             token,
@@ -77,8 +86,7 @@ def get_current_user(
             detail="Invalid token"
         )
 def create_password_reset_token(user_id: int) -> str:
-    secret_key = os.getenv("JWT_SECRET_KEY")
-    algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+    secret_key, algorithm = get_jwt_settings()
 
     expire = datetime.now(timezone.utc) + timedelta(minutes=15)
 

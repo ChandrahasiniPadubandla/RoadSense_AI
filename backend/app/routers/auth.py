@@ -10,6 +10,7 @@ from app.schemas.auth import (
     RegisterRequest,
     UserUpdateRequest,
     LoginRequest,
+    LoginResponse,
     UserResponse,
     ForgotPasswordRequest,
     ResetPasswordRequest
@@ -86,7 +87,7 @@ def register(
 
 
 # ADD LOGIN BELOW REGISTER
-@router.post("/login")
+@router.post("/login", response_model=LoginResponse)
 def login(
     user_data: LoginRequest,
     db: Session = Depends(get_db)
