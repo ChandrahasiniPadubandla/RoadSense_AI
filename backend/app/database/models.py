@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, ForeignKey, Numeric
+import uuid
+from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, ForeignKey, Numeric, Uuid
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 
@@ -8,7 +9,7 @@ from app.database.connection import Base
 class Role(Base):
     __tablename__ = "roles"
 
-    role_id = Column(Integer, primary_key=True)
+    role_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     role_name = Column(String(50), unique=True, nullable=False)
     description = Column(Text)
 
@@ -16,8 +17,8 @@ class Role(Base):
 class User(Base):
     __tablename__ = "users"
 
-    user_id = Column(Integer, primary_key=True)
-    role_id = Column(Integer, ForeignKey("roles.role_id"), nullable=False)
+    user_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    role_id = Column(Uuid, ForeignKey("roles.role_id"), nullable=False)
     name = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False)
     password_hash = Column(Text, nullable=False)
@@ -30,7 +31,7 @@ class User(Base):
 class TrafficZone(Base):
     __tablename__ = "traffic_zones"
 
-    zone_id = Column(Integer, primary_key=True, index=True)
+    zone_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
 
     zone_name = Column(String(150), nullable=False)
 
@@ -49,10 +50,10 @@ class TrafficZone(Base):
 class Road(Base):
     __tablename__ = "roads"
 
-    road_id = Column(Integer, primary_key=True, index=True)
+    road_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
 
     zone_id = Column(
-        Integer,
+        Uuid,
         ForeignKey("traffic_zones.zone_id")
     )
 
@@ -93,10 +94,10 @@ class TrafficRecord(Base):
 
     __tablename__ = "traffic_records"
 
-    traffic_id = Column(Integer, primary_key=True, index=True)
+    traffic_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
 
     road_id = Column(
-        Integer,
+        Uuid,
         ForeignKey("roads.road_id"),
         nullable=False
     )
@@ -128,10 +129,10 @@ class TrafficRecord(Base):
 class Accident(Base):
     __tablename__ = "accidents"
 
-    accident_id = Column(Integer, primary_key=True, index=True)
+    accident_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
 
     road_id = Column(
-        Integer,
+        Uuid,
         ForeignKey("roads.road_id"),
         nullable=False
     )
@@ -162,7 +163,7 @@ class Accident(Base):
     description = Column(Text)
 
     created_by = Column(
-        Integer,
+        Uuid,
         ForeignKey("users.user_id")
     )
 
@@ -174,8 +175,8 @@ class Accident(Base):
 class AccidentHotspot(Base):
     __tablename__ = "accident_hotspots"
 
-    hotspot_id = Column(Integer, primary_key=True)
-    zone_id = Column(Integer, ForeignKey("traffic_zones.zone_id"))
+    hotspot_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    zone_id = Column(Uuid, ForeignKey("traffic_zones.zone_id"))
     location = Column(Geography(geometry_type="POINT", srid=4326))
     accident_count = Column(Integer, default=0)
     risk_score = Column(Numeric(5, 2))

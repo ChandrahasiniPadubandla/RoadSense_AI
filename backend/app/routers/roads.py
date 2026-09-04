@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -60,7 +61,7 @@ def get_roads(
     response_model=RoadResponse
 )
 def get_road(
-    road_id: int,
+    road_id: UUID,
     db: Session = Depends(get_db)
 ):
 
@@ -85,7 +86,7 @@ def get_road(
     response_model=RoadResponse
 )
 def update_road(
-    road_id: int,
+    road_id: UUID,
     road: RoadCreate,
     db: Session = Depends(get_db)
 ):
@@ -117,7 +118,7 @@ def update_road(
 
 @router.delete("/{road_id}")
 def delete_road(
-    road_id: int,
+    road_id: UUID,
     db: Session = Depends(get_db)
 ):
     db_road = (

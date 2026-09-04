@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from geoalchemy2.elements import WKTElement
@@ -50,7 +51,7 @@ def _format_accident_response(accident: Accident) -> AccidentResponse:
 def create_accident(
     accident: AccidentCreate,
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user)
+    current_user_id: UUID = Depends(get_current_user)
 ):
 
     # Check whether road exists
@@ -109,7 +110,7 @@ def get_accidents(
     response_model=list[AccidentResponse]
 )
 def get_accidents_by_road(
-    road_id: int,
+    road_id: UUID,
     db: Session = Depends(get_db)
 ):
     road = (
@@ -140,7 +141,7 @@ def get_accidents_by_road(
     response_model=AccidentResponse
 )
 def get_accident(
-    accident_id: int,
+    accident_id: UUID,
     db: Session = Depends(get_db)
 ):
 
@@ -167,7 +168,7 @@ def get_accident(
     response_model=AccidentResponse
 )
 def update_accident(
-    accident_id: int,
+    accident_id: UUID,
     accident_data: AccidentUpdate,
     db: Session = Depends(get_db)
 ):
@@ -235,7 +236,7 @@ def update_accident(
 # DELETE ACCIDENT
 @router.delete("/{accident_id}")
 def delete_accident(
-    accident_id: int,
+    accident_id: UUID,
     db: Session = Depends(get_db)
 ):
     db_accident = (

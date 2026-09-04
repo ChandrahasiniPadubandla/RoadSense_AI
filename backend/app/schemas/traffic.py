@@ -1,3 +1,4 @@
+from uuid import UUID
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
@@ -11,7 +12,7 @@ class ZoneCreate(BaseModel):
 
 
 class ZoneResponse(BaseModel):
-    zone_id: int
+    zone_id: UUID
     zone_name: str
     description: Optional[str] = None
     latitude: Optional[float] = None
@@ -28,7 +29,7 @@ class ZoneResponse(BaseModel):
 
 class RoadCreate(BaseModel):
 
-    zone_id: Optional[int] = None
+    zone_id: Optional[UUID] = None
 
     road_name: str
 
@@ -53,21 +54,21 @@ class RoadCreate(BaseModel):
 
 class RoadResponse(BaseModel):
 
-    road_id: int
+    road_id: UUID
 
-    zone_id: Optional[int]
+    zone_id: Optional[UUID] = None
 
     road_name: str
 
-    road_type: Optional[str]
+    road_type: Optional[str] = None
 
-    road_capacity: Optional[int]
+    road_capacity: Optional[int] = None
 
-    speed_limit: Optional[float]
+    speed_limit: Optional[float] = None
 
-    road_condition: Optional[str]
+    road_condition: Optional[str] = None
 
-    number_of_lanes: Optional[int]
+    number_of_lanes: Optional[int] = None
 
     is_active: bool
 
@@ -81,7 +82,7 @@ class RoadResponse(BaseModel):
 
 class TrafficCreate(BaseModel):
 
-    road_id: int
+    road_id: UUID
 
     timestamp: datetime
 
@@ -120,7 +121,7 @@ class TrafficCreate(BaseModel):
 
 
 class TrafficUpdate(BaseModel):
-    road_id: Optional[int] = None
+    road_id: Optional[UUID] = None
     timestamp: Optional[datetime] = None
     vehicle_count: Optional[int] = Field(default=None, ge=0)
     average_speed: Optional[float] = Field(default=None, ge=0)
@@ -136,31 +137,31 @@ class TrafficUpdate(BaseModel):
 
 class TrafficResponse(BaseModel):
 
-    traffic_id: int
+    traffic_id: UUID
 
-    road_id: int
+    road_id: UUID
 
     timestamp: datetime
 
     vehicle_count: int
 
-    average_speed: Optional[float]
+    average_speed: Optional[float] = None
 
-    traffic_density: Optional[float]
+    traffic_density: Optional[float] = None
 
-    congestion_level: Optional[str]
+    congestion_level: Optional[str] = None
 
-    road_condition: Optional[str]
+    road_condition: Optional[str] = None
 
-    weather_condition: Optional[str]
+    weather_condition: Optional[str] = None
 
-    rainfall: Optional[float]
+    rainfall: Optional[float] = None
 
-    temperature: Optional[float]
+    temperature: Optional[float] = None
 
-    visibility: Optional[float]
+    visibility: Optional[float] = None
 
-    is_holiday: bool
+    is_holiday: bool = False
 
     class Config:
         from_attributes = True

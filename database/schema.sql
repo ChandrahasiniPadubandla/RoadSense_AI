@@ -3,13 +3,14 @@
 -- PostgreSQL + PostGIS Database
 -- =========================================================
 
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- =========================================================
 -- 1. ROLES
 -- =========================================================
 
 CREATE TABLE roles (
-    role_id SERIAL PRIMARY KEY,
+    role_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     role_name VARCHAR(50) UNIQUE NOT NULL,
 
@@ -22,9 +23,9 @@ CREATE TABLE roles (
 -- =========================================================
 
 CREATE TABLE users (
-    user_id SERIAL PRIMARY KEY,
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    role_id INTEGER NOT NULL,
+    role_id UUID NOT NULL,
 
     name VARCHAR(100) NOT NULL,
 
@@ -51,7 +52,7 @@ CREATE TABLE users (
 -- =========================================================
 
 CREATE TABLE traffic_zones (
-    zone_id SERIAL PRIMARY KEY,
+    zone_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     zone_name VARCHAR(150) NOT NULL,
 
@@ -68,9 +69,9 @@ CREATE TABLE traffic_zones (
 -- =========================================================
 
 CREATE TABLE roads (
-    road_id SERIAL PRIMARY KEY,
+    road_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    zone_id INTEGER,
+    zone_id UUID,
 
     road_name VARCHAR(200) NOT NULL,
 
@@ -103,9 +104,9 @@ CREATE TABLE roads (
 -- =========================================================
 
 CREATE TABLE weather_records (
-    weather_id SERIAL PRIMARY KEY,
+    weather_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id INTEGER NOT NULL,
+    road_id UUID NOT NULL,
 
     timestamp TIMESTAMP NOT NULL,
 
@@ -132,9 +133,9 @@ CREATE TABLE weather_records (
 -- =========================================================
 
 CREATE TABLE traffic_records (
-    traffic_id SERIAL PRIMARY KEY,
+    traffic_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id INTEGER NOT NULL,
+    road_id UUID NOT NULL,
 
     timestamp TIMESTAMP NOT NULL,
 
@@ -169,9 +170,9 @@ CREATE TABLE traffic_records (
 -- =========================================================
 
 CREATE TABLE accidents (
-    accident_id SERIAL PRIMARY KEY,
+    accident_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id INTEGER NOT NULL,
+    road_id UUID NOT NULL,
 
     location GEOGRAPHY(POINT, 4326),
 
@@ -193,7 +194,7 @@ CREATE TABLE accidents (
 
     description TEXT,
 
-    created_by INTEGER,
+    created_by UUID,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -212,7 +213,7 @@ CREATE TABLE accidents (
 -- =========================================================
 
 CREATE TABLE model_versions (
-    model_version_id SERIAL PRIMARY KEY,
+    model_version_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     model_name VARCHAR(100) NOT NULL,
 
@@ -241,9 +242,9 @@ CREATE TABLE model_versions (
 -- =========================================================
 
 CREATE TABLE traffic_predictions (
-    prediction_id SERIAL PRIMARY KEY,
+    prediction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id INTEGER NOT NULL,
+    road_id UUID NOT NULL,
 
     prediction_time TIMESTAMP NOT NULL,
 
@@ -255,7 +256,7 @@ CREATE TABLE traffic_predictions (
 
     confidence_score DECIMAL(5,2),
 
-    model_version_id INTEGER,
+    model_version_id UUID,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -274,9 +275,9 @@ CREATE TABLE traffic_predictions (
 -- =========================================================
 
 CREATE TABLE accident_predictions (
-    prediction_id SERIAL PRIMARY KEY,
+    prediction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id INTEGER NOT NULL,
+    road_id UUID NOT NULL,
 
     prediction_time TIMESTAMP NOT NULL,
 
@@ -286,7 +287,7 @@ CREATE TABLE accident_predictions (
 
     confidence_score DECIMAL(5,2),
 
-    model_version_id INTEGER,
+    model_version_id UUID,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -305,9 +306,9 @@ CREATE TABLE accident_predictions (
 -- =========================================================
 
 CREATE TABLE accident_hotspots (
-    hotspot_id SERIAL PRIMARY KEY,
+    hotspot_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    zone_id INTEGER,
+    zone_id UUID,
 
     location GEOGRAPHY(POINT, 4326),
 
@@ -330,11 +331,11 @@ CREATE TABLE accident_hotspots (
 -- =========================================================
 
 CREATE TABLE traffic_anomalies (
-    anomaly_id SERIAL PRIMARY KEY,
+    anomaly_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id INTEGER NOT NULL,
+    road_id UUID NOT NULL,
 
-    traffic_id INTEGER,
+    traffic_id UUID,
 
     detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -365,11 +366,11 @@ CREATE TABLE traffic_anomalies (
 -- =========================================================
 
 CREATE TABLE alerts (
-    alert_id SERIAL PRIMARY KEY,
+    alert_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id INTEGER,
+    road_id UUID,
 
-    prediction_id INTEGER,
+    prediction_id UUID,
 
     alert_type VARCHAR(50),
 
@@ -394,11 +395,11 @@ CREATE TABLE alerts (
 -- =========================================================
 
 CREATE TABLE emergency_responses (
-    response_id SERIAL PRIMARY KEY,
+    response_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    accident_id INTEGER NOT NULL,
+    accident_id UUID NOT NULL,
 
-    assigned_user_id INTEGER,
+    assigned_user_id UUID,
 
     response_status VARCHAR(30) DEFAULT 'PENDING',
 
@@ -425,15 +426,15 @@ CREATE TABLE emergency_responses (
 -- =========================================================
 
 CREATE TABLE audit_logs (
-    log_id SERIAL PRIMARY KEY,
+    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    user_id INTEGER,
+    user_id UUID,
 
     action VARCHAR(50),
 
     entity_type VARCHAR(100),
 
-    entity_id INTEGER,
+    entity_id UUID,
 
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 

@@ -1,4 +1,5 @@
 import os
+from uuid import UUID
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -20,7 +21,8 @@ from app.security import (
     verify_password,
     create_access_token,
     get_current_user,
-    create_password_reset_token
+    create_password_reset_token,
+    get_jwt_settings
 )
 
 
@@ -130,13 +132,15 @@ def login(
         "message": "Login successful",
         "access_token": access_token,
         "token_type": "bearer"
-        } 
+    }
+
+
 @router.get(
     "/me",
     response_model=UserResponse
 )
 def get_me(
-    user_id: int = Depends(get_current_user),
+    user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     user = (
@@ -160,7 +164,7 @@ def get_me(
 )
 def update_me(
     user_data: UserUpdateRequest,
-    user_id: int = Depends(get_current_user),
+    user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     user = (
@@ -210,7 +214,7 @@ def update_me(
 
 @router.delete("/me")
 def delete_me(
-    user_id: int = Depends(get_current_user),
+    user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     user = (
@@ -256,14 +260,15 @@ def forgot_password(
         "message": "Password reset token generated",
         "reset_token": reset_token
     }
+
+
 @router.post("/reset-password")
 def reset_password(
     reset_data: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ):
     try:
-        secret_key = os.getenv("JWT_SECRET_KEY")
-        algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+        secret_key, algorithm = get_jwt_settings()
 
         payload = jwt.decode(
             reset_data.token,
@@ -277,9 +282,17 @@ def reset_password(
                 detail="Invalid password reset token"
             )
 
-        user_id = payload.get("user_id")
+        user_id_raw = payload.get("user_id")
 
-        if user_id is None:
+        if user_id_raw is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid password reset token"
+            )
+
+        try:
+            user_id = UUID(str(user_id_raw))
+        except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid password reset token"

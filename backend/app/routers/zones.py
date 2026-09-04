@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
@@ -68,7 +69,7 @@ def get_zones(
 # GET ONE ZONE
 @router.get("/{zone_id}", response_model=ZoneResponse)
 def get_zone(
-    zone_id: int,
+    zone_id: UUID,
     db: Session = Depends(get_db)
 ):
     zone = (
@@ -89,7 +90,7 @@ def get_zone(
 # UPDATE ZONE
 @router.put("/{zone_id}", response_model=ZoneResponse)
 def update_zone(
-    zone_id: int,
+    zone_id: UUID,
     zone: ZoneCreate,
     db: Session = Depends(get_db)
 ):
@@ -122,7 +123,7 @@ def update_zone(
 # DELETE ZONE
 @router.delete("/{zone_id}")
 def delete_zone(
-    zone_id: int,
+    zone_id: UUID,
     db: Session = Depends(get_db)
 ):
     db_zone = (

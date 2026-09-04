@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -93,7 +94,7 @@ def get_traffic_records(
     response_model=TrafficResponse
 )
 def get_traffic_record(
-    traffic_id: int,
+    traffic_id: UUID,
     db: Session = Depends(get_db)
 ):
 
@@ -119,7 +120,7 @@ def get_traffic_record(
     response_model=list[TrafficResponse]
 )
 def get_road_traffic(
-    road_id: int,
+    road_id: UUID,
     db: Session = Depends(get_db)
 ):
 
@@ -156,7 +157,7 @@ def get_road_traffic(
     response_model=TrafficResponse
 )
 def update_traffic_record(
-    traffic_id: int,
+    traffic_id: UUID,
     traffic_data: TrafficUpdate,
     db: Session = Depends(get_db)
 ):
@@ -227,7 +228,7 @@ def update_traffic_record(
 # DELETE TRAFFIC RECORD
 @router.delete("/{traffic_id}")
 def delete_traffic_record(
-    traffic_id: int,
+    traffic_id: UUID,
     db: Session = Depends(get_db)
 ):
     record = (
