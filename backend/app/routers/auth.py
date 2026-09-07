@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 
 from app.database.connection import get_db
-from app.models import PasswordResetOTP, User, Role
-from app.email import EmailDeliveryError, send_password_reset_otp
+from app.models import AuthOTP, User, Role
+from app.email import EmailDeliveryError, send_email_verification_otp, send_password_reset_otp
 from app.schemas.auth import (
     RegisterRequest,
     UserUpdateRequest,
@@ -14,7 +14,8 @@ from app.schemas.auth import (
     LoginResponse,
     UserResponse,
     ForgotPasswordRequest,
-    ResetPasswordRequest
+    ResetPasswordRequest,
+    VerifyEmailRequest
 )
 from app.security import (
     hash_password,
@@ -78,13 +79,34 @@ def register(
         password_hash=hashed_password,
         phone=user_data.phone,
         role_id=viewer_role.role_id,
-        is_active=True
+        is_active=True,
+        is_email_verified=False
     )
 
     # 5. Save to database
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    otp = create_otp()
+    db.add(AuthOTP(
+        user_id=new_user.user_id,
+        purpose="email_verification",
+        otp_hash=hash_otp(otp),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        created_at=datetime.now(timezone.utc)
+    ))
+    db.commit()
+
+    try:
+        send_email_verification_otp(str(new_user.email), otp)
+    except EmailDeliveryError:
+        db.delete(new_user)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to send email verification code"
+        )
 
     return new_user
 
@@ -119,6 +141,12 @@ def login(
             detail="Invalid email or password"
         )
 
+    if not user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before logging in"
+        )
+
     # 4. Check whether account is active
     if not user.is_active:
         raise HTTPException(
@@ -134,6 +162,42 @@ def login(
         "access_token": access_token,
         "token_type": "bearer"
     }
+
+
+@router.post("/verify-email")
+def verify_email(
+    verification_data: VerifyEmailRequest,
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == verification_data.email).first()
+    otp_record = None
+    if user:
+        otp_record = (
+            db.query(AuthOTP)
+            .filter(
+                AuthOTP.user_id == user.user_id,
+                AuthOTP.purpose == "email_verification"
+            )
+            .order_by(AuthOTP.created_at.desc())
+            .first()
+        )
+
+    if (
+        not user
+        or not otp_record
+        or otp_record.expires_at < datetime.now(timezone.utc)
+        or not verify_otp(verification_data.otp, otp_record.otp_hash)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification code"
+        )
+
+    user.is_email_verified = True
+    db.delete(otp_record)
+    db.commit()
+
+    return {"message": "Email verified successfully"}
 
 
 @router.get(
@@ -254,11 +318,13 @@ def forgot_password(
         return {"message": "If that email is registered, an OTP has been sent"}
 
     otp = create_otp()
-    db.query(PasswordResetOTP).filter(
-        PasswordResetOTP.user_id == user.user_id
+    db.query(AuthOTP).filter(
+        AuthOTP.user_id == user.user_id,
+        AuthOTP.purpose == "password_reset"
     ).delete(synchronize_session=False)
-    db.add(PasswordResetOTP(
+    db.add(AuthOTP(
         user_id=user.user_id,
+        purpose="password_reset",
         otp_hash=hash_otp(otp),
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         created_at=datetime.now(timezone.utc)
@@ -268,8 +334,9 @@ def forgot_password(
     try:
         send_password_reset_otp(str(user.email), otp)
     except EmailDeliveryError:
-        db.query(PasswordResetOTP).filter(
-            PasswordResetOTP.user_id == user.user_id
+        db.query(AuthOTP).filter(
+            AuthOTP.user_id == user.user_id,
+            AuthOTP.purpose == "password_reset"
         ).delete(synchronize_session=False)
         db.commit()
         raise HTTPException(
@@ -296,9 +363,12 @@ def reset_password(
     otp_record = None
     if user:
         otp_record = (
-            db.query(PasswordResetOTP)
-            .filter(PasswordResetOTP.user_id == user.user_id)
-            .order_by(PasswordResetOTP.created_at.desc())
+            db.query(AuthOTP)
+            .filter(
+                AuthOTP.user_id == user.user_id,
+                AuthOTP.purpose == "password_reset"
+            )
+            .order_by(AuthOTP.created_at.desc())
             .first()
         )
 

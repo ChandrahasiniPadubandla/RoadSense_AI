@@ -37,6 +37,8 @@ CREATE TABLE users (
 
     is_active BOOLEAN DEFAULT TRUE,
 
+    is_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -45,6 +47,35 @@ CREATE TABLE users (
         FOREIGN KEY (role_id)
         REFERENCES roles(role_id)
 );
+
+
+-- =========================================================
+-- 2.1 AUTHENTICATION OTPs
+-- =========================================================
+
+CREATE TABLE auth_otps (
+    otp_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID NOT NULL,
+
+    purpose VARCHAR(30) NOT NULL CHECK (
+        purpose IN ('email_verification', 'password_reset')
+    ),
+
+    otp_hash VARCHAR(64) NOT NULL,
+
+    expires_at TIMESTAMPTZ NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_auth_otp_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX ix_auth_otps_user_id_purpose
+    ON auth_otps (user_id, purpose);
 
 
 -- =========================================================

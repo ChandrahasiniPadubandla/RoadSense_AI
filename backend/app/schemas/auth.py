@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     phone: str | None = None
     role_id: UUID
     is_active: bool
+    is_email_verified: bool
 
     class Config:
         from_attributes = True
@@ -47,3 +48,8 @@ class ResetPasswordRequest(BaseModel):
     email: EmailStr
     otp: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
     new_password: str
+
+
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")

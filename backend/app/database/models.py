@@ -24,15 +24,17 @@ class User(Base):
     password_hash = Column(Text, nullable=False)
     phone = Column(String(20))
     is_active = Column(Boolean, default=True)
+    is_email_verified = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
 
 
-class PasswordResetOTP(Base):
-    __tablename__ = "password_reset_otps"
+class AuthOTP(Base):
+    __tablename__ = "auth_otps"
 
     otp_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(Uuid, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    purpose = Column(String(30), nullable=False, index=True)
     otp_hash = Column(String(64), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)

@@ -8,7 +8,7 @@ SQLAlchemy ``Base.metadata`` instance.
 from app.database.models import (
     Accident,
     AccidentHotspot,
-    PasswordResetOTP,
+    AuthOTP,
     Road,
     Role,
     TrafficRecord,
@@ -19,7 +19,7 @@ from app.database.models import (
 __all__ = [
     "Accident",
     "AccidentHotspot",
-    "PasswordResetOTP",
+    "AuthOTP",
     "Road",
     "Role",
     "TrafficRecord",
