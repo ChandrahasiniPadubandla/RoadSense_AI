@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 
@@ -25,6 +26,7 @@ class LoginResponse(BaseModel):
     message: str
     access_token: str
     token_type: str = "bearer"
+    login_at: datetime
 
 
 class UserResponse(BaseModel):

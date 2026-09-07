@@ -467,7 +467,7 @@ CREATE TABLE audit_logs (
 
     entity_id UUID,
 
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     ip_address VARCHAR(50),
 
