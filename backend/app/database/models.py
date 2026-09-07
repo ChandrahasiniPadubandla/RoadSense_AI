@@ -316,23 +316,6 @@ class AccidentPrediction(Base):
     model_version = relationship("ModelVersion")
 
 
-class WeatherRecord(Base):
-    __tablename__ = "weather_records"
-
-    weather_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
-    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False)
-    timestamp = Column(DateTime, nullable=False)
-    temperature = Column(Numeric(5, 2))
-    rainfall = Column(Numeric(7, 2))
-    humidity = Column(Numeric(5, 2))
-    visibility = Column(Numeric(7, 2))
-    wind_speed = Column(Numeric(7, 2))
-    weather_condition = Column(String(100))
-
-    road = relationship("Road")
-
-
-
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
