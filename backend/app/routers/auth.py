@@ -1,11 +1,11 @@
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 
 from app.database.connection import get_db
-from app.models import AuthOTP, User, Role
+from app.models import Accident, AuthOTP, AuditLog, EmergencyResponse, User, Role
 from app.email import EmailDeliveryError, send_email_verification_otp, send_password_reset_otp
 from app.schemas.auth import (
     RegisterRequest,
@@ -115,6 +115,7 @@ def register(
 @router.post("/login", response_model=LoginResponse)
 def login(
     user_data: LoginRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     # 1. Find the user by email
@@ -155,12 +156,24 @@ def login(
         )
 
     # 5. Login successful
+    login_at = datetime.now(timezone.utc)
     access_token = create_access_token(user.user_id)
+    db.add(AuditLog(
+        user_id=user.user_id,
+        action="LOGIN",
+        entity_type="authentication",
+        entity_id=user.user_id,
+        timestamp=login_at,
+        ip_address=request.client.host if request.client else None,
+        details="User logged in successfully"
+    ))
+    db.commit()
 
     return {
         "message": "Login successful",
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "login_at": login_at
     }
 
 
@@ -279,6 +292,7 @@ def update_me(
 
 @router.delete("/me")
 def delete_me(
+    request: Request,
     user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -294,11 +308,38 @@ def delete_me(
             detail="User not found"
         )
 
-    user.is_active = False
+    deleted_at = datetime.now(timezone.utc)
+    db.query(AuthOTP).filter(AuthOTP.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(AuditLog).filter(AuditLog.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(Accident).filter(Accident.created_by == user_id).update(
+        {Accident.created_by: None},
+        synchronize_session=False
+    )
+    db.query(EmergencyResponse).filter(
+        EmergencyResponse.assigned_user_id == user_id
+    ).update(
+        {EmergencyResponse.assigned_user_id: None},
+        synchronize_session=False
+    )
+    db.add(AuditLog(
+        user_id=None,
+        action="DELETE",
+        entity_type="user",
+        entity_id=user_id,
+        timestamp=deleted_at,
+        ip_address=request.client.host if request.client else None,
+        details="User permanently deleted their own account"
+    ))
+    db.delete(user)
     db.commit()
 
     return {
-        "message": "User account deactivated"
+        "message": "User account deleted successfully",
+        "deleted_at": deleted_at
     }
 
 
