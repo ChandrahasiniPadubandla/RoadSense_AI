@@ -2,7 +2,11 @@
 
 import os
 import smtplib
+from pathlib import Path
 from email.message import EmailMessage
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
 class EmailDeliveryError(Exception):
@@ -83,3 +87,9 @@ def send_email_verification_otp(recipient: str, otp: str) -> None:
             smtp.send_message(message)
     except (OSError, smtplib.SMTPException) as exc:
         raise EmailDeliveryError("Unable to send verification email") from exc
+
+
+
+
+
+

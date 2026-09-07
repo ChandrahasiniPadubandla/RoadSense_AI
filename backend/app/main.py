@@ -8,6 +8,7 @@ from app.routers import accidents
 from app.routers import dashboard
 from app.routers import maps
 from app.routers import admin
+from app.routers import audit
 from app.routers import weather
 from app.routers.auth import router as auth_router
 
@@ -54,9 +55,14 @@ app.include_router(
 )
 
 app.include_router(
-    admin.router
+    admin.router,
+    dependencies=[Depends(get_current_user)]
 )
 
+app.include_router(
+    audit.router,
+    dependencies=[Depends(get_current_user)]
+)
 
 @app.get("/")
 def root():

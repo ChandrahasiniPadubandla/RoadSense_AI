@@ -1,5 +1,5 @@
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 
 
 class RegisterRequest(BaseModel):
@@ -44,12 +44,22 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
-class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    otp: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
-    new_password: str
-
-
 class VerifyEmailRequest(BaseModel):
     email: EmailStr
     otp: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+    @field_validator("otp", mode="before")
+    @classmethod
+    def normalize_otp(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(validation_alias=AliasChoices("new_password", "newPassword"))
+
+    @field_validator("otp", mode="before")
+    @classmethod
+    def normalize_otp(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
