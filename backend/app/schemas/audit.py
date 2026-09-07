@@ -1,0 +1,36 @@
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+class AuditLogCreate(BaseModel):
+    action: str = Field(min_length=1, max_length=50)
+    entity_type: str = Field(min_length=1, max_length=100)
+    entity_id: UUID | None = None
+    timestamp: datetime | None = None
+    ip_address: str | None = Field(default=None, max_length=50)
+    details: str | None = None
+
+
+class AuditLogUpdate(BaseModel):
+    action: str | None = Field(default=None, min_length=1, max_length=50)
+    entity_type: str | None = Field(default=None, min_length=1, max_length=100)
+    entity_id: UUID | None = None
+    timestamp: datetime | None = None
+    ip_address: str | None = Field(default=None, max_length=50)
+    details: str | None = None
+
+
+class AuditLogResponse(BaseModel):
+    log_id: UUID
+    user_id: UUID | None = None
+    action: str | None = None
+    entity_type: str | None = None
+    entity_id: UUID | None = None
+    timestamp: datetime | None = None
+    ip_address: str | None = None
+    details: str | None = None
+
+    class Config:
+        from_attributes = True

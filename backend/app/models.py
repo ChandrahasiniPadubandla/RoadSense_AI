@@ -9,20 +9,24 @@ from app.database.models import (
     Accident,
     AccidentHotspot,
     AuthOTP,
+    AuditLog,
     Road,
     Role,
     TrafficRecord,
     TrafficZone,
     User,
+    WeatherRecord,
 )
 
 __all__ = [
     "Accident",
     "AccidentHotspot",
     "AuthOTP",
+    "AuditLog",
     "Road",
     "Role",
     "TrafficRecord",
     "TrafficZone",
     "User",
+    "WeatherRecord",
 ]

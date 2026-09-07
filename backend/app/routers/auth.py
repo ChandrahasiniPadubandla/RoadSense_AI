@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.models import AuthOTP, User, Role
-from app.email import EmailDeliveryError, send_password_reset_otp
+from app.email import EmailDeliveryError, send_email_verification_otp, send_password_reset_otp
 from app.schemas.auth import (
     RegisterRequest,
     UserUpdateRequest,
@@ -80,13 +80,33 @@ def register(
         phone=user_data.phone,
         role_id=viewer_role.role_id,
         is_active=True,
-        is_email_verified=True
+        is_email_verified=False
     )
 
     # 5. Save to database
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    otp = create_otp()
+    db.add(AuthOTP(
+        user_id=new_user.user_id,
+        purpose="email_verification",
+        otp_hash=hash_otp(otp),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        created_at=datetime.now(timezone.utc)
+    ))
+    db.commit()
+
+    try:
+        send_email_verification_otp(str(new_user.email), otp)
+    except EmailDeliveryError:
+        db.delete(new_user)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to send email verification code"
+        )
 
     return new_user
 
@@ -119,6 +139,12 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
+        )
+
+    if not user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before logging in"
         )
 
     # 4. Check whether account is active

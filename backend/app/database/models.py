@@ -104,6 +104,22 @@ class Road(Base):
     zone = relationship("TrafficZone")
 
 
+class WeatherRecord(Base):
+    __tablename__ = "weather_records"
+
+    weather_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False)
+    temperature = Column(Numeric(5, 2))
+    rainfall = Column(Numeric(7, 2))
+    humidity = Column(Numeric(5, 2))
+    visibility = Column(Numeric(7, 2))
+    wind_speed = Column(Numeric(7, 2))
+    weather_condition = Column(String(100))
+
+    road = relationship("Road")
+
+
 class TrafficRecord(Base):
 
     __tablename__ = "traffic_records"
@@ -196,3 +212,18 @@ class AccidentHotspot(Base):
     risk_score = Column(Numeric(5, 2))
     risk_level = Column(String(20))
     calculated_at = Column(DateTime)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    log_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(Uuid, ForeignKey("users.user_id"))
+    action = Column(String(50))
+    entity_type = Column(String(100))
+    entity_id = Column(Uuid)
+    timestamp = Column(DateTime)
+    ip_address = Column(String(50))
+    details = Column(Text)
+
+    user = relationship("User")
