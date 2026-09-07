@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, ForeignKey, Numeric, Uuid
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
@@ -27,6 +28,8 @@ class User(Base):
     is_email_verified = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+
+    role = relationship("Role")
 
 
 class AuthOTP(Base):
@@ -196,3 +199,121 @@ class AccidentHotspot(Base):
     risk_score = Column(Numeric(5, 2))
     risk_level = Column(String(20))
     calculated_at = Column(DateTime)
+
+
+class Alert(Base):
+    __tablename__ = "alerts"
+
+    alert_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    road_id = Column(Uuid, ForeignKey("roads.road_id"))
+    prediction_id = Column(Uuid)
+    alert_type = Column(String(50))
+    severity = Column(String(20))
+    message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String(30), default="ACTIVE")
+    resolved_at = Column(DateTime)
+
+    road = relationship("Road")
+
+
+class TrafficAnomaly(Base):
+    __tablename__ = "traffic_anomalies"
+
+    anomaly_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False)
+    traffic_id = Column(Uuid, ForeignKey("traffic_records.traffic_id"))
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    normal_vehicle_count = Column(Integer)
+    actual_vehicle_count = Column(Integer)
+    anomaly_score = Column(Numeric(6, 2))
+    anomaly_type = Column(String(50))
+    description = Column(Text)
+    status = Column(String(30), default="ACTIVE")
+
+    road = relationship("Road")
+    traffic_record = relationship("TrafficRecord")
+
+
+class EmergencyResponse(Base):
+    __tablename__ = "emergency_responses"
+
+    response_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    accident_id = Column(Uuid, ForeignKey("accidents.accident_id"), nullable=False)
+    assigned_user_id = Column(Uuid, ForeignKey("users.user_id"))
+    response_status = Column(String(30), default="PENDING")
+    assigned_at = Column(DateTime)
+    arrived_at = Column(DateTime)
+    resolved_at = Column(DateTime)
+    notes = Column(Text)
+
+    accident = relationship("Accident")
+    assigned_user = relationship("User")
+
+
+class ModelVersion(Base):
+    __tablename__ = "model_versions"
+
+    model_version_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    model_name = Column(String(100), nullable=False)
+    model_type = Column(String(100))
+    version = Column(String(50))
+    algorithm = Column(String(100))
+    accuracy = Column(Numeric(5, 2))
+    precision_score = Column(Numeric(5, 2))
+    recall_score = Column(Numeric(5, 2))
+    f1_score = Column(Numeric(5, 2))
+    trained_at = Column(DateTime)
+    is_active = Column(Boolean, default=True)
+
+
+class TrafficPrediction(Base):
+    __tablename__ = "traffic_predictions"
+
+    prediction_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False)
+    prediction_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    target_time = Column(DateTime, nullable=False)
+    predicted_congestion = Column(String(20))
+    predicted_vehicle_count = Column(Integer)
+    confidence_score = Column(Numeric(5, 2))
+    model_version_id = Column(Uuid, ForeignKey("model_versions.model_version_id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    road = relationship("Road")
+    model_version = relationship("ModelVersion")
+
+
+class AccidentPrediction(Base):
+    __tablename__ = "accident_predictions"
+
+    prediction_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False)
+    prediction_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    risk_percentage = Column(Numeric(5, 2))
+    risk_level = Column(String(20))
+    confidence_score = Column(Numeric(5, 2))
+    model_version_id = Column(Uuid, ForeignKey("model_versions.model_version_id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    road = relationship("Road")
+    model_version = relationship("ModelVersion")
+
+
+class WeatherRecord(Base):
+    __tablename__ = "weather_records"
+
+    weather_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False)
+    timestamp = Column(DateTime, nullable=False)
+    temperature = Column(Numeric(5, 2))
+    rainfall = Column(Numeric(7, 2))
+    humidity = Column(Numeric(5, 2))
+    visibility = Column(Numeric(7, 2))
+    wind_speed = Column(Numeric(7, 2))
+    weather_condition = Column(String(100))
+
+    road = relationship("Road")
+
+
+

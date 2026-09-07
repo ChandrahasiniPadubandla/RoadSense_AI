@@ -51,6 +51,35 @@ class RoadCreate(BaseModel):
 
     number_of_lanes: Optional[int] = None
 
+    is_active: Optional[bool] = True
+
+
+class RoadUpdate(BaseModel):
+
+    zone_id: Optional[UUID] = None
+
+    road_name: Optional[str] = None
+
+    road_type: Optional[str] = None
+
+    start_latitude: Optional[float] = None
+
+    start_longitude: Optional[float] = None
+
+    end_latitude: Optional[float] = None
+
+    end_longitude: Optional[float] = None
+
+    road_capacity: Optional[int] = None
+
+    speed_limit: Optional[float] = None
+
+    road_condition: Optional[str] = None
+
+    number_of_lanes: Optional[int] = None
+
+    is_active: Optional[bool] = None
+
 
 class RoadResponse(BaseModel):
 
@@ -62,6 +91,14 @@ class RoadResponse(BaseModel):
 
     road_type: Optional[str] = None
 
+    start_latitude: Optional[float] = None
+
+    start_longitude: Optional[float] = None
+
+    end_latitude: Optional[float] = None
+
+    end_longitude: Optional[float] = None
+
     road_capacity: Optional[int] = None
 
     speed_limit: Optional[float] = None
@@ -71,6 +108,8 @@ class RoadResponse(BaseModel):
     number_of_lanes: Optional[int] = None
 
     is_active: bool
+
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

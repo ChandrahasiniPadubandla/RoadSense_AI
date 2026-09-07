@@ -5,6 +5,10 @@ from app.routers import zones
 from app.routers import roads
 from app.routers import traffic
 from app.routers import accidents
+from app.routers import dashboard
+from app.routers import maps
+from app.routers import admin
+from app.routers import weather
 from app.routers.auth import router as auth_router
 
 app = FastAPI(
@@ -32,6 +36,25 @@ app.include_router(
 app.include_router(
     accidents.router,
     dependencies=[Depends(get_current_user)]
+)
+
+app.include_router(
+    dashboard.router,
+    dependencies=[Depends(get_current_user)]
+)
+
+app.include_router(
+    maps.router,
+    dependencies=[Depends(get_current_user)]
+)
+
+app.include_router(
+    weather.router,
+    dependencies=[Depends(get_current_user)]
+)
+
+app.include_router(
+    admin.router
 )
 
 

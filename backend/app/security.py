@@ -11,6 +11,7 @@ from pwdlib import PasswordHash
 import jwt
 from pathlib import Path
 
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 DEFAULT_JWT_SECRET = "roadsense-ai-jwt-secret-key-change-in-production"
@@ -129,3 +130,60 @@ def hash_otp(otp: str) -> str:
 
 def verify_otp(otp: str, expected_hash: str) -> bool:
     return hmac.compare_digest(hash_otp(otp), expected_hash)
+
+
+def get_current_user_obj(
+    user_id: UUID = Depends(get_current_user)
+):
+    from sqlalchemy.orm import joinedload
+    from app.database.connection import SessionLocal
+    from app.database.models import User
+
+    db = SessionLocal()
+    try:
+        user = (
+            db.query(User)
+            .options(joinedload(User.role))
+            .filter(User.user_id == user_id)
+            .first()
+        )
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is deactivated"
+            )
+        # Ensure role relationship is populated before detaching
+        if user.role:
+            _ = user.role.role_name
+            db.expunge(user.role)
+        db.expunge(user)
+        return user
+    finally:
+        db.close()
+
+
+def require_roles(*allowed_roles: str):
+    """
+    Dependency factory to enforce Role-Based Access Control (RBAC).
+    Allowed roles e.g.: 'SUPER_ADMIN', 'TRAFFIC_AUTHORITY', 'EMERGENCY_RESPONSE', 'VIEWER'.
+    """
+    normalized_allowed = {r.strip().upper() for r in allowed_roles}
+
+    def role_checker(
+        current_user = Depends(get_current_user_obj)
+    ):
+        role_name = current_user.role.role_name.strip().upper() if current_user.role else ""
+        if role_name not in normalized_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access forbidden: requires one of roles [{', '.join(allowed_roles)}]"
+            )
+        return current_user
+
+    return role_checker
+
