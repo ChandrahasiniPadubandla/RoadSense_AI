@@ -53,7 +53,7 @@ def register(
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            detail="An account with this email is already registered. Please log in, or use forgot password if you need to recover your account."
         )
 
     # 2. Find the VIEWER role
@@ -128,8 +128,8 @@ def login(
     # 2. Check email
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email. Please register before logging in."
         )
 
     # 3. Check password
@@ -139,20 +139,20 @@ def login(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            detail="Incorrect password. Please check your credentials or reset your password."
         )
 
     if not user.is_email_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before logging in"
+            detail="Your email is not verified yet. Please verify your email using the OTP sent to your inbox before logging in."
         )
 
     # 4. Check whether account is active
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive"
+            detail="Your account has been deactivated. Please contact support or administrator for assistance."
         )
 
     # 5. Login successful
@@ -195,15 +195,31 @@ def verify_email(
             .first()
         )
 
-    if (
-        not user
-        or not otp_record
-        or otp_record.expires_at < datetime.now(timezone.utc)
-        or not verify_otp(verification_data.otp, otp_record.otp_hash)
-    ):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email address. Please register first."
+        )
+
+    if user.is_email_verified:
+        return {"message": "Email is already verified. Please proceed to login."}
+
+    if not otp_record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No pending email verification OTP found for this account. Please request a new verification code."
+        )
+
+    if otp_record.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new verification code."
+        )
+
+    if not verify_otp(verification_data.otp, otp_record.otp_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired verification code"
+            detail="Incorrect verification code. Please check the OTP sent to your email and try again."
         )
 
     user.is_email_verified = True
@@ -354,9 +370,11 @@ def forgot_password(
         .first()
     )
 
-    # Avoid exposing whether an email address has an account.
     if not user:
-        return {"message": "If that email is registered, an OTP has been sent"}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active account found with this email. Please register before requesting a password reset."
+        )
 
     otp = create_otp()
     db.query(AuthOTP).filter(
@@ -413,15 +431,28 @@ def reset_password(
             .first()
         )
 
-    if (
-        not user
-        or not otp_record
-        or otp_record.expires_at < datetime.now(timezone.utc)
-        or not verify_otp(reset_data.otp, otp_record.otp_hash)
-    ):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active account found with this email address. Please register first."
+        )
+
+    if not otp_record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No password reset request found for this email. Please request a reset code using forgot-password first."
+        )
+
+    if otp_record.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password reset code has expired. Please request a new reset OTP."
+        )
+
+    if not verify_otp(reset_data.otp, otp_record.otp_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired OTP"
+            detail="Incorrect password reset code. Please check the OTP sent to your email and try again."
         )
 
     user.password_hash = hash_password(reset_data.new_password)

@@ -1,9 +1,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import axios from "axios";
+import { sendChatbotMessage } from "./api_services";
 import "./styles.css";
-
-const API_URL = "http://127.0.0.1:8000/api";
 
 const starterQuestions = [
   "What does the traffic prediction module do?",
@@ -34,17 +32,17 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/chatbot/message`, {
-        message,
-        history,
-      });
+      const data = await sendChatbotMessage(message, history);
       setMessages((current) => [
         ...current,
-        { role: "assistant", content: response.data.reply },
+        { role: "assistant", content: data.reply },
       ]);
-      setMode(response.data.mode);
+      setMode(data.mode);
     } catch (error) {
-      const detail = error.response?.data?.detail || "Could not connect to the chatbot backend.";
+      const detail =
+        error.response?.data?.detail ||
+        error.message ||
+        "Could not connect to the chatbot backend.";
       setMessages((current) => [...current, { role: "assistant", content: detail }]);
     } finally {
       setLoading(false);

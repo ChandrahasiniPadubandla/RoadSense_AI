@@ -64,7 +64,7 @@ def create_accident(
     if not road:
         raise HTTPException(
             status_code=404,
-            detail="Road not found"
+            detail=f"Cannot record accident: Road with ID '{accident.road_id}' does not exist. Please verify the road ID."
         )
 
     # Convert latitude/longitude to PostGIS POINT
@@ -122,7 +122,7 @@ def get_accidents_by_road(
     if not road:
         raise HTTPException(
             status_code=404,
-            detail="Road not found"
+            detail=f"Road with ID '{road_id}' does not exist. Cannot retrieve accident history."
         )
 
     accidents = (
@@ -156,7 +156,7 @@ def get_accident(
     if not accident:
         raise HTTPException(
             status_code=404,
-            detail="Accident not found"
+            detail=f"Accident record with ID '{accident_id}' does not exist."
         )
 
     return _format_accident_response(accident)
@@ -181,7 +181,7 @@ def update_accident(
     if not db_accident:
         raise HTTPException(
             status_code=404,
-            detail="Accident not found"
+            detail=f"Cannot update: Accident record with ID '{accident_id}' does not exist."
         )
 
     if accident_data.road_id is not None:
@@ -193,7 +193,7 @@ def update_accident(
         if not road:
             raise HTTPException(
                 status_code=404,
-                detail="Road not found"
+                detail=f"Cannot link accident: Road with ID '{accident_data.road_id}' does not exist."
             )
         db_accident.road_id = accident_data.road_id
 
@@ -248,7 +248,7 @@ def delete_accident(
     if not db_accident:
         raise HTTPException(
             status_code=404,
-            detail="Accident not found"
+            detail=f"Cannot delete: Accident record with ID '{accident_id}' does not exist."
         )
 
     db.delete(db_accident)

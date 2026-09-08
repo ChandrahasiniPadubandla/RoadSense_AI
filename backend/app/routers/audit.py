@@ -45,7 +45,10 @@ def get_audit_logs(db: Session = Depends(get_db)):
 def get_audit_log(log_id: UUID, db: Session = Depends(get_db)):
     record = db.query(AuditLog).filter(AuditLog.log_id == log_id).first()
     if not record:
-        raise HTTPException(status_code=404, detail="Audit log not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Audit log entry with ID '{log_id}' does not exist."
+        )
     return record
 
 
@@ -57,7 +60,10 @@ def update_audit_log(
 ):
     record = db.query(AuditLog).filter(AuditLog.log_id == log_id).first()
     if not record:
-        raise HTTPException(status_code=404, detail="Audit log not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot update: Audit log entry with ID '{log_id}' does not exist."
+        )
 
     for field, value in audit_data.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
@@ -71,7 +77,10 @@ def update_audit_log(
 def delete_audit_log(log_id: UUID, db: Session = Depends(get_db)):
     record = db.query(AuditLog).filter(AuditLog.log_id == log_id).first()
     if not record:
-        raise HTTPException(status_code=404, detail="Audit log not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot delete: Audit log entry with ID '{log_id}' does not exist."
+        )
 
     db.delete(record)
     db.commit()

@@ -68,11 +68,14 @@ def update_user_role(
 ):
     user = db.query(User).filter(User.name == username).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=f"User with username '{username}' does not exist.")
 
     role = db.query(Role).filter(Role.role_id == role_update.role_id).first()
     if not role:
-        raise HTTPException(status_code=404, detail="Target role not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Target role with ID '{role_update.role_id}' does not exist. Please specify a valid role ID."
+        )
 
     user.role_id = role_update.role_id
     user.updated_at = datetime.utcnow()
@@ -90,7 +93,7 @@ def update_user_status(
 ):
     user = db.query(User).filter(User.name == username).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=f"User with username '{username}' does not exist.")
 
     user.is_active = status_update.is_active
     user.updated_at = datetime.utcnow()
@@ -108,12 +111,12 @@ def delete_user(
 ):
     user = db.query(User).filter(User.name == username).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=f"User with username '{username}' does not exist.")
 
     if user.user_id == current_user.user_id:
         raise HTTPException(
             status_code=400,
-            detail="A super admin cannot delete their own account"
+            detail="Operation rejected: An administrator cannot delete their own account."
         )
 
     db.query(AuthOTP).filter(AuthOTP.user_id == user.user_id).delete(

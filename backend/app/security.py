@@ -76,7 +76,7 @@ def get_current_user(
         if user_id_raw is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="Invalid authentication token payload. Please log in again."
             )
 
         try:
@@ -84,19 +84,19 @@ def get_current_user(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload"
+                detail="Malformed user ID in authentication token. Please log in again."
             )
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired"
+            detail="Your authentication session has expired. Please log in again."
         )
 
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            detail="Invalid authentication token. Please log in to continue."
         )
 
 
@@ -150,12 +150,12 @@ def get_current_user_obj(
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found"
+                detail="User account not found. Please register or log in again."
             )
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is deactivated"
+                detail="Your user account has been deactivated. Please contact an administrator."
             )
         # Ensure role relationship is populated before detaching
         if user.role:
@@ -181,7 +181,7 @@ def require_roles(*allowed_roles: str):
         if role_name not in normalized_allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access forbidden: requires one of roles [{', '.join(allowed_roles)}]"
+                detail=f"Access denied: This action requires one of the following permissions: {', '.join(allowed_roles)}. Your current role ({role_name or 'None'}) is not authorized."
             )
         return current_user
 

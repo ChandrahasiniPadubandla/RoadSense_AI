@@ -12,6 +12,7 @@ from app.routers import admin
 from app.routers import audit
 from app.routers import weather
 from app.routers import chatbot
+from app.routers import predictions
 from app.routers.auth import router as auth_router
 
 app = FastAPI(
@@ -29,7 +30,10 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-app.include_router(chatbot.router)
+
+app.include_router(
+    chatbot.router
+)
 
 app.include_router(
     zones.router,
@@ -73,6 +77,11 @@ app.include_router(
 
 app.include_router(
     audit.router,
+    dependencies=[Depends(get_current_user)]
+)
+
+app.include_router(
+    predictions.router,
     dependencies=[Depends(get_current_user)]
 )
 

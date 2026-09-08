@@ -20,7 +20,10 @@ router = APIRouter(
 def _get_road(road_id: UUID, db: Session) -> Road:
     road = db.query(Road).filter(Road.road_id == road_id).first()
     if not road:
-        raise HTTPException(status_code=404, detail="Road not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Road with ID '{road_id}' does not exist. Cannot link or query weather data."
+        )
     return road
 
 
@@ -65,7 +68,10 @@ def get_weather_record(weather_id: UUID, db: Session = Depends(get_db)):
         .first()
     )
     if not record:
-        raise HTTPException(status_code=404, detail="Weather record not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Weather record with ID '{weather_id}' does not exist."
+        )
     return record
 
 
@@ -81,7 +87,10 @@ def update_weather_record(
         .first()
     )
     if not record:
-        raise HTTPException(status_code=404, detail="Weather record not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot update: Weather record with ID '{weather_id}' does not exist."
+        )
 
     updates = weather.model_dump(exclude_unset=True)
     if "road_id" in updates:
@@ -102,7 +111,10 @@ def delete_weather_record(weather_id: UUID, db: Session = Depends(get_db)):
         .first()
     )
     if not record:
-        raise HTTPException(status_code=404, detail="Weather record not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot delete: Weather record with ID '{weather_id}' does not exist."
+        )
 
     db.delete(record)
     db.commit()

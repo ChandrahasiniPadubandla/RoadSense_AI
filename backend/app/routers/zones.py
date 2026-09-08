@@ -81,7 +81,7 @@ def get_zone(
     if not zone:
         raise HTTPException(
             status_code=404,
-            detail="Traffic zone not found"
+            detail=f"Traffic zone with ID '{zone_id}' does not exist. Please check the zone ID and try again."
         )
 
     return _format_zone_response(zone)
@@ -103,7 +103,7 @@ def update_zone(
     if not db_zone:
         raise HTTPException(
             status_code=404,
-            detail="Traffic zone not found"
+            detail=f"Cannot update: Traffic zone with ID '{zone_id}' does not exist."
         )
 
     db_zone.zone_name = zone.zone_name
@@ -135,7 +135,7 @@ def delete_zone(
     if not db_zone:
         raise HTTPException(
             status_code=404,
-            detail="Traffic zone not found"
+            detail=f"Cannot delete: Traffic zone with ID '{zone_id}' does not exist."
         )
 
     db.delete(db_zone)

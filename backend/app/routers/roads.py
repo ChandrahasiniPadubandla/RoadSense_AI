@@ -5,7 +5,7 @@ from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
 
 from app.database.connection import get_db
-from app.database.models import Road
+from app.database.models import Road, TrafficZone
 
 from app.schemas.traffic import (
     RoadCreate,
@@ -61,6 +61,14 @@ def create_road(
     road: RoadCreate,
     db: Session = Depends(get_db)
 ):
+    if road.zone_id is not None:
+        zone = db.query(TrafficZone).filter(TrafficZone.zone_id == road.zone_id).first()
+        if not zone:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Traffic zone with ID '{road.zone_id}' does not exist. Please specify a valid zone."
+            )
+
     start_location = None
     if road.start_latitude is not None and road.start_longitude is not None:
         start_location = WKTElement(
@@ -123,7 +131,7 @@ def get_road(
     if not road:
         raise HTTPException(
             status_code=404,
-            detail="Road not found"
+            detail=f"Road with ID '{road_id}' does not exist. Please verify the road ID."
         )
 
     return _format_road_response(road)
@@ -147,10 +155,16 @@ def update_road(
     if not db_road:
         raise HTTPException(
             status_code=404,
-            detail="Road not found"
+            detail=f"Cannot update: Road with ID '{road_id}' does not exist."
         )
 
     if road.zone_id is not None:
+        zone = db.query(TrafficZone).filter(TrafficZone.zone_id == road.zone_id).first()
+        if not zone:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Traffic zone with ID '{road.zone_id}' does not exist. Cannot link road to invalid zone."
+            )
         db_road.zone_id = road.zone_id
     if road.road_name is not None:
         db_road.road_name = road.road_name
@@ -197,7 +211,7 @@ def delete_road(
     if not db_road:
         raise HTTPException(
             status_code=404,
-            detail="Road not found"
+            detail=f"Cannot delete: Road with ID '{road_id}' does not exist."
         )
 
     db.delete(db_road)

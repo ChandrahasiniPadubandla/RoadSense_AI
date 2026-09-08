@@ -45,7 +45,7 @@ def create_traffic_record(
 
         raise HTTPException(
             status_code=404,
-            detail="Road not found"
+            detail=f"Cannot record traffic: Road with ID '{traffic.road_id}' does not exist. Please verify the road ID."
         )
 
     new_record = TrafficRecord(
@@ -110,7 +110,7 @@ def get_traffic_record(
 
         raise HTTPException(
             status_code=404,
-            detail="Traffic record not found"
+            detail=f"Traffic record with ID '{traffic_id}' does not exist."
         )
 
     return record
@@ -134,7 +134,7 @@ def get_road_traffic(
 
         raise HTTPException(
             status_code=404,
-            detail="Road not found"
+            detail=f"Road with ID '{road_id}' does not exist. Cannot retrieve traffic data."
         )
 
     records = (
@@ -170,7 +170,7 @@ def update_traffic_record(
     if not record:
         raise HTTPException(
             status_code=404,
-            detail="Traffic record not found"
+            detail=f"Cannot update: Traffic record with ID '{traffic_id}' does not exist."
         )
 
     if traffic_data.road_id is not None:
@@ -182,7 +182,7 @@ def update_traffic_record(
         if not road:
             raise HTTPException(
                 status_code=404,
-                detail="Road not found"
+                detail=f"Cannot link traffic record: Road with ID '{traffic_data.road_id}' does not exist."
             )
         record.road_id = traffic_data.road_id
 
@@ -240,7 +240,7 @@ def delete_traffic_record(
     if not record:
         raise HTTPException(
             status_code=404,
-            detail="Traffic record not found"
+            detail=f"Cannot delete: Traffic record with ID '{traffic_id}' does not exist."
         )
 
     db.delete(record)

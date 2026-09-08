@@ -65,7 +65,7 @@ def ai_answer(message: str, history: List[ChatMessage]) -> str:
         print(f"OpenAI error: {exc}")
         raise HTTPException(
             status_code=502,
-            detail="The AI service could not generate a response. Check your OpenAI API key and model name."
+            detail="The AI service is temporarily unavailable. Please try asking again or verify your OpenAI API key and model settings."
         )
 
 
@@ -77,7 +77,10 @@ def health():
 @router.post("/message", response_model=ChatResponse)
 def chatbot_message(request: ChatRequest):
     if not request.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty")
+        raise HTTPException(
+            status_code=400,
+            detail="Message cannot be empty. Please type a question about traffic, accident risk, or system features."
+        )
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     reply = ai_answer(request.message, request.history)
     return {
