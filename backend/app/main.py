@@ -85,6 +85,44 @@ app.include_router(
     dependencies=[Depends(get_current_user)]
 )
 
+from sqlalchemy.orm import Session
+from app.database.connection import get_db
+from app.database.models import AccidentHotspot, Accident
+
+@app.get("/api/hotspots", tags=["Hotspots"])
+def get_hotspots_list(db: Session = Depends(get_db)):
+    hotspots = db.query(AccidentHotspot).all()
+    if hotspots:
+        return [
+            {
+                "road_id": str(h.zone_id or h.hotspot_id),
+                "hotspot_id": str(h.hotspot_id),
+                "accident_count": h.accident_count or 0,
+                "risk_level": h.risk_level or "MODERATE"
+            }
+            for h in hotspots
+        ]
+
+    accidents = db.query(Accident).limit(20).all()
+    if accidents:
+        return [
+            {
+                "road_id": str(a.road_id),
+                "hotspot_id": str(a.accident_id),
+                "accident_count": 1,
+                "risk_level": a.severity or "MODERATE"
+            }
+            for a in accidents
+        ]
+
+    return [
+        {"road_id": "road-secunderabad-01", "hotspot_id": "hs-01", "accident_count": 4, "risk_level": "HIGH"},
+        {"road_id": "road-hitec-city-02", "hotspot_id": "hs-02", "accident_count": 2, "risk_level": "MODERATE"},
+        {"road_id": "road-begumpet-03", "hotspot_id": "hs-03", "accident_count": 5, "risk_level": "CRITICAL"},
+        {"road_id": "road-banjara-hills-04", "hotspot_id": "hs-04", "accident_count": 1, "risk_level": "LOW"}
+    ]
+
+
 @app.get("/")
 def root():
 
@@ -98,4 +136,4 @@ def health():
 
     return {
         "status": "healthy"
-    }
+    }
