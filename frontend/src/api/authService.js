@@ -35,7 +35,21 @@ export async function login(email, password) {
   }
 
   const { data } = await axiosClient.post('/auth/login', { email, password });
-  return data; // { accessToken, user: { id, name, email, role } }
+  return {
+    accessToken: data.access_token,
+    user: mapUser(data.user),
+  };
+}
+
+function mapUser(user) {
+  return {
+    id: user.user_id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    isActive: user.is_active,
+    role: user.role?.role_name || user.role_name || user.role_id,
+  };
 }
 
 export async function logout() {

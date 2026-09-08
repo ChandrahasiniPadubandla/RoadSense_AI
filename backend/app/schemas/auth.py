@@ -22,24 +22,26 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class LoginResponse(BaseModel):
-    message: str
-    access_token: str
-    token_type: str = "bearer"
-    login_at: datetime
-
-
 class UserResponse(BaseModel):
     user_id: UUID
     name: str
     email: EmailStr
     phone: str | None = None
     role_id: UUID
+    role_name: str | None = None
     is_active: bool
     is_email_verified: bool
 
     class Config:
         from_attributes = True
+
+
+class LoginResponse(BaseModel):
+    message: str
+    access_token: str
+    token_type: str = "bearer"
+    login_at: datetime
+    user: UserResponse
 
 
 class ForgotPasswordRequest(BaseModel):

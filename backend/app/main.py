@@ -94,6 +94,14 @@ def root():
     return {"message": "RoadSense AI API is running"}
 
 
+@app.get("/login")
+def login_page():
+    frontend_index = FRONTEND_DIST / "index.html"
+    if frontend_index.exists():
+        return FileResponse(frontend_index)
+    return {"message": "RoadSense AI API is running"}
+
+
 @app.get("/health")
 def health():
     return {"status": "healthy"}

@@ -2,13 +2,6 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const DEMO_ACCOUNTS = [
-  { label: 'Super Admin', email: 'admin@traffic.gov', password: 'admin123' },
-  { label: 'Traffic Authority', email: 'authority@traffic.gov', password: 'authority123' },
-  { label: 'Emergency Response', email: 'response@traffic.gov', password: 'response123' },
-  { label: 'Viewer', email: 'viewer@traffic.gov', password: 'viewer123' },
-];
-
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,11 +25,6 @@ export default function Login() {
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  function fillDemo(account) {
-    setEmail(account.email);
-    setPassword(account.password);
   }
 
   return (
@@ -94,23 +82,6 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="mt-5 rounded-lg border border-asphalt-800 bg-asphalt-900/50 p-4">
-          <p className="mb-2 text-xs text-asphalt-400">
-            Demo accounts (mock mode only):
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {DEMO_ACCOUNTS.map((acc) => (
-              <button
-                key={acc.email}
-                type="button"
-                onClick={() => fillDemo(acc)}
-                className="rounded-md border border-asphalt-700 px-2 py-1.5 text-left text-xs text-asphalt-300 hover:border-signal-blue/50 hover:text-signal-blue"
-              >
-                {acc.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

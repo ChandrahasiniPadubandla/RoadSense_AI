@@ -173,7 +173,17 @@ def login(
         "message": "Login successful",
         "access_token": access_token,
         "token_type": "bearer",
-        "login_at": login_at
+        "login_at": login_at,
+        "user": {
+            "user_id": user.user_id,
+            "name": user.name,
+            "email": user.email,
+            "phone": user.phone,
+            "role_id": user.role_id,
+            "role_name": user.role.role_name if user.role else None,
+            "is_active": user.is_active,
+            "is_email_verified": user.is_email_verified,
+        }
     }
 
 
