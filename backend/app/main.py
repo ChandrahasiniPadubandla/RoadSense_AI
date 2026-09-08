@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.security import get_current_user
 from app.routers import zones
@@ -10,6 +11,7 @@ from app.routers import maps
 from app.routers import admin
 from app.routers import audit
 from app.routers import weather
+from app.routers import chatbot
 from app.routers.auth import router as auth_router
 
 app = FastAPI(
@@ -17,7 +19,17 @@ app = FastAPI(
     description="AI-Based Smart Traffic & Accident Prediction System",
     version="1.0.0"
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth_router)
+app.include_router(chatbot.router)
 
 app.include_router(
     zones.router,
