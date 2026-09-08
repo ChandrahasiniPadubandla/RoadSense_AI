@@ -6,6 +6,7 @@ import RoleRoute from './routes/RoleRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import LiveMap from './pages/LiveMap';
 import RoadOverview from './pages/RoadOverview';
@@ -27,6 +28,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
 
       {/* Everything below requires a logged-in user */}

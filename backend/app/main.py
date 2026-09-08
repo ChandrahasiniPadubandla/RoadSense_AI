@@ -102,6 +102,14 @@ def login_page():
     return {"message": "RoadSense AI API is running"}
 
 
+@app.get("/forgot-password")
+def forgot_password_page():
+    frontend_index = FRONTEND_DIST / "index.html"
+    if frontend_index.exists():
+        return FileResponse(frontend_index)
+    return {"message": "RoadSense AI API is running"}
+
+
 @app.get("/health")
 def health():
     return {"status": "healthy"}

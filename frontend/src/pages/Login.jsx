@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
@@ -80,6 +80,12 @@ export default function Login() {
           >
             {isSubmitting ? 'Signing in…' : 'Sign in'}
           </button>
+          <Link
+            to="/forgot-password"
+            className="mt-4 block text-center text-xs text-signal-blue hover:underline"
+          >
+            Forgot password?
+          </Link>
         </form>
 
       </div>
