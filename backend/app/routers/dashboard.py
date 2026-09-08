@@ -128,3 +128,71 @@ def get_dashboard_stats(
         average_system_speed=avg_speed,
         timestamp=now
     )
+
+
+@router.get(
+    "/summary",
+    summary="Get Dashboard Summary Overview"
+)
+def get_dashboard_summary(
+    db: Session = Depends(get_db)
+):
+    """
+    Returns dashboard summary counters for the frontend dashboard cards:
+    active_roads, high_traffic_records, active_alerts, total_accidents, high_risk_zones.
+    """
+    stats = get_dashboard_stats(db=db)
+    return {
+        "active_roads": stats.active_roads,
+        "total_roads": stats.total_roads,
+        "high_traffic_records": stats.high_traffic_roads,
+        "high_traffic_roads": stats.high_traffic_roads,
+        "active_alerts": stats.accident_alerts,
+        "total_accidents": stats.total_accidents,
+        "high_risk_zones": stats.high_risk_zones,
+        "accidents_today": stats.accidents_today,
+        "total_traffic_records": stats.total_traffic_records,
+        "average_system_speed": stats.average_system_speed,
+        "timestamp": stats.timestamp.isoformat() if stats.timestamp else datetime.now().isoformat(),
+    }
+
+
+@router.get(
+    "/trend",
+    summary="Get Traffic Trend Data"
+)
+def get_dashboard_trend(
+    db: Session = Depends(get_db)
+):
+    """
+    Returns the latest 50 traffic observations formatted for the dashboard line chart.
+    """
+    records = (
+        db.query(TrafficRecord)
+        .order_by(TrafficRecord.timestamp.desc())
+        .limit(50)
+        .all()
+    )
+    if not records:
+        # Fallback empty or mock points if no traffic records in DB yet
+        now = datetime.now()
+        return [
+            {
+                "timestamp": (now - timedelta(minutes=i * 10)).isoformat(),
+                "vehicle_count": 0,
+                "average_speed": 0.0,
+                "road_id": "system"
+            }
+            for i in range(10)
+        ]
+
+    return [
+        {
+            "timestamp": r.timestamp.isoformat() if r.timestamp else datetime.now().isoformat(),
+            "vehicle_count": r.vehicle_count or 0,
+            "average_speed": float(r.average_speed) if r.average_speed else 0.0,
+            "road_id": str(r.road_id)
+        }
+        for r in reversed(records)
+    ]
+

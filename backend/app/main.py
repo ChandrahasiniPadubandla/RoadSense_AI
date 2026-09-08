@@ -4,8 +4,11 @@ from fastapi import FastAPI, Depends
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
 from app.security import get_current_user
+from app.database.connection import get_db
+from app.database.models import AccidentHotspot, Accident
 from app.routers import zones
 from app.routers import roads
 from app.routers import traffic
@@ -36,84 +39,65 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(chatbot.router)
+app.include_router(zones.router, dependencies=[Depends(get_current_user)])
+app.include_router(roads.router, dependencies=[Depends(get_current_user)])
+app.include_router(traffic.router, dependencies=[Depends(get_current_user)])
+app.include_router(accidents.router, dependencies=[Depends(get_current_user)])
+app.include_router(dashboard.router, dependencies=[Depends(get_current_user)])
+app.include_router(maps.router, dependencies=[Depends(get_current_user)])
+app.include_router(weather.router, dependencies=[Depends(get_current_user)])
+app.include_router(admin.router, dependencies=[Depends(get_current_user)])
+app.include_router(audit.router, dependencies=[Depends(get_current_user)])
+app.include_router(predictions.router, dependencies=[Depends(get_current_user)])
 
-app.include_router(
-    chatbot.router
-)
 
-app.include_router(
-    zones.router,
-    dependencies=[Depends(get_current_user)]
-)
+@app.get("/api/hotspots", tags=["Hotspots"])
+def get_hotspots_list(db: Session = Depends(get_db)):
+    hotspots = db.query(AccidentHotspot).all()
+    if hotspots:
+        return [
+            {
+                "road_id": str(h.zone_id or h.hotspot_id),
+                "hotspot_id": str(h.hotspot_id),
+                "accident_count": h.accident_count or 0,
+                "risk_level": h.risk_level or "MODERATE"
+            }
+            for h in hotspots
+        ]
 
-app.include_router(
-    roads.router,
-    dependencies=[Depends(get_current_user)]
-)
+    accidents = db.query(Accident).limit(20).all()
+    if accidents:
+        return [
+            {
+                "road_id": str(a.road_id),
+                "hotspot_id": str(a.accident_id),
+                "accident_count": 1,
+                "risk_level": a.severity or "MODERATE"
+            }
+            for a in accidents
+        ]
 
-app.include_router(
-    traffic.router,
-    dependencies=[Depends(get_current_user)]
-)
+    return [
+        {"road_id": "road-secunderabad-01", "hotspot_id": "hs-01", "accident_count": 4, "risk_level": "HIGH"},
+        {"road_id": "road-hitec-city-02", "hotspot_id": "hs-02", "accident_count": 2, "risk_level": "MODERATE"},
+        {"road_id": "road-begumpet-03", "hotspot_id": "hs-03", "accident_count": 5, "risk_level": "CRITICAL"},
+        {"road_id": "road-banjara-hills-04", "hotspot_id": "hs-04", "accident_count": 1, "risk_level": "LOW"}
+    ]
 
-app.include_router(
-    accidents.router,
-    dependencies=[Depends(get_current_user)]
-)
-
-app.include_router(
-    dashboard.router,
-    dependencies=[Depends(get_current_user)]
-)
-
-app.include_router(
-    maps.router,
-    dependencies=[Depends(get_current_user)]
-)
-
-app.include_router(
-    weather.router,
-    dependencies=[Depends(get_current_user)]
-)
-
-app.include_router(
-    admin.router,
-    dependencies=[Depends(get_current_user)]
-)
-
-app.include_router(
-    audit.router,
-    dependencies=[Depends(get_current_user)]
-)
-
-app.include_router(
-    predictions.router,
-    dependencies=[Depends(get_current_user)]
-)
 
 @app.get("/")
 def root():
-
     frontend_index = FRONTEND_DIST / "index.html"
     if frontend_index.exists():
         return FileResponse(frontend_index)
-
-    return {
-        "message": "RoadSense AI API is running"
-    }
+    return {"message": "RoadSense AI API is running"}
 
 
 @app.get("/health")
 def health():
-
-    return {
-        "status": "healthy"
-    }
+    return {"status": "healthy"}
 
 
 if FRONTEND_DIST.exists():
-    app.mount(
-        "/",
-        StaticFiles(directory=FRONTEND_DIST, html=True),
-        name="frontend"
-    )
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
