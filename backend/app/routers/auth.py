@@ -129,7 +129,7 @@ def login(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No account found with this email. Please register before logging in."
+            detail="Wrong email address."
         )
 
     # 3. Check password
@@ -139,7 +139,7 @@ def login(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Please check your credentials or reset your password."
+            detail="Wrong password."
         )
 
     if not user.is_email_verified:
