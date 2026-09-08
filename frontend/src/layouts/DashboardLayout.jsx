@@ -6,17 +6,8 @@ import ChatWidget from '../components/ChatWidget';
 
 const TITLES = {
   '/': 'Dashboard',
-  '/overview': 'Traffic & Risk Overview',
-  '/live-map': 'Live Traffic Map',
-  '/traffic': 'Traffic Monitoring',
-  '/predictions': 'Congestion Prediction',
-  '/anomalies': 'Anomaly Detection',
-  '/accidents': 'Accident Management',
-  '/accident-risk': 'Accident Risk Prediction',
-  '/hotspots': 'Accident Hotspots',
-  '/emergency-responses': 'Emergency Response',
-  '/alerts': 'Alerts',
-  '/users': 'User Management',
+  '/live-map': 'Map',
+  '/map': 'Map',
 };
 
 export default function DashboardLayout() {

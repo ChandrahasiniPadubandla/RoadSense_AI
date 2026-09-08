@@ -5,17 +5,7 @@ import { ROLES } from '../utils/constants';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', roles: 'ALL' },
-  { to: '/overview', label: 'Traffic & Risk Overview', roles: 'ALL' },
-  { to: '/live-map', label: 'Live Map', roles: 'ALL' },
-  { to: '/traffic', label: 'Traffic Monitoring', roles: 'ALL' },
-  { to: '/predictions', label: 'Congestion Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
-  { to: '/anomalies', label: 'Anomaly Detection', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
-  { to: '/accidents', label: 'Accident Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE] },
-  { to: '/accident-risk', label: 'Accident Risk Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
-  { to: '/hotspots', label: 'Accident Hotspots', roles: 'ALL' },
-  { to: '/emergency-responses', label: 'Emergency Response', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE] },
-  { to: '/alerts', label: 'Alerts', roles: 'ALL' },
-  { to: '/users', label: 'User Management', roles: [ROLES.SUPER_ADMIN] },
+  { to: '/live-map', label: 'Map', roles: 'ALL' },
 ];
 
 export default function Sidebar() {

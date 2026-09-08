@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from uuid import UUID
 from datetime import datetime, timedelta
 from typing import Optional, Any
@@ -14,6 +16,14 @@ from app.database.models import (
     AccidentHotspot
 )
 
+ROUTES_CACHE_FILE = Path(__file__).resolve().parents[1] / "data" / "road_routes.json"
+ROAD_ROUTES_MAP: dict[str, list] = {}
+if ROUTES_CACHE_FILE.exists():
+    try:
+        with open(ROUTES_CACHE_FILE, "r", encoding="utf-8") as f:
+            ROAD_ROUTES_MAP = json.load(f)
+    except Exception as e:
+        print("Could not load road_routes.json:", e)
 
 router = APIRouter(
     prefix="/api/map",
@@ -133,15 +143,21 @@ def get_traffic_layer(
         if tr and road.road_capacity and road.road_capacity > 0:
             capacity_utilization = round((tr.vehicle_count / road.road_capacity) * 100, 1)
 
+        road_id_str = str(road.road_id)
+        if road_id_str in ROAD_ROUTES_MAP and len(ROAD_ROUTES_MAP[road_id_str]) > 2:
+            line_coords = ROAD_ROUTES_MAP[road_id_str]
+        else:
+            line_coords = [
+                [start_p.x, start_p.y],  # [longitude, latitude]
+                [end_p.x, end_p.y]
+            ]
+
         feature = {
             "type": "Feature",
-            "id": str(road.road_id),
+            "id": road_id_str,
             "geometry": {
                 "type": "LineString",
-                "coordinates": [
-                    [start_p.x, start_p.y],  # [longitude, latitude]
-                    [end_p.x, end_p.y]
-                ]
+                "coordinates": line_coords
             },
             "properties": {
                 "road_id": str(road.road_id),

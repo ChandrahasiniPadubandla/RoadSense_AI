@@ -1,0 +1,281 @@
+import axios from 'axios';
+
+// -----------------------------------------------------------------------------
+// Unified API Services for RoadSense AI
+// Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
+// -----------------------------------------------------------------------------
+
+// Base URL: reads from VITE_API_BASE_URL (defaults to http://localhost:8000)
+const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
+
+// Single configured Axios instance
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor: attach bearer token
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('accessToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor: handle 401 gracefully
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('currentUser');
+    }
+    return Promise.reject(error);
+  }
+);
+
+// -----------------------------------------------------------------------------
+// 1. DASHBOARD APIS (NO DUMMY DATA — returns real data or null/empty)
+// -----------------------------------------------------------------------------
+
+/**
+ * Fetch KPI statistics from /api/dashboard/stats (or /api/dashboard/summary)
+ * Returns null if data is not available (NO dummy numbers).
+ */
+export async function getDashboardStats() {
+  try {
+    const { data } = await apiClient.get('/api/dashboard/stats');
+    return {
+      activeRoads: data.active_roads ?? 0,
+      totalRoads: data.total_roads ?? 0,
+      highTraffic: data.high_traffic_roads ?? data.high_traffic_records ?? 0,
+      accidentAlerts: data.accident_alerts ?? data.active_alerts ?? 0,
+      highRiskZones: data.high_risk_zones ?? 0,
+      totalAccidents: data.total_accidents ?? 0,
+      accidentsToday: data.accidents_today ?? 0,
+      totalTrafficRecords: data.total_traffic_records ?? 0,
+      averageSpeed: data.average_system_speed ?? 0,
+      timestamp: data.timestamp || new Date().toISOString(),
+    };
+  } catch (error) {
+    console.warn('API /api/dashboard/stats failed, trying /api/dashboard/summary:', error.message);
+    try {
+      const { data } = await apiClient.get('/api/dashboard/summary');
+      return {
+        activeRoads: data.active_roads ?? 0,
+        totalRoads: data.total_roads ?? 0,
+        highTraffic: data.high_traffic_roads ?? data.high_traffic_records ?? 0,
+        accidentAlerts: data.active_alerts ?? data.accident_alerts ?? 0,
+        highRiskZones: data.high_risk_zones ?? 0,
+        totalAccidents: data.total_accidents ?? 0,
+        accidentsToday: data.accidents_today ?? 0,
+        totalTrafficRecords: data.total_traffic_records ?? 0,
+        averageSpeed: data.average_system_speed ?? 0,
+        timestamp: data.timestamp || new Date().toISOString(),
+      };
+    } catch (fallbackError) {
+      console.error('All dashboard stats endpoints failed:', fallbackError);
+      return null;
+    }
+  }
+}
+
+/**
+ * Fetch traffic volume trend for line chart from /api/dashboard/trend
+ * Returns empty array if no data exists (NO dummy trend points).
+ */
+export async function getDashboardTrend() {
+  try {
+    const { data } = await apiClient.get('/api/dashboard/trend');
+    if (Array.isArray(data) && data.length > 0) {
+      // Check if data is not just empty fallback records
+      const hasRealObservations = data.some((d) => (d.vehicle_count || 0) > 0);
+      if (hasRealObservations) {
+        return data.map((item, idx) => {
+          const timeStr = item.timestamp
+            ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : `T-${idx}`;
+          return {
+            hour: timeStr,
+            vehicles: item.vehicle_count ?? 0,
+            speed: item.average_speed ? Math.round(item.average_speed) : 0,
+            roadId: item.road_id,
+          };
+        });
+      }
+    }
+    return [];
+  } catch (error) {
+    console.warn('Could not fetch /api/dashboard/trend:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch roads list for dashboard table from /api/map/traffic-layer or /api/roads
+ * Returns empty array if no roads found (NO dummy roads).
+ */
+export async function getRoads() {
+  try {
+    const { data: layer } = await apiClient.get('/api/map/traffic-layer');
+    if (layer?.features && layer.features.length > 0) {
+      return layer.features.map((f) => {
+        const p = f.properties || {};
+        return {
+          id: p.road_id || f.id,
+          name: p.road_name || 'Road Segment',
+          roadType: p.road_type || 'Arterial',
+          vehicleCount: p.vehicle_count != null ? p.vehicle_count : '-',
+          avgSpeed: p.average_speed != null ? `${Math.round(p.average_speed)} km/h` : (p.speed_limit ? `${p.speed_limit} km/h` : '-'),
+          weather: p.weather_condition || 'Clear',
+          trafficLevel: (p.congestion_level || 'LOW').toUpperCase(),
+          capacityUtilization: p.capacity_utilization,
+          lanes: p.number_of_lanes || 4,
+          speedLimit: p.speed_limit,
+          lat: f.geometry?.coordinates?.[0]?.[1],
+          lng: f.geometry?.coordinates?.[0]?.[0],
+        };
+      });
+    }
+  } catch (err) {
+    console.warn('Traffic layer fetch failed, falling back to /api/roads:', err.message);
+  }
+
+  try {
+    const { data } = await apiClient.get('/api/roads');
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map((road) => ({
+        id: road.road_id,
+        name: road.road_name,
+        roadType: road.road_type,
+        vehicleCount: '-',
+        avgSpeed: road.speed_limit ? `${road.speed_limit} km/h` : '-',
+        weather: road.road_condition || 'Clear',
+        trafficLevel: 'LOW',
+        lanes: road.number_of_lanes,
+        speedLimit: road.speed_limit,
+        lat: road.start_latitude,
+        lng: road.start_longitude,
+      }));
+    }
+  } catch (error) {
+    console.error('Failed to fetch roads from backend:', error);
+  }
+
+  return [];
+}
+
+// -----------------------------------------------------------------------------
+// 2. MAP VISUALIZATION APIS (Returns real GeoJSON or empty FeatureCollection)
+// -----------------------------------------------------------------------------
+
+/**
+ * Fetch GeoJSON Traffic Roads Layer from /api/map/traffic-layer
+ */
+export async function getTrafficLayer() {
+  try {
+    const { data } = await apiClient.get('/api/map/traffic-layer');
+    return data && Array.isArray(data.features) ? data : { type: 'FeatureCollection', features: [] };
+  } catch (error) {
+    console.error('Error fetching /api/map/traffic-layer:', error);
+    return { type: 'FeatureCollection', features: [] };
+  }
+}
+
+/**
+ * Fetch GeoJSON Accident Incidents Layer from /api/map/accident-layer
+ */
+export async function getAccidentLayer(days = null, severity = null) {
+  try {
+    const params = {};
+    if (days) params.days = days;
+    if (severity) params.severity = severity;
+    const { data } = await apiClient.get('/api/map/accident-layer', { params });
+    return data && Array.isArray(data.features) ? data : { type: 'FeatureCollection', features: [] };
+  } catch (error) {
+    console.error('Error fetching /api/map/accident-layer:', error);
+    return { type: 'FeatureCollection', features: [] };
+  }
+}
+
+/**
+ * Fetch GeoJSON Hotspots / Hazard Zones from /api/map/hotspots-layer
+ */
+export async function getHotspotsLayer() {
+  try {
+    const { data } = await apiClient.get('/api/map/hotspots-layer');
+    return data && Array.isArray(data.features) ? data : { type: 'FeatureCollection', features: [] };
+  } catch (error) {
+    console.error('Error fetching /api/map/hotspots-layer:', error);
+    return { type: 'FeatureCollection', features: [] };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 3. AUTHENTICATION APIS
+// -----------------------------------------------------------------------------
+
+export async function loginUser(email, password) {
+  try {
+    const { data } = await apiClient.post('/auth/login', { email, password });
+    const token = data.access_token || data.accessToken;
+    if (token) {
+      localStorage.setItem('accessToken', token);
+    }
+    const user = {
+      id: data.user?.user_id || 'd40e5a7e-4df3-4a19-a271-8d02247b9f9f',
+      email: data.user?.email || email,
+      name: data.user?.name || email.split('@')[0],
+      role: data.user?.role_name || 'SUPER_ADMIN',
+    };
+    localStorage.setItem('currentUser', JSON.stringify(user));
+    return { accessToken: token, user };
+  } catch (error) {
+    const msg = error.response?.data?.detail || error.message || 'Login failed';
+    throw new Error(msg);
+  }
+}
+
+export async function logoutUser() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('currentUser');
+}
+
+// -----------------------------------------------------------------------------
+// 4. CHATBOT API (Previous bot backend functionality)
+// -----------------------------------------------------------------------------
+
+/**
+ * Send chatbot query to backend /api/chatbot/message
+ * Handles message and history formatted as expected by the backend
+ */
+export async function sendChatbotMessage(message, history = []) {
+  const payload = {
+    message,
+    history: history.map((h) => ({
+      role: h.role === 'user' ? 'user' : 'assistant',
+      content: h.content || h.text || '',
+    })),
+  };
+
+  const response = await apiClient.post('/api/chatbot/message', payload);
+  return response.data; // { reply: string, mode: "openai" | "local-fallback" }
+}
+
+export default {
+  API_BASE_URL,
+  getDashboardStats,
+  getDashboardTrend,
+  getRoads,
+  getTrafficLayer,
+  getAccidentLayer,
+  getHotspotsLayer,
+  loginUser,
+  logoutUser,
+  sendChatbotMessage,
+};
