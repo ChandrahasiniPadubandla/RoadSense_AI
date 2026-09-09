@@ -98,7 +98,9 @@ export async function getDashboardTrend() {
       if (hasRealObservations) {
         return data.map((item, idx) => {
           const timeStr = item.timestamp
-            ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            ? (item.timestamp.includes('T')
+                ? item.timestamp.split('T')[1].slice(0, 5)
+                : new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))
             : `T-${idx}`;
           return {
             hour: timeStr,

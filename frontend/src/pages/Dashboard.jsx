@@ -126,6 +126,8 @@ export default function Dashboard() {
                     borderRadius: 6,
                     fontSize: 12,
                   }}
+                  formatter={(value) => [`${Number(value).toLocaleString()} vehicles`, 'Volume']}
+                  labelFormatter={(label) => `Time: ${label}`}
                 />
                 <Line
                   type="monotone"

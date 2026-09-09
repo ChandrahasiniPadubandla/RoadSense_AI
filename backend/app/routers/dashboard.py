@@ -165,34 +165,41 @@ def get_dashboard_trend(
     db: Session = Depends(get_db)
 ):
     """
-    Returns the latest 50 traffic observations formatted for the dashboard line chart.
+    Returns chronological hourly traffic volume trend aggregated across the system
+    (last 24 intervals) for the dashboard trend line chart.
     """
-    records = (
-        db.query(TrafficRecord)
+    hourly_trends = (
+        db.query(
+            TrafficRecord.timestamp,
+            func.sum(TrafficRecord.vehicle_count).label("total_vehicles"),
+            func.avg(TrafficRecord.average_speed).label("avg_speed")
+        )
+        .group_by(TrafficRecord.timestamp)
         .order_by(TrafficRecord.timestamp.desc())
-        .limit(50)
+        .limit(24)
         .all()
     )
-    if not records:
-        # Fallback empty or mock points if no traffic records in DB yet
-        now = datetime.now()
+
+    if hourly_trends:
         return [
             {
-                "timestamp": (now - timedelta(minutes=i * 10)).isoformat(),
-                "vehicle_count": 0,
-                "average_speed": 0.0,
-                "road_id": "system"
+                "timestamp": t.timestamp.isoformat() if t.timestamp else datetime.now().isoformat(),
+                "vehicle_count": int(t.total_vehicles or 0),
+                "average_speed": round(float(t.avg_speed), 1) if t.avg_speed is not None else 0.0,
+                "road_id": "system_total"
             }
-            for i in range(10)
+            for t in reversed(hourly_trends)
         ]
 
+    # Fallback if no traffic records in DB yet
+    now = datetime.now()
     return [
         {
-            "timestamp": r.timestamp.isoformat() if r.timestamp else datetime.now().isoformat(),
-            "vehicle_count": r.vehicle_count or 0,
-            "average_speed": float(r.average_speed) if r.average_speed else 0.0,
-            "road_id": str(r.road_id)
+            "timestamp": (now - timedelta(hours=i)).isoformat(),
+            "vehicle_count": 0,
+            "average_speed": 0.0,
+            "road_id": "system"
         }
-        for r in reversed(records)
+        for i in reversed(range(10))
     ]
 
