@@ -1,6 +1,23 @@
+import re
 from datetime import datetime
 from uuid import UUID
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
+
+PHONE_REGEX = re.compile(r"^(\+91[\-\s]?|0)?[6-9]\d{9}$|^[0-9]{10}$")
+
+
+def validate_phone_number(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        val = value.strip()
+        if not val:
+            return None
+        cleaned = re.sub(r"[\s\-()]", "", val)
+        if not PHONE_REGEX.match(cleaned):
+            raise ValueError("Phone number must be a valid 10-digit number.")
+        return cleaned
+    raise ValueError("Phone number must be a valid string.")
 
 
 class RegisterRequest(BaseModel):
@@ -9,12 +26,22 @@ class RegisterRequest(BaseModel):
     password: str
     phone: str | None = None
 
+    @field_validator("phone", mode="before")
+    @classmethod
+    def validate_optional_phone(cls, value: str | None) -> str | None:
+        return validate_phone_number(value)
+
 
 class UserUpdateRequest(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     password: str | None = None
     phone: str | None = None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def validate_optional_phone(cls, value: str | None) -> str | None:
+        return validate_phone_number(value)
 
 
 class LoginRequest(BaseModel):

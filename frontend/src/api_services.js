@@ -251,7 +251,17 @@ export async function registerUser({ name, email, password, phone = null }) {
     });
     return data;
   } catch (error) {
-    const msg = error.response?.data?.detail || error.message || 'Registration failed';
+    const detail = error.response?.data?.detail;
+    let msg = 'Registration failed';
+    if (Array.isArray(detail)) {
+      msg = detail
+        .map((d) => (d.msg ? d.msg.replace(/^Value error,\s*/i, '') : JSON.stringify(d)))
+        .join(', ');
+    } else if (typeof detail === 'string') {
+      msg = detail;
+    } else if (error.message) {
+      msg = error.message;
+    }
     throw new Error(msg);
   }
 }

@@ -35,12 +35,25 @@ export default function Register() {
       return;
     }
 
+    const trimmedPhone = form.phone ? form.phone.trim() : '';
+    let validatedPhone = null;
+
+    if (trimmedPhone) {
+      const cleanedPhone = trimmedPhone.replace(/[\s\-()]/g, '');
+      const phoneRegex = /^(\+91[\-\s]?|0)?[6-9]\d{9}$|^[0-9]{10}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        setError('Please enter a valid 10-digit phone number (e.g. 9876543210).');
+        return;
+      }
+      validatedPhone = cleanedPhone;
+    }
+
     setIsSubmitting(true);
     try {
       await register({
         name: form.name,
         email: form.email,
-        phone: form.phone || null,
+        phone: validatedPhone,
         password: form.password,
       });
       navigate('/verify-email', { state: { email: form.email } });
@@ -101,7 +114,7 @@ export default function Register() {
           />
 
           <label className="block text-xs font-medium text-asphalt-300" htmlFor="phone">
-            Phone Number
+            Phone Number <span className="text-asphalt-500 font-normal">(Optional)</span>
           </label>
           <input
             id="phone"
@@ -110,7 +123,7 @@ export default function Register() {
             value={form.phone}
             onChange={handleChange}
             className="mt-1 mb-4 w-full rounded-md border border-asphalt-600 bg-asphalt-800 px-3 py-2 text-sm text-asphalt-100 placeholder-asphalt-500 outline-none transition-colors focus:border-signal-blue"
-            placeholder="Optional"
+            placeholder="10-digit mobile number (e.g. 9876543210)"
           />
 
           <label className="block text-xs font-medium text-asphalt-300" htmlFor="password">
