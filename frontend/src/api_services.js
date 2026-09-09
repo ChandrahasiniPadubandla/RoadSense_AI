@@ -5,8 +5,8 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to http://localhost:8000)
-const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8000)
+const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
 
 // Single configured Axios instance
@@ -237,6 +237,31 @@ export async function loginUser(email, password) {
     return { accessToken: token, user };
   } catch (error) {
     const msg = error.response?.data?.detail || error.message || 'Login failed';
+    throw new Error(msg);
+  }
+}
+
+export async function registerUser({ name, email, password, phone = null }) {
+  try {
+    const { data } = await apiClient.post('/auth/register', {
+      name,
+      email,
+      password,
+      phone,
+    });
+    return data;
+  } catch (error) {
+    const msg = error.response?.data?.detail || error.message || 'Registration failed';
+    throw new Error(msg);
+  }
+}
+
+export async function verifyEmailUser(email, otp) {
+  try {
+    const { data } = await apiClient.post('/auth/verify-email', { email, otp });
+    return data;
+  } catch (error) {
+    const msg = error.response?.data?.detail || error.message || 'Email verification failed';
     throw new Error(msg);
   }
 }

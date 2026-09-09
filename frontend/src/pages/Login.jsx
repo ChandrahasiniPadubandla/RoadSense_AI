@@ -4,15 +4,22 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage] = useState(
+    location.state?.registered
+      ? 'Account created successfully. Please sign in.'
+      : location.state?.verified
+        ? 'Email verified successfully. You can now sign in.'
+        : ''
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const from = location.state?.from?.pathname || '/';
 
   // If already authenticated, redirect to destination or dashboard
@@ -41,15 +48,10 @@ export default function Login() {
       <div className="w-full max-w-sm">
         {/* Brand Header */}
         <div className="mb-6 text-center">
-          <div className="inline-flex items-center justify-center gap-2 mb-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-signal-blue animate-pulse"></span>
-            <span className="text-lg font-bold tracking-tight text-asphalt-100">
-              RoadSense AI
-            </span>
-          </div>
-          <p className="text-xs text-asphalt-400">
+          <div className="inline-flex items-center justify-center gap-2 mb-3" />
+          <h1 className="text-xl font-bold tracking-tight text-asphalt-100">
             Smart Traffic Monitoring &amp; Incident Analytics
-          </p>
+          </h1>
         </div>
 
         {/* Login Form Card */}
@@ -101,6 +103,12 @@ export default function Login() {
             </button>
           </div>
 
+          {successMessage && (
+            <p className="mb-4 rounded-md border border-signal-green/40 bg-signal-green/10 px-3 py-2 text-xs text-signal-green">
+              {successMessage}
+            </p>
+          )}
+
           {error && (
             <p className="mb-4 rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-xs text-signal-red">
               {error}
@@ -115,12 +123,20 @@ export default function Login() {
             {isSubmitting ? 'Signing in…' : 'Sign In'}
           </button>
 
-          <Link
-            to="/forgot-password"
-            className="mt-4 block text-center text-xs text-signal-blue hover:underline"
-          >
-            Forgot password?
-          </Link>
+          <div className="mt-4 flex flex-col items-center gap-2 text-xs">
+            <Link
+              to="/forgot-password"
+              className="text-signal-blue hover:underline"
+            >
+              Forgot password?
+            </Link>
+            <p className="text-asphalt-400">
+              Don&apos;t have an account?{' '}
+              <Link to="/register" className="text-signal-blue hover:underline">
+                Create one
+              </Link>
+            </p>
+          </div>
         </form>
       </div>
     </div>

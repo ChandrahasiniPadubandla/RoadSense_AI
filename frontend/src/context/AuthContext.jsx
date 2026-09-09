@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loginUser, logoutUser } from '../api_services';
+import { loginUser, logoutUser, registerUser, verifyEmailUser } from '../api_services';
 
 const AuthContext = createContext(null);
 
@@ -42,11 +42,21 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
+  async function register(userData) {
+    return registerUser(userData);
+  }
+
+  async function verifyEmail(email, otp) {
+    return verifyEmailUser(email, otp);
+  }
+
   const value = {
     user,
     isAuthenticated: !!user,
     isLoading,
     login,
+    register,
+    verifyEmail,
     logout,
   };
 
