@@ -88,6 +88,13 @@ class Road(Base):
         )
     )
 
+    route_geometry = Column(
+        Geography(
+            geometry_type="LINESTRING",
+            srid=4326
+        )
+    )
+
     road_name = Column(String(200), nullable=False)
 
     road_type = Column(String(100))
