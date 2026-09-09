@@ -1,10 +1,8 @@
-import json
-from pathlib import Path
 from uuid import UUID
 from datetime import datetime, timedelta
 from typing import Optional, Any
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
 
@@ -15,15 +13,6 @@ from app.database.models import (
     Accident,
     AccidentHotspot
 )
-
-ROUTES_CACHE_FILE = Path(__file__).resolve().parents[1] / "data" / "road_routes.json"
-ROAD_ROUTES_MAP: dict[str, list] = {}
-if ROUTES_CACHE_FILE.exists():
-    try:
-        with open(ROUTES_CACHE_FILE, "r", encoding="utf-8") as f:
-            ROAD_ROUTES_MAP = json.load(f)
-    except Exception as e:
-        print("Could not load road_routes.json:", e)
 
 router = APIRouter(
     prefix="/api/map",
@@ -89,13 +78,18 @@ def get_traffic_layer(
     by current live traffic congestion conditions (Green, Yellow, Orange, Red)
     for direct integration with Leaflet (`L.geoJSON(...)`) or MapLibre.
     """
-    # 1. Fetch active roads that have geographic coordinates
+    # 1. Fetch active roads that have geometry or coordinates
     roads = (
         db.query(Road)
         .filter(
             Road.is_active == True,
-            Road.start_location.isnot(None),
-            Road.end_location.isnot(None)
+            or_(
+                Road.route_geometry.isnot(None),
+                and_(
+                    Road.start_location.isnot(None),
+                    Road.end_location.isnot(None)
+                )
+            )
         )
         .all()
     )
@@ -128,11 +122,24 @@ def get_traffic_layer(
 
     features = []
     for road in roads:
-        try:
-            start_p = to_shape(road.start_location)
-            end_p = to_shape(road.end_location)
-        except Exception:
-            continue
+        line_coords = None
+        if road.route_geometry is not None:
+            try:
+                shape = to_shape(road.route_geometry)
+                line_coords = [[pt[0], pt[1]] for pt in shape.coords]
+            except Exception:
+                line_coords = None
+
+        if not line_coords or len(line_coords) < 2:
+            try:
+                start_p = to_shape(road.start_location)
+                end_p = to_shape(road.end_location)
+                line_coords = [
+                    [start_p.x, start_p.y],  # [longitude, latitude]
+                    [end_p.x, end_p.y]
+                ]
+            except Exception:
+                continue
 
         tr = traffic_by_road.get(road.road_id)
         congestion = tr.congestion_level if tr else None
@@ -144,13 +151,6 @@ def get_traffic_layer(
             capacity_utilization = round((tr.vehicle_count / road.road_capacity) * 100, 1)
 
         road_id_str = str(road.road_id)
-        if road_id_str in ROAD_ROUTES_MAP and len(ROAD_ROUTES_MAP[road_id_str]) > 2:
-            line_coords = ROAD_ROUTES_MAP[road_id_str]
-        else:
-            line_coords = [
-                [start_p.x, start_p.y],  # [longitude, latitude]
-                [end_p.x, end_p.y]
-            ]
 
         feature = {
             "type": "Feature",

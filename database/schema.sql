@@ -112,6 +112,8 @@ CREATE TABLE roads (
 
     end_location GEOGRAPHY(POINT, 4326),
 
+    route_geometry GEOGRAPHY(LINESTRING, 4326),
+
     road_capacity INTEGER,
 
     speed_limit DECIMAL(6,2),

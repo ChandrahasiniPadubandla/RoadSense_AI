@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from geoalchemy2.elements import WKTElement
@@ -12,6 +13,32 @@ from app.schemas.traffic import (
     RoadUpdate,
     RoadResponse
 )
+
+
+def fetch_osrm_linestring(
+    start_lon: float, start_lat: float, end_lon: float, end_lat: float
+) -> Optional[WKTElement]:
+    """
+    Calls OSRM public API to generate a driving route LINESTRING WKTElement.
+    Falls back gracefully to a 2-point LINESTRING if OSRM is unreachable.
+    """
+    import json
+    import urllib.request
+
+    url = f"https://router.project-osrm.org/route/v1/driving/{start_lon},{start_lat};{end_lon},{end_lat}?overview=full&geometries=geojson"
+    req = urllib.request.Request(url, headers={"User-Agent": "RoadSense-AI/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if "routes" in data and len(data["routes"]) > 0:
+                coords = data["routes"][0]["geometry"]["coordinates"]
+                if len(coords) >= 2:
+                    wkt_pts = ", ".join(f"{pt[0]} {pt[1]}" for pt in coords)
+                    return WKTElement(f"LINESTRING({wkt_pts})", srid=4326)
+    except Exception as e:
+        print(f"OSRM route lookup error: {e}. Falling back to 2-point LINESTRING.")
+
+    return WKTElement(f"LINESTRING({start_lon} {start_lat}, {end_lon} {end_lat})", srid=4326)
 
 
 router = APIRouter(
@@ -83,12 +110,27 @@ def create_road(
             srid=4326
         )
 
+    route_geometry = None
+    if (
+        road.start_latitude is not None
+        and road.start_longitude is not None
+        and road.end_latitude is not None
+        and road.end_longitude is not None
+    ):
+        route_geometry = fetch_osrm_linestring(
+            road.start_longitude,
+            road.start_latitude,
+            road.end_longitude,
+            road.end_latitude
+        )
+
     new_road = Road(
         zone_id=road.zone_id,
         road_name=road.road_name,
         road_type=road.road_type,
         start_location=start_location,
         end_location=end_location,
+        route_geometry=route_geometry,
         road_capacity=road.road_capacity,
         speed_limit=road.speed_limit,
         road_condition=road.road_condition,
@@ -170,16 +212,27 @@ def update_road(
         db_road.road_name = road.road_name
     if road.road_type is not None:
         db_road.road_type = road.road_type
+    coords_changed = False
     if road.start_latitude is not None and road.start_longitude is not None:
         db_road.start_location = WKTElement(
             f"POINT({road.start_longitude} {road.start_latitude})",
             srid=4326
         )
+        coords_changed = True
     if road.end_latitude is not None and road.end_longitude is not None:
         db_road.end_location = WKTElement(
             f"POINT({road.end_longitude} {road.end_latitude})",
             srid=4326
         )
+        coords_changed = True
+
+    if coords_changed and db_road.start_location and db_road.end_location:
+        try:
+            s_p = to_shape(db_road.start_location)
+            e_p = to_shape(db_road.end_location)
+            db_road.route_geometry = fetch_osrm_linestring(s_p.x, s_p.y, e_p.x, e_p.y)
+        except Exception as e:
+            print(f"Could not recompute route geometry on update: {e}")
     if road.road_capacity is not None:
         db_road.road_capacity = road.road_capacity
     if road.speed_limit is not None:
