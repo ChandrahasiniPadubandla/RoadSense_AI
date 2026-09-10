@@ -1,4 +1,4 @@
-from prediction.predict import predict_congestion
+from prediction.predict_traffic_congesion import predict_congestion
 
 
 result = predict_congestion(

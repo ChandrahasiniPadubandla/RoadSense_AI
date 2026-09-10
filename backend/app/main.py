@@ -50,8 +50,8 @@ app.include_router(maps.router, dependencies=[Depends(get_current_user)])
 app.include_router(weather.router, dependencies=[Depends(get_current_user)])
 app.include_router(admin.router, dependencies=[Depends(get_current_user)])
 app.include_router(audit.router, dependencies=[Depends(get_current_user)])
-app.include_router(traffic_predictions.router)
-app.include_router(accident_predictions.router)
+app.include_router(traffic_predictions.router, dependencies=[Depends(get_current_user)])
+app.include_router(accident_predictions.router, dependencies=[Depends(get_current_user)])
 
 
 @app.get("/api/hotspots", tags=["Hotspots"])

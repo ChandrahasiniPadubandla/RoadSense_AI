@@ -215,7 +215,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes the trained ML traffic congestion model directly from RoadSense_AI/ML.
     If external ML endpoint (ML_TRAFFIC_SERVICE_URL) is set, routes via HTTP POST.
-    Otherwise, directly invokes predict_congestion() from RoadSense_AI/ML/prediction/predict.py.
+    Otherwise, directly invokes predict_congestion() from RoadSense_AI/ML/prediction/predict_traffic_congesion.py.
     """
     ml_url = os.getenv("ML_TRAFFIC_SERVICE_URL", "").strip()
     target_time = bundle["target_time"]
@@ -285,7 +285,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            from prediction.predict import predict_congestion
+            from prediction.predict_traffic_congesion import predict_congestion
 
             road_data = bundle.get("road_conditions", {})
             weather_data = bundle.get("weather_conditions", {})
@@ -336,69 +336,129 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
 
 def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Calls the external ML model service for accident prediction using all gathered route features.
-    Fallback predictions are disabled in development mode.
-    Raises HTTPException (503 or 502) if the ML model is not configured or fails.
+    Executes the trained ML accident risk model directly from RoadSense_AI/ML.
+    If external ML endpoint (ML_ACCIDENT_SERVICE_URL) is set, routes via HTTP POST.
+    Otherwise, directly invokes predict_record() from RoadSense_AI/ML/prediction/predict_accident_risk.py.
     """
     ml_url = os.getenv("ML_ACCIDENT_SERVICE_URL", "").strip()
 
-    # If ML model URL is not configured in environment
-    if not ml_url:
+    # 1. External Microservice (if configured)
+    if ml_url:
+        try:
+            req_data = json.dumps(bundle["ml_features"]).encode("utf-8")
+            req = urllib.request.Request(
+                ml_url,
+                data=req_data,
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                risk_pct = result.get("risk_percentage")
+                risk_lvl = result.get("risk_level")
+                if risk_pct is None or not risk_lvl:
+                    raise HTTPException(
+                        status_code=502,
+                        detail={
+                            "error": "ML_MODEL_INVALID_RESPONSE",
+                            "issue": f"ML model at {ml_url} did not return 'risk_percentage' and 'risk_level'.",
+                            "received_response": result
+                        }
+                    )
+                return {
+                    "risk_percentage": round(float(risk_pct), 1),
+                    "risk_level": str(risk_lvl).upper(),
+                    "confidence_score": float(result.get("confidence_score") or 90.0),
+                    "ml_source": "external-ml-model"
+                }
+        except HTTPException:
+            raise
+        except Exception as err:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "ML_ACCIDENT_MODEL_UNAVAILABLE",
+                    "issue": f"Failed to connect to ML Accident Model at '{ml_url}'.",
+                    "technical_details": str(err),
+                    "message": "Could not reach external ML Accident Model. Ensure the ML service is running.",
+                    "prepared_features": bundle["ml_features"]
+                }
+            )
+
+    # 2. Directly Execute the Trained Model from RoadSense_AI/ML
+    ml_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "ML"))
+    model_file = os.path.join(ml_dir, "model", "accident_risk_model.pkl")
+
+    if not os.path.exists(model_file):
         raise HTTPException(
             status_code=503,
             detail={
-                "error": "ML_ACCIDENT_MODEL_NOT_CONFIGURED",
-                "issue": "ML Accident Model service URL is not configured.",
-                "message": (
-                    "Application is in development mode and fallback prediction is disabled. "
-                    "Please configure 'ML_ACCIDENT_SERVICE_URL' in backend/.env "
-                    "(e.g. ML_ACCIDENT_SERVICE_URL=http://127.0.0.1:5000/predict/accident)."
-                ),
+                "error": "ML_ACCIDENT_MODEL_NOT_FOUND",
+                "issue": f"Trained accident model file not found at: {model_file}",
+                "message": "Ensure the trained model exists in RoadSense_AI/ML/model/accident_risk_model.pkl or set ML_ACCIDENT_SERVICE_URL.",
                 "prepared_features": bundle["ml_features"]
             }
         )
 
-    # Call the ML model service
     try:
-        req_data = json.dumps(bundle["ml_features"]).encode("utf-8")
-        req = urllib.request.Request(
-            ml_url,
-            data=req_data,
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            risk_pct = result.get("risk_percentage")
-            risk_lvl = result.get("risk_level")
-            if risk_pct is None or not risk_lvl:
-                raise HTTPException(
-                    status_code=502,
-                    detail={
-                        "error": "ML_MODEL_INVALID_RESPONSE",
-                        "issue": f"ML model at {ml_url} did not return 'risk_percentage' and 'risk_level'.",
-                        "received_response": result
-                    }
-                )
-            return {
-                "risk_percentage": round(float(risk_pct), 1),
-                "risk_level": str(risk_lvl).upper(),
-                "confidence_score": float(result.get("confidence_score") or 90.0),
-                "ml_source": "external-ml-model"
+        import sys
+        if ml_dir not in sys.path:
+            sys.path.insert(0, ml_dir)
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from prediction.predict_accident_risk import predict_record
+
+            road_data = bundle.get("road_conditions", {})
+            weather_data = bundle.get("weather_conditions", {})
+            prev_data = bundle.get("previous_records", {})
+            temporal = bundle.get("temporal_data", {})
+
+            # Format categories to uppercase for OneHotEncoder matching
+            r_type = str(road_data.get("road_type") or "URBAN ROAD").upper()
+            w_cond = str(weather_data.get("weather_condition") or "CLEAR").upper()
+            rd_cond = str(road_data.get("road_condition") or "GOOD").upper()
+            day_str = str(temporal.get("day_of_week") or "FRIDAY").upper()
+            prev_cong = str(prev_data.get("previous_congestion") or "MEDIUM").upper()
+
+            record = {
+                "location": str(bundle.get("start_label") or "Banjara Hills"),
+                "latitude": float(bundle.get("start_latitude") or 17.4156),
+                "longitude": float(bundle.get("start_longitude") or 78.4347),
+                "road_type": r_type,
+                "hour": int(temporal.get("hour") or 18),
+                "day_of_week": day_str,
+                "holiday": 1 if temporal.get("is_holiday") else 0,
+                "vehicle_count": int(prev_data.get("vehicle_count") or 300),
+                "average_speed": float(prev_data.get("average_speed") or 35.0),
+                "traffic_density": float(prev_data.get("traffic_density") or 50.0),
+                "road_capacity": int(road_data.get("road_capacity") or 1000),
+                "previous_traffic": int(prev_data.get("vehicle_count") or 280),
+                "weather": w_cond,
+                "rainfall": float(weather_data.get("rainfall") or 0.0),
+                "temperature": float(weather_data.get("temperature") or 28.0),
+                "visibility": float(weather_data.get("visibility") or 8.0),
+                "road_condition": rd_cond,
+                "historical_accidents": int(bundle.get("historical_accidents_count") or 0),
+                "congestion_level": prev_cong
             }
-    except HTTPException:
-        raise
+
+            result = predict_record(record)
+            risk_pct = float(result.get("accident_risk") or 50.0)
+            risk_lvl = str(result.get("accident_risk_level") or "MEDIUM").upper()
+
+            return {
+                "risk_percentage": round(risk_pct, 1),
+                "risk_level": risk_lvl,
+                "confidence_score": 93.0,
+                "ml_source": "trained-model (RoadSense_AI/ML/model/accident_risk_model.pkl)"
+            }
     except Exception as err:
         raise HTTPException(
-            status_code=502,
+            status_code=500,
             detail={
-                "error": "ML_ACCIDENT_MODEL_UNAVAILABLE",
-                "issue": f"Failed to connect to ML Accident Model at '{ml_url}'.",
-                "technical_details": str(err),
-                "message": (
-                    "Could not reach external ML Accident Model. "
-                    "Ensure the ML team's model server is running and accessible. "
-                    "Fallback prediction is disabled in development mode."
-                ),
+                "error": "ACCIDENT_MODEL_EXECUTION_ERROR",
+                "issue": f"Error executing trained ML accident model: {err}",
                 "prepared_features": bundle["ml_features"]
             }
         )
