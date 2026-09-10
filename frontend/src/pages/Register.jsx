@@ -2,25 +2,19 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const PHONE_REGEX = /^(\+91[\-\s]?|0)?[6-9]\d{9}$|^[0-9]{10}$/;
+
 export default function Register() {
-<<<<<<< HEAD
-  const { requestVerification } = useAuth();
-=======
   const { register, verifiedEmail, clearEmailVerification } = useAuth();
->>>>>>> a261d7631cd7a3411cce6a99d7d84368c407591c
   const navigate = useNavigate();
   const location = useLocation();
   const email = verifiedEmail || location.state?.email || '';
 
   const [form, setForm] = useState({
-<<<<<<< HEAD
-    email: '',
-=======
     name: '',
     phone: '',
     password: '',
     confirmPassword: '',
->>>>>>> a261d7631cd7a3411cce6a99d7d84368c407591c
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,18 +33,11 @@ export default function Register() {
     event.preventDefault();
     setError('');
 
-<<<<<<< HEAD
-    setIsSubmitting(true);
-    try {
-      await requestVerification(form.email);
-      navigate('/verify-email', {
-        state: {
-          email: form.email,
-        },
-      });
-    } catch (err) {
-      setError(err.message || 'Unable to send verification code. Please try again.');
-=======
+    if (!email) {
+      setError('Missing verified email. Please verify your email first.');
+      return;
+    }
+
     if (!form.name.trim()) {
       setError('Please enter your full name.');
       return;
@@ -88,7 +75,6 @@ export default function Register() {
       navigate('/login', { state: { registered: true } });
     } catch (err) {
       setError(err.message || 'Unable to create your account. Please try again.');
->>>>>>> a261d7631cd7a3411cce6a99d7d84368c407591c
     } finally {
       setIsSubmitting(false);
     }
@@ -110,11 +96,7 @@ export default function Register() {
           <div className="mb-5 border-b border-asphalt-800 pb-3">
             <h2 className="text-sm font-semibold text-asphalt-100">Create your account</h2>
             <p className="mt-0.5 text-xs text-asphalt-400">
-<<<<<<< HEAD
-              Enter your email to receive a verification code. After verification, you can complete your account details and password.
-=======
               Your email <span className="text-asphalt-200">{email}</span> is verified. Finish setting up your account below.
->>>>>>> a261d7631cd7a3411cce6a99d7d84368c407591c
             </p>
           </div>
 
@@ -123,15 +105,6 @@ export default function Register() {
           </label>
           <input
             id="email"
-<<<<<<< HEAD
-            name="email"
-            type="email"
-            required
-            value={form.email}
-            onChange={handleChange}
-            className="mt-1 mb-4 w-full rounded-md border border-asphalt-600 bg-asphalt-800 px-3 py-2 text-sm text-asphalt-100 placeholder-asphalt-500 outline-none transition-colors focus:border-signal-blue"
-            placeholder="you@traffic.gov"
-=======
             type="email"
             disabled
             value={email}
@@ -194,7 +167,6 @@ export default function Register() {
             onChange={handleChange}
             className="mt-1 mb-4 w-full rounded-md border border-asphalt-600 bg-asphalt-800 px-3 py-2 text-sm text-asphalt-100 placeholder-asphalt-500 outline-none transition-colors focus:border-signal-blue"
             placeholder="Repeat your password"
->>>>>>> a261d7631cd7a3411cce6a99d7d84368c407591c
           />
 
           {error && (
@@ -208,11 +180,7 @@ export default function Register() {
             disabled={isSubmitting}
             className="w-full rounded-md bg-signal-blue py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-<<<<<<< HEAD
-            {isSubmitting ? 'Sending verification…' : 'Send verification code'}
-=======
-            {isSubmitting ? 'Creating account\u2026' : 'Create account'}
->>>>>>> a261d7631cd7a3411cce6a99d7d84368c407591c
+            {isSubmitting ? 'Creating account…' : 'Create account'}
           </button>
 
           <div className="mt-4 flex flex-col items-center gap-2 text-xs">
