@@ -11,6 +11,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import LiveMap from './pages/LiveMap';
 import TrafficPrediction from './pages/TrafficPrediction';
+import AccidentPrediction from './pages/AccidentPrediction';      
 import Unauthorized from './pages/Unauthorized';
 import NotFound from './pages/NotFound';
 
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/live-map" element={<LiveMap />} />
           <Route path="/map" element={<Navigate to="/live-map" replace />} />
           <Route path="/traffic-prediction" element={<TrafficPrediction />} />
+          <Route path="/Accident-Prediction" element={<AccidentPrediction />} />
         </Route>
       </Route>
 
