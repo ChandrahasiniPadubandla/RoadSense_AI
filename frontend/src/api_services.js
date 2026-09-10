@@ -341,6 +341,41 @@ export async function predictRouteAccident(payload) {
   return data;
 }
 
+// -----------------------------------------------------------------------------
+// 6. TRAFFIC PREDICTION APIS (single road, on-demand — DPR Module 3)
+// -----------------------------------------------------------------------------
+
+/**
+ * Run the traffic congestion prediction model for a single road on-demand.
+ * POST /api/predictions/traffic/predict
+ * Body matches TrafficPredictionRunRequest exactly (backend/app/schemas/prediction.py):
+ *   { road_id (required), target_minutes_ahead?, vehicle_count?, average_speed?,
+ *     traffic_density?, weather?, rainfall?, temperature?, road_condition?,
+ *     is_holiday?, persist? }
+ * Returns TrafficPredictionRunResponse:
+ *   { prediction_id, road_id, road_name, congestion_level, estimated_time,
+ *     target_time, predicted_congestion, predicted_vehicle_count,
+ *     confidence_score, class_probabilities, created_at }
+ */
+export async function predictTraffic(payload) {
+  const { data } = await apiClient.post('/api/predictions/traffic/predict', payload);
+  return data;
+}
+
+/**
+ * Fetch the latest stored traffic congestion prediction per road.
+ * GET /api/predictions/traffic/latest -> TrafficPredictionResponse[]
+ */
+export async function getLatestTrafficPredictions() {
+  try {
+    const { data } = await apiClient.get('/api/predictions/traffic/latest');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/predictions/traffic/latest:', error);
+    return [];
+  }
+}
+
 export default {
   API_BASE_URL,
   getDashboardStats,
@@ -357,5 +392,7 @@ export default {
   sendChatbotMessage,
   predictRouteTraffic,
   predictRouteAccident,
+  predictTraffic,
+  getLatestTrafficPredictions,
 };
 
