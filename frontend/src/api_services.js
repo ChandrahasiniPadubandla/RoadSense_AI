@@ -268,6 +268,14 @@ export async function registerUser({ name, email, password, phone = null }) {
   }
 }
 
+<<<<<<< HEAD
+=======
+/**
+ * Send a 6-digit OTP to the given email address via
+ * POST /auth/request-email-verification. Used both for the initial
+ * "Send OTP" action and for "Resend OTP" on the verify-email page.
+ */
+>>>>>>> a261d7631cd7a3411cce6a99d7d84368c407591c
 export async function requestEmailVerification(email) {
   try {
     const { data } = await apiClient.post('/auth/request-email-verification', { email });
@@ -323,6 +331,9 @@ export default {
   getAccidentLayer,
   getHotspotsLayer,
   loginUser,
+  registerUser,
+  requestEmailVerification,
+  verifyEmailUser,
   logoutUser,
   sendChatbotMessage,
 };
