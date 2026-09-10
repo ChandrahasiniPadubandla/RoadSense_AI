@@ -11,6 +11,8 @@ import {
   getTrafficLayer,
   getAccidentLayer,
   getHotspotsLayer,
+  predictRouteTraffic,
+  predictRouteAccident,
 } from '../api_services';
 
 const CONGESTION_COLOR = {
@@ -41,6 +43,42 @@ export default function LiveMap() {
   const [showAccidents, setShowAccidents] = useState(true);
   const [showHotspots, setShowHotspots] = useState(true);
   const [severityFilter, setSeverityFilter] = useState('ALL');
+
+  // AI Route Prediction Controls (User Start & End Location)
+  const [startLoc, setStartLoc] = useState('Banjara Hills');
+  const [endLoc, setEndLoc] = useState('Hitec City');
+  const [isPredicting, setIsPredicting] = useState(false);
+  const [routeResult, setRouteResult] = useState(null);
+  const [predictionError, setPredictionError] = useState(null);
+
+  async function handlePredictRoute(e) {
+    if (e) e.preventDefault();
+    if (!startLoc.trim() || !endLoc.trim()) return;
+    setIsPredicting(true);
+    setPredictionError(null);
+    try {
+      const payload = {
+        start_location: startLoc.trim(),
+        end_location: endLoc.trim(),
+      };
+      const [trafficRes, accidentRes] = await Promise.all([
+        predictRouteTraffic(payload),
+        predictRouteAccident(payload),
+      ]);
+      setRouteResult({
+        traffic: trafficRes,
+        accident: accidentRes,
+      });
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const errMsg = typeof detail === 'string'
+        ? detail
+        : (detail?.issue || detail?.message || err.message || 'Prediction failed');
+      setPredictionError(errMsg);
+    } finally {
+      setIsPredicting(false);
+    }
+  }
 
   async function loadMapData() {
     setIsLoading(true);
@@ -205,6 +243,125 @@ export default function LiveMap() {
           )}
         </div>
       )}
+
+      {/* AI Route Prediction Control Bar */}
+      <div className="rounded-lg border border-asphalt-700 bg-asphalt-900/95 p-3 text-xs shadow-md">
+        <form onSubmit={handlePredictRoute} className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 font-semibold text-signal-blue">
+              <span>⚡ AI Route Prediction:</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-asphalt-400">Start Location:</label>
+              <input
+                type="text"
+                value={startLoc}
+                onChange={(e) => setStartLoc(e.target.value)}
+                placeholder="e.g. Banjara Hills"
+                className="w-36 rounded border border-asphalt-700 bg-asphalt-800 px-2.5 py-1 text-xs text-asphalt-100 placeholder-asphalt-500 outline-none focus:border-signal-blue"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-asphalt-400">End Location:</label>
+              <input
+                type="text"
+                value={endLoc}
+                onChange={(e) => setEndLoc(e.target.value)}
+                placeholder="e.g. Hitec City"
+                className="w-36 rounded border border-asphalt-700 bg-asphalt-800 px-2.5 py-1 text-xs text-asphalt-100 placeholder-asphalt-500 outline-none focus:border-signal-blue"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isPredicting || !startLoc.trim() || !endLoc.trim()}
+              className="flex items-center gap-1.5 rounded bg-signal-blue px-3 py-1 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {isPredicting ? 'Triggering ML Model...' : 'Predict Route'}
+            </button>
+          </div>
+
+          <div className="text-[11px] text-asphalt-400">
+            Quick:
+            <button
+              type="button"
+              onClick={() => { setStartLoc('Punjagutta'); setEndLoc('Abids'); }}
+              className="ml-1 text-signal-blue hover:underline"
+            >
+              Punjagutta → Abids
+            </button>
+            <span className="mx-1">·</span>
+            <button
+              type="button"
+              onClick={() => { setStartLoc('Banjara Hills'); setEndLoc('Hitec City'); }}
+              className="text-signal-blue hover:underline"
+            >
+              Banjara Hills → Hitec City
+            </button>
+          </div>
+        </form>
+
+        {/* Prediction Results Banner */}
+        {routeResult && (
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3 border-t border-asphalt-800 pt-2 text-xs">
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Traffic Output */}
+              <div className="flex items-center gap-2">
+                <span className="text-asphalt-400">Predicted Congestion:</span>
+                <span
+                  className="rounded px-2 py-0.5 text-[11px] font-bold text-white uppercase"
+                  style={{
+                    backgroundColor:
+                      CONGESTION_COLOR[routeResult.traffic?.congestion_level] || '#F97316',
+                  }}
+                >
+                  {routeResult.traffic?.congestion_level}
+                </span>
+                <span className="text-asphalt-200 font-semibold">
+                  {routeResult.traffic?.estimated_time}
+                </span>
+              </div>
+
+              {/* Accident Risk Output */}
+              <div className="flex items-center gap-2 pl-3 border-l border-asphalt-800">
+                <span className="text-asphalt-400">Accident Risk:</span>
+                <span className="font-bold text-signal-amber">
+                  {routeResult.accident?.risk_percentage}%
+                </span>
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                    routeResult.accident?.risk_level === 'CRITICAL' ||
+                    routeResult.accident?.risk_level === 'HIGH'
+                      ? 'bg-signal-red/20 text-signal-red'
+                      : 'bg-emerald-500/20 text-emerald-400'
+                  }`}
+                >
+                  {routeResult.accident?.risk_level}
+                </span>
+              </div>
+
+              {/* Fetched Telemetry Info */}
+              <div className="hidden items-center gap-3 text-asphalt-400 xl:flex pl-3 border-l border-asphalt-800">
+                <span>Distance: <b className="text-asphalt-200">{routeResult.traffic?.distance_km} km</b></span>
+                <span>Weather: <b className="text-asphalt-200">{routeResult.traffic?.weather_conditions?.weather_condition} ({routeResult.traffic?.weather_conditions?.temperature}°C)</b></span>
+                <span>Road: <b className="text-asphalt-200">{routeResult.traffic?.road_conditions?.road_type}</b></span>
+              </div>
+            </div>
+
+            <span className="text-[10px] text-asphalt-500">
+              API Trigger: {routeResult.traffic?.ml_source}
+            </span>
+          </div>
+        )}
+
+        {predictionError && (
+          <div className="mt-2 text-xs text-signal-red">
+            ⚠️ {predictionError}
+          </div>
+        )}
+      </div>
 
       {/* Map Display & Legend */}
       <div className="relative flex-1 overflow-hidden rounded-lg border border-asphalt-700">
@@ -377,6 +534,56 @@ export default function LiveMap() {
                 </CircleMarker>
               );
             })}
+
+          {/* 4. AI Predicted Route Layer */}
+          {routeResult?.traffic && (
+            <>
+              <CircleMarker
+                center={[routeResult.traffic.start_latitude, routeResult.traffic.start_longitude]}
+                radius={9}
+                pathOptions={{ color: '#10B981', fillColor: '#10B981', fillOpacity: 0.9, weight: 3 }}
+              >
+                <Popup>
+                  <div className="text-xs text-asphalt-900">
+                    <strong className="text-emerald-700">Start Location</strong>
+                    <p>{routeResult.traffic.start_location}</p>
+                    <p className="text-asphalt-500 font-mono">({routeResult.traffic.start_latitude}, {routeResult.traffic.start_longitude})</p>
+                  </div>
+                </Popup>
+              </CircleMarker>
+
+              <CircleMarker
+                center={[routeResult.traffic.end_latitude, routeResult.traffic.end_longitude]}
+                radius={9}
+                pathOptions={{ color: '#EF4444', fillColor: '#EF4444', fillOpacity: 0.9, weight: 3 }}
+              >
+                <Popup>
+                  <div className="text-xs text-asphalt-900">
+                    <strong className="text-red-700">Destination Location</strong>
+                    <p>{routeResult.traffic.end_location}</p>
+                    <p className="text-asphalt-500 font-mono">({routeResult.traffic.end_latitude}, {routeResult.traffic.end_longitude})</p>
+                  </div>
+                </Popup>
+              </CircleMarker>
+
+              <Polyline
+                positions={[
+                  [routeResult.traffic.start_latitude, routeResult.traffic.start_longitude],
+                  [routeResult.traffic.end_latitude, routeResult.traffic.end_longitude],
+                ]}
+                pathOptions={{
+                  color: CONGESTION_COLOR[routeResult.traffic.congestion_level] || '#3B82F6',
+                  weight: 6,
+                  dashArray: '8, 8',
+                  opacity: 0.95,
+                }}
+              >
+                <Tooltip sticky>
+                  AI Route: {routeResult.traffic.congestion_level} Congestion ({routeResult.traffic.estimated_time}) · Accident Risk: {routeResult.accident?.risk_percentage}% ({routeResult.accident?.risk_level})
+                </Tooltip>
+              </Polyline>
+            </>
+          )}
         </MapContainer>
 
         {/* Floating Legend Overlay */}

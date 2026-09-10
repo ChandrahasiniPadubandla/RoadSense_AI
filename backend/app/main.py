@@ -19,7 +19,8 @@ from app.routers import admin
 from app.routers import audit
 from app.routers import weather
 from app.routers import chatbot
-from app.routers import predictions
+from app.routers import traffic_predictions
+from app.routers import accident_predictions
 from app.routers.auth import router as auth_router
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -49,7 +50,8 @@ app.include_router(maps.router, dependencies=[Depends(get_current_user)])
 app.include_router(weather.router, dependencies=[Depends(get_current_user)])
 app.include_router(admin.router, dependencies=[Depends(get_current_user)])
 app.include_router(audit.router, dependencies=[Depends(get_current_user)])
-app.include_router(predictions.router, dependencies=[Depends(get_current_user)])
+app.include_router(traffic_predictions.router)
+app.include_router(accident_predictions.router)
 
 
 @app.get("/api/hotspots", tags=["Hotspots"])
