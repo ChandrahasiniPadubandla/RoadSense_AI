@@ -268,6 +268,16 @@ export async function registerUser({ name, email, password, phone = null }) {
   }
 }
 
+export async function requestEmailVerification(email) {
+  try {
+    const { data } = await apiClient.post('/auth/request-email-verification', { email });
+    return data;
+  } catch (error) {
+    const msg = error.response?.data?.detail || error.message || 'Unable to send verification code';
+    throw new Error(msg);
+  }
+}
+
 export async function verifyEmailUser(email, otp) {
   try {
     const { data } = await apiClient.post('/auth/verify-email', { email, otp });

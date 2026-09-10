@@ -33,6 +33,85 @@ router = APIRouter(
     tags=["Authentication"]
 )
 
+PENDING_REGISTRATION_PASSWORD = "__PENDING_REGISTRATION__"
+
+
+@router.post(
+    "/request-email-verification",
+)
+def request_email_verification(
+    email_data: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.email == email_data.email)
+        .first()
+    )
+
+    if user and user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This email is already registered. Please log in instead."
+        )
+
+    if not user:
+        viewer_role = (
+            db.query(Role)
+            .filter(Role.role_name == "VIEWER")
+            .first()
+        )
+
+        if not viewer_role:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="VIEWER role not found"
+            )
+
+        user = User(
+            name="PENDING_REGISTRATION",
+            email=email_data.email,
+            password_hash=PENDING_REGISTRATION_PASSWORD,
+            phone=None,
+            role_id=viewer_role.role_id,
+            is_active=False,
+            is_email_verified=False
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    otp = create_otp()
+    db.query(AuthOTP).filter(
+        AuthOTP.user_id == user.user_id,
+        AuthOTP.purpose == "email_verification"
+    ).delete(synchronize_session=False)
+    db.add(AuthOTP(
+        user_id=user.user_id,
+        purpose="email_verification",
+        otp_hash=hash_otp(otp),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        created_at=datetime.now(timezone.utc)
+    ))
+    db.commit()
+
+    try:
+        send_email_verification_otp(str(user.email), otp)
+    except EmailDeliveryError as exc:
+        db.query(AuthOTP).filter(
+            AuthOTP.user_id == user.user_id,
+            AuthOTP.purpose == "email_verification"
+        ).delete(synchronize_session=False)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc)
+        ) from exc
+
+    return {
+        "message": "Verification code sent to your email. Please verify it before creating an account."
+    }
+
 
 @router.post(
     "/register",
@@ -43,20 +122,30 @@ def register(
     user_data: RegisterRequest,
     db: Session = Depends(get_db)
 ):
-    # 1. Check whether the email already exists
     existing_user = (
         db.query(User)
         .filter(User.email == user_data.email)
         .first()
     )
 
-    if existing_user:
+    if not existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please verify your email first before creating an account."
+        )
+
+    if existing_user.password_hash != PENDING_REGISTRATION_PASSWORD:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An account with this email is already registered. Please log in, or use forgot password if you need to recover your account."
         )
 
-    # 2. Find the VIEWER role
+    if not existing_user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is not verified yet. Please verify your email first before creating an account."
+        )
+
     viewer_role = (
         db.query(Role)
         .filter(Role.role_name == "VIEWER")
@@ -69,46 +158,18 @@ def register(
             detail="VIEWER role not found"
         )
 
-    # 3. Hash the password
     hashed_password = hash_password(user_data.password)
 
-    # 4. Create the user
-    new_user = User(
-        name=user_data.name,
-        email=user_data.email,
-        password_hash=hashed_password,
-        phone=user_data.phone,
-        role_id=viewer_role.role_id,
-        is_active=True,
-        is_email_verified=False
-    )
+    existing_user.name = user_data.name
+    existing_user.password_hash = hashed_password
+    existing_user.phone = user_data.phone
+    existing_user.role_id = viewer_role.role_id
+    existing_user.is_active = True
 
-    # 5. Save to database
-    db.add(new_user)
     db.commit()
-    db.refresh(new_user)
+    db.refresh(existing_user)
 
-    otp = create_otp()
-    db.add(AuthOTP(
-        user_id=new_user.user_id,
-        purpose="email_verification",
-        otp_hash=hash_otp(otp),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
-        created_at=datetime.now(timezone.utc)
-    ))
-    db.commit()
-
-    try:
-        send_email_verification_otp(str(new_user.email), otp)
-    except EmailDeliveryError:
-        db.delete(new_user)
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to send email verification code"
-        )
-
-    return new_user
+    return existing_user
 
 
 # ADD LOGIN BELOW REGISTER
@@ -208,7 +269,7 @@ def verify_email(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No account found with this email address. Please register first."
+            detail="No account found with this email address. Please request a verification code first."
         )
 
     if user.is_email_verified:
@@ -233,10 +294,13 @@ def verify_email(
         )
 
     user.is_email_verified = True
+    user.is_active = False
     db.delete(otp_record)
     db.commit()
 
-    return {"message": "Email verified successfully"}
+    return {
+        "message": "Email verified successfully. You can now complete account registration."
+    }
 
 
 @router.get(

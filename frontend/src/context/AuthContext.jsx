@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loginUser, logoutUser, registerUser, verifyEmailUser } from '../api_services';
+import { loginUser, logoutUser, registerUser, requestEmailVerification, verifyEmailUser } from '../api_services';
 
 const AuthContext = createContext(null);
 
@@ -46,6 +46,10 @@ export function AuthProvider({ children }) {
     return registerUser(userData);
   }
 
+  async function requestVerification(email) {
+    return requestEmailVerification(email);
+  }
+
   async function verifyEmail(email, otp) {
     return verifyEmailUser(email, otp);
   }
@@ -56,6 +60,7 @@ export function AuthProvider({ children }) {
     isLoading,
     login,
     register,
+    requestVerification,
     verifyEmail,
     logout,
   };

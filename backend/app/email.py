@@ -6,15 +6,14 @@ from pathlib import Path
 from email.message import EmailMessage
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 class EmailDeliveryError(Exception):
     """Raised when the application cannot deliver an email."""
 
 
-def send_password_reset_otp(recipient: str, otp: str) -> None:
-    """Send a short-lived password-reset code to ``recipient``."""
+def _get_smtp_settings() -> tuple[str, str, str | None, str | None]:
     host = os.getenv("SMTP_HOST")
     sender = os.getenv("SMTP_FROM_EMAIL")
     username = os.getenv("SMTP_USERNAME")
@@ -24,6 +23,28 @@ def send_password_reset_otp(recipient: str, otp: str) -> None:
         raise EmailDeliveryError("SMTP_HOST and SMTP_FROM_EMAIL must be configured")
     if bool(username) != bool(password):
         raise EmailDeliveryError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+
+    return host, sender, username, password
+
+
+def _smtp_error_message(exc: Exception, email_kind: str) -> str:
+    details = str(exc).strip() or exc.__class__.__name__
+
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        username = os.getenv("SMTP_USERNAME", "")
+        if username.lower().endswith("@gmail.com"):
+            return (
+                f"Unable to send {email_kind} email: SMTP authentication failed. "
+                "For Gmail, SMTP_PASSWORD must be a Google App Password, not your regular Gmail password."
+            )
+        return f"Unable to send {email_kind} email: SMTP authentication failed: {details}"
+
+    return f"Unable to send {email_kind} email: {details}"
+
+
+def send_password_reset_otp(recipient: str, otp: str) -> None:
+    """Send a short-lived password-reset code to ``recipient``."""
+    host, sender, username, password = _get_smtp_settings()
 
     message = EmailMessage()
     message["Subject"] = "Your RoadSense AI password reset code"
@@ -48,20 +69,12 @@ def send_password_reset_otp(recipient: str, otp: str) -> None:
                 smtp.login(username, password)
             smtp.send_message(message)
     except (OSError, smtplib.SMTPException) as exc:
-        raise EmailDeliveryError("Unable to send OTP email") from exc
+        raise EmailDeliveryError(_smtp_error_message(exc, "password reset")) from exc
 
 
 def send_email_verification_otp(recipient: str, otp: str) -> None:
     """Send a short-lived email-verification code to ``recipient``."""
-    host = os.getenv("SMTP_HOST")
-    sender = os.getenv("SMTP_FROM_EMAIL")
-    username = os.getenv("SMTP_USERNAME")
-    password = os.getenv("SMTP_PASSWORD")
-
-    if not host or not sender:
-        raise EmailDeliveryError("SMTP_HOST and SMTP_FROM_EMAIL must be configured")
-    if bool(username) != bool(password):
-        raise EmailDeliveryError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+    host, sender, username, password = _get_smtp_settings()
 
     message = EmailMessage()
     message["Subject"] = "Verify your RoadSense AI email"
@@ -86,7 +99,7 @@ def send_email_verification_otp(recipient: str, otp: str) -> None:
                 smtp.login(username, password)
             smtp.send_message(message)
     except (OSError, smtplib.SMTPException) as exc:
-        raise EmailDeliveryError("Unable to send verification email") from exc
+        raise EmailDeliveryError(_smtp_error_message(exc, "verification")) from exc
 
 
 
