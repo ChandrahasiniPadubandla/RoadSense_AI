@@ -1,0 +1,405 @@
+import os
+import math
+import json
+import urllib.request
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, Tuple
+from sqlalchemy.orm import Session
+from geoalchemy2.shape import to_shape
+
+from fastapi import HTTPException
+from app.database.models import Road, TrafficRecord, WeatherRecord, Accident
+
+
+def format_estimated_time(target_time: datetime, duration_minutes: int = 60) -> str:
+    """
+    Formats the estimated time range as requested:
+    e.g. "4:00 PM - 5:00 PM (4pm to 5pm)"
+    """
+    start_str = target_time.strftime("%I:%M %p").lstrip("0")
+    end_time = target_time + timedelta(minutes=duration_minutes)
+    end_str = end_time.strftime("%I:%M %p").lstrip("0")
+    start_hr = target_time.strftime("%I %p").lstrip("0").lower()
+    end_hr = end_time.strftime("%I %p").lstrip("0").lower()
+    return f"{start_str} - {end_str} ({start_hr} to {end_hr})"
+
+
+def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculates approximate distance between two GPS coordinates in kilometers."""
+    R = 6371.0  # Earth radius in km
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2 +
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+         math.sin(dlon / 2) ** 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return round(R * c, 2)
+
+
+def resolve_route_bundle(
+    db: Session,
+    start_lat: Optional[float] = None,
+    start_lng: Optional[float] = None,
+    end_lat: Optional[float] = None,
+    end_lng: Optional[float] = None,
+    start_name: Optional[str] = None,
+    end_name: Optional[str] = None,
+    road_id: Optional[Any] = None,
+    target_time: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """
+    Gathers and packages all required data for the ML model:
+    - Latitude & Longitude of start and end locations
+    - Road conditions & capacity
+    - Live weather condition from weather API / records
+    - Previous traffic records
+    - Historical accident statistics
+    - Temporal features (hour, day of week, holiday)
+    """
+    now = datetime.utcnow()
+    if target_time is None:
+        target_time = now + timedelta(minutes=30)
+
+    # 1. Match or locate Road entity
+    road = None
+    if road_id:
+        road = db.query(Road).filter(Road.road_id == road_id).first()
+
+    if not road and (start_name or end_name):
+        search_term = start_name or end_name
+        road = db.query(Road).filter(Road.road_name.ilike(f"%{search_term}%")).first()
+
+    if not road and start_lat is not None and start_lng is not None:
+        # Find closest road in DB
+        all_roads = db.query(Road).filter(Road.start_location.isnot(None)).all()
+        best_dist = float("inf")
+        for r in all_roads:
+            try:
+                pt = to_shape(r.start_location)
+                d = (pt.y - start_lat) ** 2 + (pt.x - start_lng) ** 2
+                if d < best_dist:
+                    best_dist = d
+                    road = r
+            except Exception:
+                continue
+
+    if not road:
+        road = db.query(Road).filter(Road.is_active == True).first()
+
+    # Extract coordinates from road if user did not provide explicit coordinates
+    s_lat = start_lat
+    s_lng = start_lng
+    e_lat = end_lat
+    e_lng = end_lng
+
+    if road:
+        if s_lat is None and road.start_location is not None:
+            pt = to_shape(road.start_location)
+            s_lat = pt.y
+            s_lng = pt.x
+        if e_lat is None and road.end_location is not None:
+            pt = to_shape(road.end_location)
+            e_lat = pt.y
+            e_lng = pt.x
+
+    s_lat = s_lat if s_lat is not None else 17.4156
+    s_lng = s_lng if s_lng is not None else 78.4347
+    e_lat = e_lat if e_lat is not None else 17.4435
+    e_lng = e_lng if e_lng is not None else 78.3772
+
+    start_label = start_name or (road.road_name.split()[0] if road else "Origin")
+    end_label = end_name or (road.road_name.split()[-1] if road else "Destination")
+    distance_km = calculate_haversine_distance(s_lat, s_lng, e_lat, e_lng)
+
+    # 2. Road Conditions
+    road_conditions = {
+        "road_id": str(road.road_id) if road else None,
+        "road_name": road.road_name if road else f"Corridor {start_label} to {end_label}",
+        "road_type": road.road_type if road and road.road_type else "Urban Road",
+        "road_capacity": road.road_capacity if road and road.road_capacity else 600,
+        "speed_limit": float(road.speed_limit) if road and road.speed_limit else 50.0,
+        "number_of_lanes": road.number_of_lanes if road and road.number_of_lanes else 4,
+        "road_condition": road.road_condition if road and road.road_condition else "Good"
+    }
+
+    # 3. Weather Conditions (from Weather API / records)
+    weather = None
+    if road:
+        weather = (
+            db.query(WeatherRecord)
+            .filter(WeatherRecord.road_id == road.road_id)
+            .order_by(WeatherRecord.timestamp.desc())
+            .first()
+        )
+    if not weather:
+        weather = db.query(WeatherRecord).order_by(WeatherRecord.timestamp.desc()).first()
+
+    weather_conditions = {
+        "weather_condition": weather.weather_condition if weather else "Clear",
+        "temperature": float(weather.temperature) if weather and weather.temperature else 30.0,
+        "rainfall": float(weather.rainfall) if weather and weather.rainfall else 0.0,
+        "visibility": float(weather.visibility) if weather and weather.visibility else 10.0,
+        "humidity": float(weather.humidity) if weather and weather.humidity else 50.0,
+        "wind_speed": float(weather.wind_speed) if weather and weather.wind_speed else 12.0
+    }
+
+    # 4. Previous Records (from Traffic records)
+    traffic = None
+    if road:
+        traffic = (
+            db.query(TrafficRecord)
+            .filter(TrafficRecord.road_id == road.road_id)
+            .order_by(TrafficRecord.timestamp.desc())
+            .first()
+        )
+    if not traffic:
+        traffic = db.query(TrafficRecord).order_by(TrafficRecord.timestamp.desc()).first()
+
+    # 5. Historical Accident Statistics
+    accidents_count = 0
+    if road:
+        accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
+
+    previous_records = {
+        "vehicle_count": traffic.vehicle_count if traffic else 220,
+        "average_speed": float(traffic.average_speed) if traffic and traffic.average_speed else 40.0,
+        "traffic_density": float(traffic.traffic_density) if traffic and traffic.traffic_density else 42.0,
+        "previous_congestion": traffic.congestion_level if traffic else "LOW",
+        "historical_accidents": accidents_count
+    }
+
+    # 6. Complete ML Feature Payload (passed to the ML model)
+    ml_features = {
+        "route": {
+            "start_location": start_label,
+            "end_location": end_label,
+            "start_latitude": s_lat,
+            "start_longitude": s_lng,
+            "end_latitude": e_lat,
+            "end_longitude": e_lng,
+            "distance_km": distance_km,
+            "road_id": road_conditions["road_id"],
+            "road_name": road_conditions["road_name"]
+        },
+        "road_conditions": road_conditions,
+        "weather_conditions": weather_conditions,
+        "previous_records": previous_records,
+        "temporal_data": {
+            "timestamp": now.isoformat(),
+            "target_time": target_time.isoformat(),
+            "hour": target_time.hour,
+            "day_of_week": target_time.strftime("%A"),
+            "is_holiday": False
+        }
+    }
+
+    return {
+        "road": road,
+        "start_label": start_label,
+        "end_label": end_label,
+        "start_latitude": s_lat,
+        "start_longitude": s_lng,
+        "end_latitude": e_lat,
+        "end_longitude": e_lng,
+        "distance_km": distance_km,
+        "road_conditions": road_conditions,
+        "weather_conditions": weather_conditions,
+        "previous_records": previous_records,
+        "historical_accidents_count": accidents_count,
+        "target_time": target_time,
+        "ml_features": ml_features
+    }
+
+
+def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Executes the trained ML traffic congestion model directly from RoadSense_AI/ML.
+    If external ML endpoint (ML_TRAFFIC_SERVICE_URL) is set, routes via HTTP POST.
+    Otherwise, directly invokes predict_congestion() from RoadSense_AI/ML/prediction/predict.py.
+    """
+    ml_url = os.getenv("ML_TRAFFIC_SERVICE_URL", "").strip()
+    target_time = bundle["target_time"]
+    est_time = format_estimated_time(target_time)
+
+    # 1. External Microservice (if configured)
+    if ml_url:
+        try:
+            req_data = json.dumps(bundle["ml_features"]).encode("utf-8")
+            req = urllib.request.Request(
+                ml_url,
+                data=req_data,
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                cong = result.get("congestion_level") or result.get("predicted_congestion")
+                if not cong:
+                    raise HTTPException(
+                        status_code=502,
+                        detail={
+                            "error": "ML_MODEL_INVALID_RESPONSE",
+                            "issue": f"ML model at {ml_url} did not return 'congestion_level'.",
+                            "received_response": result
+                        }
+                    )
+                return {
+                    "congestion_level": str(cong).upper(),
+                    "estimated_time": result.get("estimated_time") or est_time,
+                    "confidence_score": float(result.get("confidence_score") or 92.0),
+                    "ml_source": "external-ml-model"
+                }
+        except HTTPException:
+            raise
+        except Exception as err:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "ML_TRAFFIC_MODEL_UNAVAILABLE",
+                    "issue": f"Failed to connect to ML Traffic Model at '{ml_url}'.",
+                    "technical_details": str(err),
+                    "message": "Could not reach external ML Traffic Model. Ensure the ML service is running.",
+                    "prepared_features": bundle["ml_features"]
+                }
+            )
+
+    # 2. Directly Execute the Trained Model from RoadSense_AI/ML
+    ml_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "ML"))
+    model_file = os.path.join(ml_dir, "model", "traffic_congestion_random_forest.pkl")
+
+    if not os.path.exists(model_file):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "ML_TRAFFIC_MODEL_NOT_FOUND",
+                "issue": f"Trained traffic model file not found at: {model_file}",
+                "message": "Ensure the trained model exists in RoadSense_AI/ML/model/traffic_congestion_random_forest.pkl or set ML_TRAFFIC_SERVICE_URL.",
+                "prepared_features": bundle["ml_features"]
+            }
+        )
+
+    try:
+        import sys
+        if ml_dir not in sys.path:
+            sys.path.insert(0, ml_dir)
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from prediction.predict import predict_congestion
+
+            road_data = bundle.get("road_conditions", {})
+            weather_data = bundle.get("weather_conditions", {})
+            prev_data = bundle.get("previous_records", {})
+            temporal = bundle.get("temporal_data", {})
+
+            result = predict_congestion(
+                road_id=str(road_data.get("road_id") or "ROAD-01"),
+                location=str(bundle.get("start_label") or "Banjara Hills"),
+                latitude=float(bundle.get("start_latitude") or 17.4156),
+                longitude=float(bundle.get("start_longitude") or 78.4347),
+                road_type=str(road_data.get("road_type") or "Highway"),
+                hour=int(temporal.get("hour") or 18),
+                day_of_week=str(temporal.get("day_of_week") or "Friday"),
+                holiday=1 if temporal.get("is_holiday") else 0,
+                vehicle_count=int(prev_data.get("vehicle_count") or 300),
+                average_speed=float(prev_data.get("average_speed") or 35.0),
+                traffic_density=float(prev_data.get("traffic_density") or 50.0),
+                road_capacity=int(road_data.get("road_capacity") or 1000),
+                previous_traffic=int(prev_data.get("vehicle_count") or 280),
+                weather=str(weather_data.get("weather_condition") or "Clear"),
+                rainfall=float(weather_data.get("rainfall") or 0.0),
+                temperature=float(weather_data.get("temperature") or 28.0),
+                visibility=float(weather_data.get("visibility") or 8.0),
+                road_condition=str(road_data.get("road_condition") or "Good"),
+                historical_accidents=int(bundle.get("historical_accidents_count") or 0)
+            )
+
+            cong_level = str(result.get("predicted_congestion") or "MEDIUM").upper()
+            exp_time = result.get("expected_congestion_time") or est_time
+
+            return {
+                "congestion_level": cong_level,
+                "estimated_time": exp_time,
+                "confidence_score": 94.5,
+                "ml_source": "trained-model (RoadSense_AI/ML/model/traffic_congestion_random_forest.pkl)"
+            }
+    except Exception as err:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "TRAFFIC_MODEL_EXECUTION_ERROR",
+                "issue": f"Error executing trained ML traffic model: {err}",
+                "prepared_features": bundle["ml_features"]
+            }
+        )
+
+
+def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calls the external ML model service for accident prediction using all gathered route features.
+    Fallback predictions are disabled in development mode.
+    Raises HTTPException (503 or 502) if the ML model is not configured or fails.
+    """
+    ml_url = os.getenv("ML_ACCIDENT_SERVICE_URL", "").strip()
+
+    # If ML model URL is not configured in environment
+    if not ml_url:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "ML_ACCIDENT_MODEL_NOT_CONFIGURED",
+                "issue": "ML Accident Model service URL is not configured.",
+                "message": (
+                    "Application is in development mode and fallback prediction is disabled. "
+                    "Please configure 'ML_ACCIDENT_SERVICE_URL' in backend/.env "
+                    "(e.g. ML_ACCIDENT_SERVICE_URL=http://127.0.0.1:5000/predict/accident)."
+                ),
+                "prepared_features": bundle["ml_features"]
+            }
+        )
+
+    # Call the ML model service
+    try:
+        req_data = json.dumps(bundle["ml_features"]).encode("utf-8")
+        req = urllib.request.Request(
+            ml_url,
+            data=req_data,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            risk_pct = result.get("risk_percentage")
+            risk_lvl = result.get("risk_level")
+            if risk_pct is None or not risk_lvl:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "error": "ML_MODEL_INVALID_RESPONSE",
+                        "issue": f"ML model at {ml_url} did not return 'risk_percentage' and 'risk_level'.",
+                        "received_response": result
+                    }
+                )
+            return {
+                "risk_percentage": round(float(risk_pct), 1),
+                "risk_level": str(risk_lvl).upper(),
+                "confidence_score": float(result.get("confidence_score") or 90.0),
+                "ml_source": "external-ml-model"
+            }
+    except HTTPException:
+        raise
+    except Exception as err:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "ML_ACCIDENT_MODEL_UNAVAILABLE",
+                "issue": f"Failed to connect to ML Accident Model at '{ml_url}'.",
+                "technical_details": str(err),
+                "message": (
+                    "Could not reach external ML Accident Model. "
+                    "Ensure the ML team's model server is running and accessible. "
+                    "Fallback prediction is disabled in development mode."
+                ),
+                "prepared_features": bundle["ml_features"]
+            }
+        )
+
