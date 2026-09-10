@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const PHONE_REGEX = /^(\+91[\-\s]?|0)?[6-9]\d{9}$|^[0-9]{10}$/;
-
 export default function Register() {
 <<<<<<< HEAD
   const { requestVerification } = useAuth();
