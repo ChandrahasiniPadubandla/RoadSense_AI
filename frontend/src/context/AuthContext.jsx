@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loginUser, logoutUser, registerUser, verifyEmailUser } from '../api_services';
+import { loginUser, logoutUser, registerUser, requestEmailVerification, verifyEmailUser } from '../api_services';
 
 const AuthContext = createContext(null);
+const VERIFIED_EMAIL_KEY = 'verifiedEmail';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -14,8 +15,14 @@ export function AuthProvider({ children }) {
     }
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [verifiedEmail, setVerifiedEmailState] = useState(() => {
+    try {
+      return localStorage.getItem(VERIFIED_EMAIL_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
 
-  // Restore session on page reload
   useEffect(() => {
     try {
       const storedUser = localStorage.getItem('currentUser');
@@ -46,8 +53,33 @@ export function AuthProvider({ children }) {
     return registerUser(userData);
   }
 
+  async function requestVerification(email) {
+    return requestEmailVerification(email);
+  }
+
   async function verifyEmail(email, otp) {
-    return verifyEmailUser(email, otp);
+    const result = await verifyEmailUser(email, otp);
+
+    markEmailVerified(email);
+    return result;
+  }
+
+  function markEmailVerified(email) {
+    try {
+      localStorage.setItem(VERIFIED_EMAIL_KEY, email);
+    } catch {
+
+    }
+    setVerifiedEmailState(email);
+  }
+
+  function clearEmailVerification() {
+    try {
+      localStorage.removeItem(VERIFIED_EMAIL_KEY);
+    } catch {
+      // ignore
+    }
+    setVerifiedEmailState(null);
   }
 
   const value = {
@@ -56,8 +88,13 @@ export function AuthProvider({ children }) {
     isLoading,
     login,
     register,
+    requestVerification,
     verifyEmail,
     logout,
+    verifiedEmail,
+    isEmailVerified: !!verifiedEmail,
+    markEmailVerified,
+    clearEmailVerification,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
