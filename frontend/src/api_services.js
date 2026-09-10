@@ -304,6 +304,28 @@ export async function sendChatbotMessage(message, history = []) {
   return response.data; // { reply: string, mode: "openai" | "local-fallback" }
 }
 
+// -----------------------------------------------------------------------------
+// 5. AI ROUTE PREDICTION APIS (User start & end location triggers)
+// -----------------------------------------------------------------------------
+
+/**
+ * Predict traffic congestion for start & end locations
+ * Returns { congestion_level, estimated_time, distance_km, weather_conditions, road_conditions, ml_features }
+ */
+export async function predictRouteTraffic(payload) {
+  const { data } = await apiClient.post('/api/predictions/traffic/route', payload);
+  return data;
+}
+
+/**
+ * Predict accident risk for start & end locations
+ * Returns { risk_percentage, risk_level, distance_km, weather_conditions, road_conditions, ml_features }
+ */
+export async function predictRouteAccident(payload) {
+  const { data } = await apiClient.post('/api/predictions/accidents/route', payload);
+  return data;
+}
+
 export default {
   API_BASE_URL,
   getDashboardStats,
@@ -315,4 +337,7 @@ export default {
   loginUser,
   logoutUser,
   sendChatbotMessage,
+  predictRouteTraffic,
+  predictRouteAccident,
 };
+
