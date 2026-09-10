@@ -6,6 +6,7 @@ import { ROLES } from '../utils/constants';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', roles: 'ALL' },
   { to: '/live-map', label: 'Map', roles: 'ALL' },
+  { to: '/traffic-prediction', label: 'Traffic Prediction', roles: 'ALL' },
 ];
 
 export default function Sidebar() {
