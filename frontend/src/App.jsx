@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import ProtectedRoute from './routes/ProtectedRoute';
+import RequireVerifiedEmail from './routes/RequireVerifiedEmail';
 import DashboardLayout from './layouts/DashboardLayout';
 
 import Login from './pages/Login';
@@ -16,8 +17,12 @@ import NotFound from './pages/NotFound';
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      {/* /login and /register require a verified email first — manually
+          typing either URL redirects to /verify-email until that's done. */}
+      <Route element={<RequireVerifiedEmail />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+      </Route>
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
