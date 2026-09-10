@@ -21,6 +21,7 @@ from app.routers import weather
 from app.routers import chatbot
 from app.routers import traffic_predictions
 from app.routers import accident_predictions
+from app.routers import alert
 from app.routers.auth import router as auth_router
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -41,6 +42,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(chatbot.router)
+app.include_router(alert.router, dependencies=[Depends(get_current_user)])
 app.include_router(zones.router, dependencies=[Depends(get_current_user)])
 app.include_router(roads.router, dependencies=[Depends(get_current_user)])
 app.include_router(traffic.router, dependencies=[Depends(get_current_user)])
