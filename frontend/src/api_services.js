@@ -293,6 +293,20 @@ export async function verifyEmailUser(email, otp) {
   }
 }
 
+export async function forgotPassword(email) {
+  const { data } = await apiClient.post('/auth/forgot-password', { email });
+  return data;
+}
+
+export async function resetPassword({ email, otp, newPassword }) {
+  const { data } = await apiClient.post('/auth/reset-password', {
+    email,
+    otp,
+    new_password: newPassword,
+  });
+  return data;
+}
+
 export async function logoutUser() {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('currentUser');
@@ -390,8 +404,88 @@ export async function getLatestTrafficPredictions() {
   }
 }
 
+// -----------------------------------------------------------------------------
+// 7. CRUD SERVICES (Zones, Accidents, Emergency, Alerts, Admin)
+// -----------------------------------------------------------------------------
+
+export async function getZones() {
+  try {
+    const { data } = await apiClient.get('/api/zones');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/zones:', error);
+    return [];
+  }
+}
+
+export async function getAccidents(params = {}) {
+  try {
+    const { data } = await apiClient.get('/api/accidents', { params });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/accidents:', error);
+    return [];
+  }
+}
+
+export async function createAccident(payload) {
+  const { data } = await apiClient.post('/api/accidents', payload);
+  return data;
+}
+
+export async function getEmergencyResponses() {
+  try {
+    const { data } = await apiClient.get('/emergency/responses');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /emergency/responses:', error);
+    return [];
+  }
+}
+
+export async function createEmergencyResponse(payload) {
+  const { data } = await apiClient.post('/emergency/responses', payload);
+  return data;
+}
+
+export async function getAlerts() {
+  try {
+    const { data } = await apiClient.get('/api/alerts');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/alerts:', error);
+    return [];
+  }
+}
+
+export async function createAlert(payload) {
+  const { data } = await apiClient.post('/api/alerts', payload);
+  return data;
+}
+
+export async function getAdminUsers() {
+  try {
+    const { data } = await apiClient.get('/api/admin/users');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/admin/users:', error);
+    return [];
+  }
+}
+
+export async function getAdminRoles() {
+  try {
+    const { data } = await apiClient.get('/api/admin/roles');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/admin/roles:', error);
+    return [];
+  }
+}
+
 export default {
   API_BASE_URL,
+  apiClient,
   getDashboardStats,
   getDashboardTrend,
   getRoads,
@@ -402,6 +496,8 @@ export default {
   registerUser,
   requestEmailVerification,
   verifyEmailUser,
+  forgotPassword,
+  resetPassword,
   logoutUser,
   sendChatbotMessage,
   predictRouteTraffic,
@@ -409,4 +505,13 @@ export default {
   predictTraffic,
   getLatestTrafficPredictions,
   getLatestAccidentPredictions,
+  getZones,
+  getAccidents,
+  createAccident,
+  getEmergencyResponses,
+  createEmergencyResponse,
+  getAlerts,
+  createAlert,
+  getAdminUsers,
+  getAdminRoles,
 };

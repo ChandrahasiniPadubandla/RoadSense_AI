@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
-import axiosClient from '../api/axiosClient';
+import { forgotPassword, resetPassword } from '../api_services';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -20,32 +20,32 @@ export default function ForgotPassword() {
     setError('');
     setIsSending(true);
     try {
-      const response = await axiosClient.post('/auth/forgot-password', { email });
-      setMessage(response.data.message || 'A reset code has been sent to your email.');
+      const response = await forgotPassword(email);
+      setMessage(response?.message || 'A reset code has been sent to your email.');
     } catch (requestError) {
-      setError(requestError.response?.data?.detail || 'Unable to send the reset code.');
+      setError(requestError.response?.data?.detail || requestError.message || 'Unable to send the reset code.');
     } finally {
       setIsSending(false);
     }
   }
 
-  async function resetPassword(event) {
+  async function handleResetPassword(event) {
     event.preventDefault();
     setMessage('');
     setError('');
     setIsResetting(true);
     try {
-      const response = await axiosClient.post('/auth/reset-password', {
+      const response = await resetPassword({
         email,
         otp,
-        new_password: newPassword,
+        newPassword,
       });
-      setMessage(response.data.message || 'Password reset successful.');
+      setMessage(response?.message || 'Password reset successful.');
       setIsResetComplete(true);
       setOtp('');
       setNewPassword('');
     } catch (requestError) {
-      setError(requestError.response?.data?.detail || 'Unable to reset the password.');
+      setError(requestError.response?.data?.detail || requestError.message || 'Unable to reset the password.');
     } finally {
       setIsResetting(false);
     }
@@ -88,7 +88,7 @@ export default function ForgotPassword() {
                 </button>
               </form>
 
-              <form onSubmit={resetPassword} className="mt-6 border-t border-asphalt-700 pt-6">
+              <form onSubmit={handleResetPassword} className="mt-6 border-t border-asphalt-700 pt-6">
                 <label className="block text-xs text-asphalt-400" htmlFor="reset-otp">
                   Reset code
                 </label>

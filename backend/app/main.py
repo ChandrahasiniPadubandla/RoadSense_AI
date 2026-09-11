@@ -66,38 +66,26 @@ app.include_router(auth_router)
 # Chatbot
 app.include_router(chatbot.router)
 
-# Geocoding
+# Geocoding & Routing
 app.include_router(geocoding.router)
+
+# Real-Time Weather Telemetry
 app.include_router(weather.router)
-app.include_router(alert.router, dependencies=[Depends(get_current_user)])
-app.include_router(alert.router, prefix="/api", dependencies=[Depends(get_current_user)])
-app.include_router(zones.router, dependencies=[Depends(get_current_user)])
-app.include_router(roads.router, dependencies=[Depends(get_current_user)])
-app.include_router(traffic.router, dependencies=[Depends(get_current_user)])
-app.include_router(accidents.router, dependencies=[Depends(get_current_user)])
-app.include_router(dashboard.router, dependencies=[Depends(get_current_user)])
-app.include_router(maps.router, dependencies=[Depends(get_current_user)])
-app.include_router(admin.router, dependencies=[Depends(get_current_user)])
-app.include_router(audit.router, dependencies=[Depends(get_current_user)])
-app.include_router(traffic_predictions.router, dependencies=[Depends(get_current_user)])
-app.include_router(accident_predictions.router, dependencies=[Depends(get_current_user)])
+
+# Emergency Dispatch
+app.include_router(
+    emergency.router,
+    dependencies=[Depends(get_current_user)]
+)
 
 # Alerts
 app.include_router(
     alert.router,
     dependencies=[Depends(get_current_user)]
 )
-
-# Alerts API alias
 app.include_router(
     alert.router,
     prefix="/api",
-    dependencies=[Depends(get_current_user)]
-)
-
-# Emergency
-app.include_router(
-    emergency.router,
     dependencies=[Depends(get_current_user)]
 )
 
@@ -113,19 +101,19 @@ app.include_router(
     dependencies=[Depends(get_current_user)]
 )
 
-# Traffic
+# Traffic Records & Sensor Feeds
 app.include_router(
     traffic.router,
     dependencies=[Depends(get_current_user)]
 )
 
-# Accidents
+# Accident Incidents
 app.include_router(
     accidents.router,
     dependencies=[Depends(get_current_user)]
 )
 
-# Dashboard
+# Dashboard Analytics
 app.include_router(
     dashboard.router,
     dependencies=[Depends(get_current_user)]
@@ -137,31 +125,25 @@ app.include_router(
     dependencies=[Depends(get_current_user)]
 )
 
-# Weather
-app.include_router(
-    weather.router,
-    dependencies=[Depends(get_current_user)]
-)
-
-# Admin
+# Admin Management
 app.include_router(
     admin.router,
     dependencies=[Depends(get_current_user)]
 )
 
-# Audit
+# Audit Logs
 app.include_router(
     audit.router,
     dependencies=[Depends(get_current_user)]
 )
 
-# Traffic Predictions
+# Traffic Predictions (AI)
 app.include_router(
     traffic_predictions.router,
     dependencies=[Depends(get_current_user)]
 )
 
-# Accident Predictions
+# Accident Risk Predictions (AI)
 app.include_router(
     accident_predictions.router,
     dependencies=[Depends(get_current_user)]
