@@ -7,12 +7,14 @@ from app.database.connection import get_db
 from app.schemas.geocoding import (
     GeocodeSearchResult,
     ReverseGeocodeResult,
-    NearestRoadResult
+    NearestRoadResult,
+    DrivingRouteResult
 )
 from app.services.geocoding import (
     geocode_location,
     reverse_geocode,
-    find_nearest_road_by_coordinates
+    find_nearest_road_by_coordinates,
+    get_driving_route
 )
 
 logger = logging.getLogger("roadsense.geocoding_router")
@@ -87,3 +89,28 @@ def get_nearest_road(
         number_of_lanes=road.number_of_lanes,
         road_condition=road.road_condition
     )
+
+
+@router.get(
+    "/route",
+    response_model=DrivingRouteResult,
+    summary="Get Street-Level Driving Route Geometry (OSRM)"
+)
+def get_route(
+    start_lat: float = Query(..., ge=-90.0, le=90.0, description="Start Latitude"),
+    start_lng: float = Query(..., ge=-180.0, le=180.0, description="Start Longitude"),
+    end_lat: float = Query(..., ge=-90.0, le=90.0, description="End Latitude"),
+    end_lng: float = Query(..., ge=-180.0, le=180.0, description="End Longitude")
+):
+    """
+    Returns actual street driving route coordinates [[lat, lng], ...], distance in km,
+    and travel duration using Open Source Routing Machine (OSRM).
+    """
+    route_info = get_driving_route(
+        start_lat=start_lat,
+        start_lng=start_lng,
+        end_lat=end_lat,
+        end_lng=end_lng
+    )
+    return DrivingRouteResult(**route_info)
+

@@ -32,3 +32,11 @@ class NearestRoadResult(BaseModel):
     road_capacity: Optional[int] = None
     number_of_lanes: Optional[int] = None
     road_condition: Optional[str] = None
+
+
+class DrivingRouteResult(BaseModel):
+    coordinates: List[List[float]] = Field(..., description="Array of [latitude, longitude] route waypoints along actual streets")
+    distance_km: float = Field(..., description="Real street driving distance in kilometers")
+    duration_minutes: float = Field(..., description="Estimated travel time in minutes")
+    is_real_route: bool = Field(default=True, description="Whether routed via real road network or straight line fallback")
+

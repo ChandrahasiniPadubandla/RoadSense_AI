@@ -1,5 +1,5 @@
 from uuid import UUID
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -305,6 +305,14 @@ class RouteTrafficPredictionResponse(BaseModel):
         default_factory=dict,
         description="Complete feature bundle prepared by the API and passed to the ML model"
     )
+    route_geometry: Optional[List[List[float]]] = Field(
+        default=None,
+        description="Detailed street-level road waypoints [[lat, lng], ...] for interactive map routing"
+    )
+    accident_points: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Accident incident points and predicted risk hazard points along the route"
+    )
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 
@@ -332,10 +340,19 @@ class RouteAccidentPredictionResponse(BaseModel):
     road_conditions: Dict[str, Any] = Field(default_factory=dict)
     previous_records: Dict[str, Any] = Field(default_factory=dict)
     historical_accidents_count: int = 0
+    route_geometry: Optional[List[List[float]]] = Field(
+        default=None,
+        description="Detailed street-level road waypoints [[lat, lng], ...] for interactive map routing"
+    )
+    accident_points: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Accident incident points and predicted risk hazard points along the route"
+    )
     ml_features: Dict[str, Any] = Field(
         default_factory=dict,
         description="Complete feature bundle prepared by the API and passed to the ML model"
     )
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
+
 

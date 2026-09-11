@@ -12,7 +12,9 @@ from app.database.models import Road, TrafficRecord, Accident
 from app.services.geocoding import (
     geocode_location,
     reverse_geocode,
-    find_nearest_road_by_coordinates
+    find_nearest_road_by_coordinates,
+    get_driving_route,
+    get_accidents_along_route
 )
 from app.services.weather import get_live_weather
 
@@ -134,7 +136,10 @@ def resolve_route_bundle(
     if not end_label:
         end_label = road.road_name.split()[-1] if road else "Destination"
 
-    distance_km = calculate_haversine_distance(s_lat, s_lng, e_lat, e_lng)
+    # Real street driving route geometry & driving distance via OSRM
+    driving_route = get_driving_route(s_lat, s_lng, e_lat, e_lng)
+    distance_km = driving_route.get("distance_km") or calculate_haversine_distance(s_lat, s_lng, e_lat, e_lng)
+    route_geometry = driving_route.get("coordinates") or [[s_lat, s_lng], [e_lat, e_lng]]
 
     # 2. Road Conditions
     road_conditions = {
@@ -219,12 +224,14 @@ def resolve_route_bundle(
         "end_latitude": e_lat,
         "end_longitude": e_lng,
         "distance_km": distance_km,
+        "route_geometry": route_geometry,
         "road_conditions": road_conditions,
         "weather_conditions": weather_conditions,
         "previous_records": previous_records,
         "historical_accidents_count": accidents_count,
         "target_time": target_time,
-        "ml_features": ml_features
+        "ml_features": ml_features,
+        "db": db
     }
 
 
@@ -334,10 +341,24 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             cong_level = str(result.get("predicted_congestion") or "MEDIUM").upper()
             exp_time = result.get("expected_congestion_time") or est_time
 
+            acc_pts = get_accidents_along_route(
+                db=bundle["db"],
+                start_lat=bundle["start_latitude"],
+                start_lng=bundle["start_longitude"],
+                end_lat=bundle["end_latitude"],
+                end_lng=bundle["end_longitude"],
+                road_id=bundle["road"].road_id if bundle.get("road") else None,
+                risk_percentage=35.0,
+                risk_level="LOW",
+                route_coords=bundle.get("route_geometry")
+            )
+
             return {
                 "congestion_level": cong_level,
                 "estimated_time": exp_time,
                 "confidence_score": 94.5,
+                "route_geometry": bundle.get("route_geometry", []),
+                "accident_points": acc_pts,
                 "ml_source": "trained-model (RoadSense_AI/ML/model/traffic_congestion_random_forest.pkl)"
             }
     except Exception as err:
@@ -464,10 +485,24 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             risk_pct = float(result.get("accident_risk") or 50.0)
             risk_lvl = str(result.get("accident_risk_level") or "MEDIUM").upper()
 
+            acc_pts = get_accidents_along_route(
+                db=bundle["db"],
+                start_lat=bundle["start_latitude"],
+                start_lng=bundle["start_longitude"],
+                end_lat=bundle["end_latitude"],
+                end_lng=bundle["end_longitude"],
+                road_id=bundle["road"].road_id if bundle.get("road") else None,
+                risk_percentage=round(risk_pct, 1),
+                risk_level=risk_lvl,
+                route_coords=bundle.get("route_geometry")
+            )
+
             return {
                 "risk_percentage": round(risk_pct, 1),
                 "risk_level": risk_lvl,
                 "confidence_score": 93.0,
+                "route_geometry": bundle.get("route_geometry", []),
+                "accident_points": acc_pts,
                 "ml_source": "trained-model (RoadSense_AI/ML/model/accident_risk_model.pkl)"
             }
     except Exception as err:

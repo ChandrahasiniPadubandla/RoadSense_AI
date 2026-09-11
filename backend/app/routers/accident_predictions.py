@@ -139,6 +139,8 @@ def predict_route_accident(
         road_conditions=bundle["road_conditions"],
         previous_records=bundle["previous_records"],
         historical_accidents_count=bundle["historical_accidents_count"],
+        route_geometry=bundle.get("route_geometry") or ml_result.get("route_geometry"),
+        accident_points=ml_result.get("accident_points", []),
         ml_features=bundle["ml_features"],
         ml_source=ml_result.get("ml_source", "backend-feature-engine"),
         created_at=now
