@@ -3,15 +3,15 @@ import ChatMessage from './ChatMessage';
 import { sendChatbotMessage } from '../api_services';
 
 const STARTER_QUESTIONS = [
-  'What does the traffic prediction module do?',
-  'How is accident risk calculated?',
-  'What is an accident hotspot?',
-  'Does this chatbot have live traffic data?',
+  'What roads does RoadSense track?',
+  'What is the accident risk from Banjara Hills to Hitec City?',
+  'Which zones have the most accident hotspots?',
+  'What are the current system-wide traffic statistics?',
 ];
 
 const WELCOME_MESSAGE = {
   role: 'assistant',
-  text: 'Hi! I’m the Smart Traffic AI Assistant. Ask me about traffic, accident risk, hotspots, anomalies, alerts, emergency response, or the application modules.',
+  text: 'Hi! I’m the RoadSense AI Assistant, powered by Groq + LangChain. Ask me about traffic conditions, congestion predictions, accident risk, routes, or accident hotspots — all answers are grounded in real RoadSense data and ML predictions.',
 };
 
 export default function ChatWidget() {
@@ -19,7 +19,7 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState('local-fallback');
+  const [mode, setMode] = useState('');
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function ChatWidget() {
 
   function handleReset() {
     setMessages([WELCOME_MESSAGE]);
-    setMode('local-fallback');
+    setMode('');
   }
 
   return (
@@ -178,9 +178,9 @@ export default function ChatWidget() {
 
           {/* Mode Footer Note */}
           <div className="border-t border-asphalt-800 bg-asphalt-950 px-3 py-1.5 text-right text-[10px] text-asphalt-400">
-            {mode === 'openai'
-              ? 'AI mode: OpenAI'
-              : 'Standalone mode: local knowledge responses'}
+            {mode === 'groq'
+              ? 'Powered by Groq · LangChain'
+              : 'RoadSense AI Assistant'}
           </div>
         </div>
       )}
