@@ -12,7 +12,6 @@ from app.database.models import (
     TrafficRecord,
     TrafficPrediction,
     Alert,
-    WeatherRecord,
     AccidentPrediction
 )
 from app.schemas.prediction import (

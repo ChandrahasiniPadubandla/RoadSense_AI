@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
 
 from fastapi import HTTPException
-from app.database.models import Road, TrafficRecord, WeatherRecord, Accident
+from app.database.models import Road, TrafficRecord, Accident
+from app.services.geocoding import (
+    geocode_location,
+    reverse_geocode,
+    find_nearest_road_by_coordinates
+)
+from app.services.weather import get_live_weather
 
 
 def format_estimated_time(target_time: datetime, duration_minutes: int = 60) -> str:
@@ -60,38 +66,54 @@ def resolve_route_bundle(
     if target_time is None:
         target_time = now + timedelta(minutes=30)
 
-    # 1. Match or locate Road entity
-    road = None
-    if road_id:
-        road = db.query(Road).filter(Road.road_id == road_id).first()
-
-    if not road and (start_name or end_name):
-        search_term = start_name or end_name
-        road = db.query(Road).filter(Road.road_name.ilike(f"%{search_term}%")).first()
-
-    if not road and start_lat is not None and start_lng is not None:
-        # Find closest road in DB
-        all_roads = db.query(Road).filter(Road.start_location.isnot(None)).all()
-        best_dist = float("inf")
-        for r in all_roads:
-            try:
-                pt = to_shape(r.start_location)
-                d = (pt.y - start_lat) ** 2 + (pt.x - start_lng) ** 2
-                if d < best_dist:
-                    best_dist = d
-                    road = r
-            except Exception:
-                continue
-
-    if not road:
-        road = db.query(Road).filter(Road.is_active == True).first()
-
-    # Extract coordinates from road if user did not provide explicit coordinates
+    # 1. Resolve real latitude & longitude
     s_lat = start_lat
     s_lng = start_lng
     e_lat = end_lat
     e_lng = end_lng
 
+    # Dynamic Geocoding: resolve text queries into real coordinates
+    if (s_lat is None or s_lng is None) and start_name:
+        geo_results = geocode_location(start_name)
+        if geo_results:
+            s_lat = geo_results[0]["latitude"]
+            s_lng = geo_results[0]["longitude"]
+
+    if (e_lat is None or e_lng is None) and end_name:
+        geo_results = geocode_location(end_name)
+        if geo_results:
+            e_lat = geo_results[0]["latitude"]
+            e_lng = geo_results[0]["longitude"]
+
+    # Reverse geocode labels if user only passed coordinates (e.g. Map Click or GPS)
+    start_label = start_name
+    if not start_label and s_lat is not None and s_lng is not None:
+        rev = reverse_geocode(s_lat, s_lng)
+        if rev:
+            start_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood")
+
+    end_label = end_name
+    if not end_label and e_lat is not None and e_lng is not None:
+        rev = reverse_geocode(e_lat, e_lng)
+        if rev:
+            end_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood")
+
+    # 2. Match or locate Road entity using PostGIS spatial snapping
+    road = None
+    if road_id:
+        road = db.query(Road).filter(Road.road_id == road_id).first()
+
+    if not road and s_lat is not None and s_lng is not None:
+        road = find_nearest_road_by_coordinates(db, s_lat, s_lng)
+
+    if not road and (start_label or end_label):
+        search_term = start_label or end_label
+        road = db.query(Road).filter(Road.road_name.ilike(f"%{search_term}%")).first()
+
+    if not road:
+        road = db.query(Road).filter(Road.is_active == True).first()
+
+    # Extract coordinates from road if coordinates were still not resolved
     if road:
         if s_lat is None and road.start_location is not None:
             pt = to_shape(road.start_location)
@@ -107,8 +129,11 @@ def resolve_route_bundle(
     e_lat = e_lat if e_lat is not None else 17.4435
     e_lng = e_lng if e_lng is not None else 78.3772
 
-    start_label = start_name or (road.road_name.split()[0] if road else "Origin")
-    end_label = end_name or (road.road_name.split()[-1] if road else "Destination")
+    if not start_label:
+        start_label = road.road_name.split()[0] if road else "Origin"
+    if not end_label:
+        end_label = road.road_name.split()[-1] if road else "Destination"
+
     distance_km = calculate_haversine_distance(s_lat, s_lng, e_lat, e_lng)
 
     # 2. Road Conditions
@@ -122,25 +147,17 @@ def resolve_route_bundle(
         "road_condition": road.road_condition if road and road.road_condition else "Good"
     }
 
-    # 3. Weather Conditions (from Weather API / records)
-    weather = None
-    if road:
-        weather = (
-            db.query(WeatherRecord)
-            .filter(WeatherRecord.road_id == road.road_id)
-            .order_by(WeatherRecord.timestamp.desc())
-            .first()
-        )
-    if not weather:
-        weather = db.query(WeatherRecord).order_by(WeatherRecord.timestamp.desc()).first()
-
+    # 3. Weather Conditions (Live Real-Time Meteorological API — strictly real, NO fake fallbacks)
+    live_weather = get_live_weather(s_lat, s_lng)
     weather_conditions = {
-        "weather_condition": weather.weather_condition if weather else "Clear",
-        "temperature": float(weather.temperature) if weather and weather.temperature else 30.0,
-        "rainfall": float(weather.rainfall) if weather and weather.rainfall else 0.0,
-        "visibility": float(weather.visibility) if weather and weather.visibility else 10.0,
-        "humidity": float(weather.humidity) if weather and weather.humidity else 50.0,
-        "wind_speed": float(weather.wind_speed) if weather and weather.wind_speed else 12.0
+        "weather_condition": live_weather["weather_condition"],
+        "temperature": live_weather["temperature"],
+        "rainfall": live_weather["rainfall"],
+        "visibility": live_weather["visibility"],
+        "humidity": live_weather["humidity"],
+        "wind_speed": live_weather["wind_speed"],
+        "is_live": True,
+        "source": live_weather.get("source", "Open-Meteo Live API")
     }
 
     # 4. Previous Records (from Traffic records)

@@ -21,7 +21,6 @@ from app.database.models import (
     TrafficRecord,
     TrafficZone,
     User,
-    WeatherRecord,
 )
 
 __all__ = [
@@ -40,5 +39,4 @@ __all__ = [
     "TrafficRecord",
     "TrafficZone",
     "User",
-    "WeatherRecord",
 ]
