@@ -9,6 +9,7 @@ const TITLES = {
   '/live-map': 'Map',
   '/map': 'Map',
   '/traffic-prediction': 'Traffic Prediction',
+  '/Accident-Prediction': 'Accident Prediction',
 };
 
 export default function DashboardLayout() {

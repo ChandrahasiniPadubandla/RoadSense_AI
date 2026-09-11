@@ -341,6 +341,20 @@ export async function predictRouteAccident(payload) {
   return data;
 }
 
+/**
+ * Fetch the latest stored accident risk prediction per road.
+ * GET /api/predictions/accidents/latest -> AccidentPredictionResponse[]
+ */
+export async function getLatestAccidentPredictions() {
+  try {
+    const { data } = await apiClient.get('/api/predictions/accidents/latest');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/predictions/accidents/latest:', error);
+    return [];
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 6. TRAFFIC PREDICTION APIS (single road, on-demand — DPR Module 3)
 // -----------------------------------------------------------------------------
@@ -394,5 +408,5 @@ export default {
   predictRouteAccident,
   predictTraffic,
   getLatestTrafficPredictions,
+  getLatestAccidentPredictions,
 };
-
