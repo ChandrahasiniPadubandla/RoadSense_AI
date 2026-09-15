@@ -64,7 +64,7 @@ def resolve_route_bundle(
     - Historical accident statistics
     - Temporal features (hour, day of week, holiday)
     """
-    now = datetime.utcnow()
+    now = datetime.now()
     if target_time is None:
         target_time = now + timedelta(minutes=30)
 

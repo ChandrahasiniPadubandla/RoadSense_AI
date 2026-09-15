@@ -75,7 +75,7 @@ def predict_route_accident(
       - categorical risk_level (LOW, MEDIUM, HIGH, CRITICAL)
       - the complete data bundle prepared for the ML model
     """
-    now = datetime.utcnow()
+    now = datetime.now()
     target_time = req.target_time or (now + timedelta(minutes=req.target_minutes_ahead or 30))
 
     # 1. Resolve all required data for the ML model
@@ -174,7 +174,7 @@ def run_accident_prediction(
             detail=f"Cannot predict accident risk: Road with ID '{req.road_id}' does not exist."
         )
 
-    now = datetime.utcnow()
+    now = datetime.now()
     bundle = resolve_route_bundle(db=db, road_id=road.road_id)
 
     # Apply any overrides from caller / ML team
@@ -250,7 +250,7 @@ def store_accident_prediction(
             detail=f"Cannot record accident prediction: Road with ID '{pred_in.road_id}' does not exist."
         )
 
-    now = datetime.utcnow()
+    now = datetime.now()
     risk_level = pred_in.risk_level.upper()
 
     pred = AccidentPrediction(
@@ -292,7 +292,7 @@ def run_accident_pipeline(
     db: Session = Depends(get_db)
 ):
     roads = db.query(Road).filter(Road.is_active == True).all()
-    now = datetime.utcnow()
+    now = datetime.now()
 
     predictions_count = 0
     alerts_count = 0

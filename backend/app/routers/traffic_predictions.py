@@ -83,7 +83,7 @@ def predict_route_traffic(
       - estimated_time (e.g. '4:00 PM - 5:00 PM (4pm to 5pm)')
       - the complete data bundle prepared for the ML model
     """
-    now = datetime.utcnow()
+    now = datetime.now()
     target_time = req.target_time or (now + timedelta(minutes=req.target_minutes_ahead or 30))
 
     # 1. Resolve all required data for the ML model
@@ -182,7 +182,7 @@ def run_traffic_prediction(
             detail=f"Cannot predict traffic: Road with ID '{req.road_id}' does not exist."
         )
 
-    now = datetime.utcnow()
+    now = datetime.now()
     target_time = req.target_time or (now + timedelta(minutes=req.target_minutes_ahead or 30))
 
     bundle = resolve_route_bundle(
@@ -266,7 +266,7 @@ def store_traffic_prediction(
             detail=f"Cannot record prediction: Road with ID '{pred_in.road_id}' does not exist."
         )
 
-    now = datetime.utcnow()
+    now = datetime.now()
     cong = pred_in.predicted_congestion.upper()
 
     pred = TrafficPrediction(
@@ -310,7 +310,7 @@ def run_traffic_pipeline(
     db: Session = Depends(get_db)
 ):
     roads = db.query(Road).filter(Road.is_active == True).all()
-    now = datetime.utcnow()
+    now = datetime.now()
     target_time = now + timedelta(minutes=30)
 
     predictions_count = 0
