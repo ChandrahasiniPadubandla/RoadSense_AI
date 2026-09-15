@@ -15,7 +15,7 @@ DATASET_PATH = (
     Path(__file__).resolve().parents[3]
     / "ML"
     / "dataset"
-    / "traffic_accident_cleaned_10000.csv"
+    / "traffic_accident_balanced_10000.csv"
 )
 
 
@@ -91,6 +91,14 @@ class MLService:
             .reset_index(drop=True)
         )
 
+        road_for_location = (
+            accident_data
+            .groupby("location")["road_id"]
+            .agg(lambda ids: ids.mode().iloc[0])
+            .to_dict()
+        )
+        hotspots["road_id"] = hotspots["location"].map(road_for_location)
+
         def _risk_level(count: int) -> str:
             if count >= 700:
                 return "HIGH"
@@ -102,6 +110,7 @@ class MLService:
 
         items = [
             HotspotItem(
+                road_id=row["road_id"],
                 location=row["location"],
                 latitude=row["latitude"],
                 longitude=row["longitude"],
