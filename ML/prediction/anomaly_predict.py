@@ -1,5 +1,22 @@
-import joblib
-import pandas as pd
+from importlib import import_module
+
+
+try:
+    pd = import_module("pandas")
+except ImportError as exc:
+    raise ImportError(
+        "pandas is required to prepare anomaly predictions. Install it with "
+        "'pip install pandas'."
+    ) from exc
+
+
+try:
+    joblib = import_module("joblib")
+except ImportError as exc:
+    raise ImportError(
+        "joblib is required to load the anomaly model. Install it with "
+        "'pip install joblib'."
+    ) from exc
 
 
 # Load model and scaler
