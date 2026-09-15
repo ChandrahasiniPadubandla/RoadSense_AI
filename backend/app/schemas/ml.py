@@ -40,3 +40,20 @@ class AnomalyPredictionRequest(BaseModel):
 class AnomalyPredictionResponse(BaseModel):
     prediction: str
     model_status: str = "mock"
+
+
+class HotspotItem(BaseModel):
+    location: str
+    latitude: float
+    longitude: float
+    accident_count: int
+    risk_level: str
+
+
+class HotspotRequest(BaseModel):
+    top_n: int = Field(default=15, ge=1, le=100)
+
+
+class HotspotResponse(BaseModel):
+    hotspots: list[HotspotItem]
+    model_status: str = "mock"

@@ -28,9 +28,9 @@ def predict_congestion(
 @router.post(
     "/predict-anomaly",
     response_model=AnomalyPredictionResponse,
-    summary="Detect traffic anomalies",
+    summary="Detect traffic anomalies (compatibility route)",
 )
-def predict_anomaly(
+def predict_anomaly_compatibility(
     request: AnomalyPredictionRequest,
 ) -> AnomalyPredictionResponse:
     return ml_service.predict_anomaly(request)

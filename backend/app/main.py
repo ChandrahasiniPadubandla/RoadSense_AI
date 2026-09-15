@@ -26,6 +26,8 @@ from app.routers import alert
 from app.routers import geocoding
 from app.routers import emergency
 from app.routers import ml
+from app.routers import anomaly
+from app.routers import accident_hotspots
 from app.routers import reports
 
 from app.routers.auth import router as auth_router
@@ -160,6 +162,14 @@ app.include_router(
 app.include_router(
     ml.router,
     prefix="/api/ml"
+)
+app.include_router(
+    anomaly.router,
+    prefix="/api/anomaly"
+)
+app.include_router(
+    accident_hotspots.router,
+    prefix="/api/hotspots"
 )
 
 
