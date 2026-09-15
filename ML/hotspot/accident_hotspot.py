@@ -4,7 +4,7 @@ from pathlib import Path
 DATASET_PATH = (
     Path(__file__).resolve().parent.parent
     / "dataset"
-    / "traffic_accident_cleaned_10000.csv"
+    / "traffic_accident_balanced_10000.csv"
 )
 
 df = pd.read_csv(DATASET_PATH)
@@ -34,6 +34,15 @@ def get_accident_hotspots(top_n=15):
         .reset_index(drop=True)
     )
 
+    # Attach a representative road_id for each location
+    road_for_location = (
+        accident_data
+        .groupby("location")["road_id"]
+        .agg(lambda ids: ids.mode().iloc[0])
+        .to_dict()
+    )
+    hotspots["road_id"] = hotspots["location"].map(road_for_location)
+
     # Assign risk level based on accident count
     def get_risk_level(count):
         if count >= 700:
@@ -61,6 +70,7 @@ if __name__ == "__main__":
     for index, hotspot in enumerate(hotspots, start=1):
 
         print(f"Accident Hotspot #{index}")
+        print(f"Road ID: {hotspot['road_id']}")
         print(f"Location: {hotspot['location']}")
         print(f"Latitude: {hotspot['latitude']}")
         print(f"Longitude: {hotspot['longitude']}")

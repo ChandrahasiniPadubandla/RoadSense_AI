@@ -43,6 +43,7 @@ class AnomalyPredictionResponse(BaseModel):
 
 
 class HotspotItem(BaseModel):
+    road_id: str
     location: str
     latitude: float
     longitude: float
