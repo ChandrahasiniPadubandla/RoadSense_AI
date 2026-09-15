@@ -68,7 +68,33 @@ def resolve_route_bundle(
     if target_time is None:
         target_time = now + timedelta(minutes=30)
 
-    # 1. Resolve real latitude & longitude
+    # 1. If road_id is explicitly provided, query the road entity first
+    road = None
+    if road_id:
+        road = db.query(Road).filter(Road.road_id == road_id).first()
+        if not road:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "ROAD_NOT_FOUND",
+                    "message": f"Road with ID '{road_id}' was not found in the database.",
+                    "field": "road_id"
+                }
+            )
+        if start_lat is None and road.start_location is not None:
+            pt = to_shape(road.start_location)
+            start_lat = pt.y
+            start_lng = pt.x
+        if end_lat is None and road.end_location is not None:
+            pt = to_shape(road.end_location)
+            end_lat = pt.y
+            end_lng = pt.x
+        if not start_name:
+            start_name = road.road_name
+        if not end_name:
+            end_name = road.road_name
+
+    # 2. Resolve real latitude & longitude
     s_lat = start_lat
     s_lng = start_lng
     e_lat = end_lat
@@ -87,24 +113,45 @@ def resolve_route_bundle(
             e_lat = geo_results[0]["latitude"]
             e_lng = geo_results[0]["longitude"]
 
+    # Strict check: Start and destination coordinates must be provided and resolvable
+    if s_lat is None or s_lng is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "MISSING_START_COORDINATES",
+                "message": f"Start coordinates could not be resolved for '{start_name or 'unspecified'}'. Please specify a valid origin location or exact latitude/longitude.",
+                "field": "start_location"
+            }
+        )
+
+    if e_lat is None or e_lng is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "MISSING_END_COORDINATES",
+                "message": f"Destination coordinates could not be resolved for '{end_name or 'unspecified'}'. Please specify a valid destination location or exact latitude/longitude.",
+                "field": "end_location"
+            }
+        )
+
     # Reverse geocode labels if user only passed coordinates (e.g. Map Click or GPS)
     start_label = start_name
-    if not start_label and s_lat is not None and s_lng is not None:
+    if not start_label:
         rev = reverse_geocode(s_lat, s_lng)
         if rev:
-            start_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood")
+            start_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
+    if not start_label:
+        start_label = f"Location [{s_lat:.4f}, {s_lng:.4f}]"
 
     end_label = end_name
-    if not end_label and e_lat is not None and e_lng is not None:
+    if not end_label:
         rev = reverse_geocode(e_lat, e_lng)
         if rev:
-            end_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood")
+            end_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
+    if not end_label:
+        end_label = f"Location [{e_lat:.4f}, {e_lng:.4f}]"
 
-    # 2. Match or locate Road entity using PostGIS spatial snapping
-    road = None
-    if road_id:
-        road = db.query(Road).filter(Road.road_id == road_id).first()
-
+    # 3. Match or locate Road entity strictly from the database if not yet resolved
     if not road and s_lat is not None and s_lng is not None:
         road = find_nearest_road_by_coordinates(db, s_lat, s_lng)
 
@@ -113,43 +160,53 @@ def resolve_route_bundle(
         road = db.query(Road).filter(Road.road_name.ilike(f"%{search_term}%")).first()
 
     if not road:
-        road = db.query(Road).filter(Road.is_active == True).first()
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "ROAD_NOT_FOUND",
+                "message": f"No registered road found in the database near route from '{start_label}' to '{end_label}' (Coordinates: [{s_lat}, {s_lng}] -> [{e_lat}, {e_lng}]). Defaults are disabled; please register this road corridor in the database first.",
+                "coordinates": {"start": [s_lat, s_lng], "end": [e_lat, e_lng]}
+            }
+        )
 
-    # Extract coordinates from road if coordinates were still not resolved
-    if road:
-        if s_lat is None and road.start_location is not None:
-            pt = to_shape(road.start_location)
-            s_lat = pt.y
-            s_lng = pt.x
-        if e_lat is None and road.end_location is not None:
-            pt = to_shape(road.end_location)
-            e_lat = pt.y
-            e_lng = pt.x
+    # Validate that all required road specifications are present in the database
+    missing_road_fields = []
+    if not road.road_type:
+        missing_road_fields.append("road_type")
+    if road.road_capacity is None:
+        missing_road_fields.append("road_capacity")
+    if road.speed_limit is None:
+        missing_road_fields.append("speed_limit")
+    if road.number_of_lanes is None:
+        missing_road_fields.append("number_of_lanes")
+    if not road.road_condition:
+        missing_road_fields.append("road_condition")
 
-    s_lat = s_lat if s_lat is not None else 17.4156
-    s_lng = s_lng if s_lng is not None else 78.4347
-    e_lat = e_lat if e_lat is not None else 17.4435
-    e_lng = e_lng if e_lng is not None else 78.3772
-
-    if not start_label:
-        start_label = road.road_name.split()[0] if road else "Origin"
-    if not end_label:
-        end_label = road.road_name.split()[-1] if road else "Destination"
+    if missing_road_fields:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "INCOMPLETE_ROAD_RECORD",
+                "message": f"Road '{road.road_name}' (ID: {road.road_id}) is missing required specification(s): {', '.join(missing_road_fields)}. Defaults are disabled; please update this road in the database with complete attributes.",
+                "missing_fields": missing_road_fields,
+                "road_id": str(road.road_id)
+            }
+        )
 
     # Real street driving route geometry & driving distance via OSRM
     driving_route = get_driving_route(s_lat, s_lng, e_lat, e_lng)
     distance_km = driving_route.get("distance_km") or calculate_haversine_distance(s_lat, s_lng, e_lat, e_lng)
     route_geometry = driving_route.get("coordinates") or [[s_lat, s_lng], [e_lat, e_lng]]
 
-    # 2. Road Conditions
+    # 2. Road Conditions (strictly real values from the Road entity)
     road_conditions = {
-        "road_id": str(road.road_id) if road else None,
-        "road_name": road.road_name if road else f"Corridor {start_label} to {end_label}",
-        "road_type": road.road_type if road and road.road_type else "Urban Road",
-        "road_capacity": road.road_capacity if road and road.road_capacity else 600,
-        "speed_limit": float(road.speed_limit) if road and road.speed_limit else 50.0,
-        "number_of_lanes": road.number_of_lanes if road and road.number_of_lanes else 4,
-        "road_condition": road.road_condition if road and road.road_condition else "Good"
+        "road_id": str(road.road_id),
+        "road_name": road.road_name,
+        "road_type": road.road_type,
+        "road_capacity": int(road.road_capacity),
+        "speed_limit": float(road.speed_limit),
+        "number_of_lanes": int(road.number_of_lanes),
+        "road_condition": road.road_condition
     }
 
     # 3. Weather Conditions (Live Real-Time Meteorological API — strictly real, NO fake fallbacks)
@@ -165,28 +222,54 @@ def resolve_route_bundle(
         "source": live_weather.get("source", "Open-Meteo Live API")
     }
 
-    # 4. Previous Records (from Traffic records)
-    traffic = None
-    if road:
-        traffic = (
-            db.query(TrafficRecord)
-            .filter(TrafficRecord.road_id == road.road_id)
-            .order_by(TrafficRecord.timestamp.desc())
-            .first()
-        )
+    # 4. Previous Records (strictly from recorded traffic data for this road)
+    traffic = (
+        db.query(TrafficRecord)
+        .filter(TrafficRecord.road_id == road.road_id)
+        .order_by(TrafficRecord.timestamp.desc())
+        .first()
+    )
+
     if not traffic:
-        traffic = db.query(TrafficRecord).order_by(TrafficRecord.timestamp.desc()).first()
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "NO_TRAFFIC_RECORDS",
+                "message": f"No traffic records found in the database for road '{road.road_name}' (ID: {road.road_id}). Defaults are disabled; real recorded traffic data is required for prediction.",
+                "road_id": str(road.road_id),
+                "road_name": road.road_name
+            }
+        )
+
+    missing_traffic_fields = []
+    if traffic.vehicle_count is None:
+        missing_traffic_fields.append("vehicle_count")
+    if traffic.average_speed is None:
+        missing_traffic_fields.append("average_speed")
+    if traffic.traffic_density is None:
+        missing_traffic_fields.append("traffic_density")
+    if not traffic.congestion_level:
+        missing_traffic_fields.append("congestion_level")
+
+    if missing_traffic_fields:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "INCOMPLETE_TRAFFIC_RECORD",
+                "message": f"Latest traffic record for road '{road.road_name}' is missing required field(s): {', '.join(missing_traffic_fields)}. Defaults are disabled; real recorded data is required.",
+                "missing_fields": missing_traffic_fields,
+                "road_id": str(road.road_id)
+            }
+        )
 
     # 5. Historical Accident Statistics
-    accidents_count = 0
-    if road:
-        accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
+    accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
 
     previous_records = {
-        "vehicle_count": traffic.vehicle_count if traffic else 220,
-        "average_speed": float(traffic.average_speed) if traffic and traffic.average_speed else 40.0,
-        "traffic_density": float(traffic.traffic_density) if traffic and traffic.traffic_density else 42.0,
-        "previous_congestion": traffic.congestion_level if traffic else "LOW",
+        "vehicle_count": int(traffic.vehicle_count),
+        "average_speed": float(traffic.average_speed),
+        "traffic_density": float(traffic.traffic_density),
+        "previous_congestion": traffic.congestion_level,
         "historical_accidents": accidents_count
     }
 
@@ -230,6 +313,7 @@ def resolve_route_bundle(
         "previous_records": previous_records,
         "historical_accidents_count": accidents_count,
         "target_time": target_time,
+        "temporal_data": ml_features["temporal_data"],
         "ml_features": ml_features,
         "db": db
     }
@@ -311,35 +395,67 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             warnings.simplefilter("ignore")
             from prediction.predict_traffic_congesion import predict_congestion
 
-            road_data = bundle.get("road_conditions", {})
-            weather_data = bundle.get("weather_conditions", {})
-            prev_data = bundle.get("previous_records", {})
-            temporal = bundle.get("temporal_data", {})
+            road_data = bundle["road_conditions"]
+            weather_data = bundle["weather_conditions"]
+            prev_data = bundle["previous_records"]
+            temporal = bundle["temporal_data"]
 
             result = predict_congestion(
-                road_id=str(road_data.get("road_id") or "ROAD-01"),
-                location=str(bundle.get("start_label") or "Banjara Hills"),
-                latitude=float(bundle.get("start_latitude") or 17.4156),
-                longitude=float(bundle.get("start_longitude") or 78.4347),
-                road_type=str(road_data.get("road_type") or "Highway"),
-                hour=int(temporal.get("hour") or 18),
-                day_of_week=str(temporal.get("day_of_week") or "Friday"),
+                road_id=str(road_data["road_id"]),
+                location=str(bundle["start_label"]),
+                latitude=float(bundle["start_latitude"]),
+                longitude=float(bundle["start_longitude"]),
+                road_type=str(road_data["road_type"]),
+                hour=int(temporal["hour"]),
+                day_of_week=str(temporal["day_of_week"]),
                 holiday=1 if temporal.get("is_holiday") else 0,
-                vehicle_count=int(prev_data.get("vehicle_count") or 300),
-                average_speed=float(prev_data.get("average_speed") or 35.0),
-                traffic_density=float(prev_data.get("traffic_density") or 50.0),
-                road_capacity=int(road_data.get("road_capacity") or 1000),
-                previous_traffic=int(prev_data.get("vehicle_count") or 280),
-                weather=str(weather_data.get("weather_condition") or "Clear"),
-                rainfall=float(weather_data.get("rainfall") or 0.0),
-                temperature=float(weather_data.get("temperature") or 28.0),
-                visibility=float(weather_data.get("visibility") or 8.0),
-                road_condition=str(road_data.get("road_condition") or "Good"),
-                historical_accidents=int(bundle.get("historical_accidents_count") or 0)
+                vehicle_count=int(prev_data["vehicle_count"]),
+                average_speed=float(prev_data["average_speed"]),
+                traffic_density=float(prev_data["traffic_density"]),
+                road_capacity=int(road_data["road_capacity"]),
+                previous_traffic=int(prev_data["vehicle_count"]),
+                weather=str(weather_data["weather_condition"]),
+                rainfall=float(weather_data["rainfall"]),
+                temperature=float(weather_data["temperature"]),
+                visibility=float(weather_data["visibility"]),
+                road_condition=str(road_data["road_condition"]),
+                historical_accidents=int(bundle["historical_accidents_count"])
             )
 
-            cong_level = str(result.get("predicted_congestion") or "MEDIUM").upper()
+            cong_level = str(result["predicted_congestion"]).upper()
             exp_time = result.get("expected_congestion_time") or est_time
+
+            # Compute actual confidence from the trained model probabilities
+            conf_score = None
+            try:
+                import pandas as pd
+                from prediction.predict_traffic_congesion import model as tf_model
+                if hasattr(tf_model, "predict_proba"):
+                    new_df = pd.DataFrame([{
+                        "road_id": str(road_data["road_id"]),
+                        "location": str(bundle["start_label"]),
+                        "latitude": float(bundle["start_latitude"]),
+                        "longitude": float(bundle["start_longitude"]),
+                        "road_type": str(road_data["road_type"]),
+                        "hour": int(temporal["hour"]),
+                        "day_of_week": str(temporal["day_of_week"]),
+                        "holiday": 1 if temporal.get("is_holiday") else 0,
+                        "vehicle_count": int(prev_data["vehicle_count"]),
+                        "average_speed": float(prev_data["average_speed"]),
+                        "traffic_density": float(prev_data["traffic_density"]),
+                        "road_capacity": int(road_data["road_capacity"]),
+                        "previous_traffic": int(prev_data["vehicle_count"]),
+                        "weather": str(weather_data["weather_condition"]),
+                        "rainfall": float(weather_data["rainfall"]),
+                        "temperature": float(weather_data["temperature"]),
+                        "visibility": float(weather_data["visibility"]),
+                        "road_condition": str(road_data["road_condition"]),
+                        "historical_accidents": int(bundle["historical_accidents_count"])
+                    }])
+                    probs = tf_model.predict_proba(new_df)[0]
+                    conf_score = round(float(max(probs)) * 100.0, 1)
+            except Exception:
+                conf_score = None
 
             acc_pts = get_accidents_along_route(
                 db=bundle["db"],
@@ -348,15 +464,15 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 end_lat=bundle["end_latitude"],
                 end_lng=bundle["end_longitude"],
                 road_id=bundle["road"].road_id if bundle.get("road") else None,
-                risk_percentage=35.0,
-                risk_level="LOW",
+                risk_percentage=0.0,
+                risk_level="UNKNOWN",
                 route_coords=bundle.get("route_geometry")
             )
 
             return {
                 "congestion_level": cong_level,
                 "estimated_time": exp_time,
-                "confidence_score": 94.5,
+                "confidence_score": conf_score,
                 "route_geometry": bundle.get("route_geometry", []),
                 "accident_points": acc_pts,
                 "ml_source": "trained-model (RoadSense_AI/ML/model/traffic_congestion_random_forest.pkl)"
@@ -405,7 +521,7 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 return {
                     "risk_percentage": round(float(risk_pct), 1),
                     "risk_level": str(risk_lvl).upper(),
-                    "confidence_score": float(result.get("confidence_score") or 90.0),
+                    "confidence_score": float(result.get("confidence_score")) if result.get("confidence_score") is not None else None,
                     "ml_source": "external-ml-model"
                 }
         except HTTPException:
@@ -447,43 +563,44 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             warnings.simplefilter("ignore")
             from prediction.predict_accident_risk import predict_record
 
-            road_data = bundle.get("road_conditions", {})
-            weather_data = bundle.get("weather_conditions", {})
-            prev_data = bundle.get("previous_records", {})
-            temporal = bundle.get("temporal_data", {})
+            road_data = bundle["road_conditions"]
+            weather_data = bundle["weather_conditions"]
+            prev_data = bundle["previous_records"]
+            temporal = bundle["temporal_data"]
 
             # Format categories to uppercase for OneHotEncoder matching
-            r_type = str(road_data.get("road_type") or "URBAN ROAD").upper()
-            w_cond = str(weather_data.get("weather_condition") or "CLEAR").upper()
-            rd_cond = str(road_data.get("road_condition") or "GOOD").upper()
-            day_str = str(temporal.get("day_of_week") or "FRIDAY").upper()
-            prev_cong = str(prev_data.get("previous_congestion") or "MEDIUM").upper()
+            r_type = str(road_data["road_type"]).upper()
+            w_cond = str(weather_data["weather_condition"]).upper()
+            rd_cond = str(road_data["road_condition"]).upper()
+            day_str = str(temporal["day_of_week"]).upper()
+            prev_cong = str(prev_data["previous_congestion"]).upper()
 
             record = {
-                "location": str(bundle.get("start_label") or "Banjara Hills"),
-                "latitude": float(bundle.get("start_latitude") or 17.4156),
-                "longitude": float(bundle.get("start_longitude") or 78.4347),
+                "location": str(bundle["start_label"]),
+                "latitude": float(bundle["start_latitude"]),
+                "longitude": float(bundle["start_longitude"]),
                 "road_type": r_type,
-                "hour": int(temporal.get("hour") or 18),
+                "hour": int(temporal["hour"]),
                 "day_of_week": day_str,
                 "holiday": 1 if temporal.get("is_holiday") else 0,
-                "vehicle_count": int(prev_data.get("vehicle_count") or 300),
-                "average_speed": float(prev_data.get("average_speed") or 35.0),
-                "traffic_density": float(prev_data.get("traffic_density") or 50.0),
-                "road_capacity": int(road_data.get("road_capacity") or 1000),
-                "previous_traffic": int(prev_data.get("vehicle_count") or 280),
+                "vehicle_count": int(prev_data["vehicle_count"]),
+                "average_speed": float(prev_data["average_speed"]),
+                "traffic_density": float(prev_data["traffic_density"]),
+                "road_capacity": int(road_data["road_capacity"]),
+                "previous_traffic": int(prev_data["vehicle_count"]),
                 "weather": w_cond,
-                "rainfall": float(weather_data.get("rainfall") or 0.0),
-                "temperature": float(weather_data.get("temperature") or 28.0),
-                "visibility": float(weather_data.get("visibility") or 8.0),
+                "rainfall": float(weather_data["rainfall"]),
+                "temperature": float(weather_data["temperature"]),
+                "visibility": float(weather_data["visibility"]),
                 "road_condition": rd_cond,
-                "historical_accidents": int(bundle.get("historical_accidents_count") or 0),
+                "historical_accidents": int(bundle["historical_accidents_count"]),
                 "congestion_level": prev_cong
             }
 
             result = predict_record(record)
-            risk_pct = float(result.get("accident_risk") or 50.0)
-            risk_lvl = str(result.get("accident_risk_level") or "MEDIUM").upper()
+            risk_pct = float(result["accident_risk"])
+            risk_lvl = str(result["accident_risk_level"]).upper()
+            conf_score = round(float(result.get("accident_risk", 0.0)), 1)
 
             acc_pts = get_accidents_along_route(
                 db=bundle["db"],
@@ -500,7 +617,7 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "risk_percentage": round(risk_pct, 1),
                 "risk_level": risk_lvl,
-                "confidence_score": 93.0,
+                "confidence_score": conf_score,
                 "route_geometry": bundle.get("route_geometry", []),
                 "accident_points": acc_pts,
                 "ml_source": "trained-model (RoadSense_AI/ML/model/accident_risk_model.pkl)"

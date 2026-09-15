@@ -109,7 +109,7 @@ def predict_route_traffic(
             prediction_time=now,
             target_time=target_time,
             predicted_congestion=ml_result["congestion_level"],
-            predicted_vehicle_count=int(bundle["previous_records"].get("vehicle_count") or 250),
+            predicted_vehicle_count=int(bundle["previous_records"]["vehicle_count"]),
             confidence_score=ml_result.get("confidence_score"),
             created_at=now
         )
@@ -209,7 +209,7 @@ def run_traffic_prediction(
             prediction_time=now,
             target_time=target_time,
             predicted_congestion=ml_result["congestion_level"],
-            predicted_vehicle_count=req.predicted_vehicle_count or int(bundle["previous_records"].get("vehicle_count") or 250),
+            predicted_vehicle_count=int(req.predicted_vehicle_count if req.predicted_vehicle_count is not None else bundle["previous_records"]["vehicle_count"]),
             confidence_score=ml_result.get("confidence_score"),
             created_at=now
         )
@@ -238,9 +238,9 @@ def run_traffic_prediction(
         estimated_time=ml_result["estimated_time"],
         target_time=target_time,
         predicted_congestion=ml_result["congestion_level"],
-        predicted_vehicle_count=req.predicted_vehicle_count or int(bundle["previous_records"].get("vehicle_count") or 250),
+        predicted_vehicle_count=int(req.predicted_vehicle_count if req.predicted_vehicle_count is not None else bundle["previous_records"]["vehicle_count"]),
         confidence_score=ml_result.get("confidence_score"),
-        class_probabilities={ml_result["congestion_level"]: ml_result.get("confidence_score", 90.0)},
+        class_probabilities={ml_result["congestion_level"]: ml_result.get("confidence_score")},
         created_at=now
     )
 
@@ -325,7 +325,7 @@ def run_traffic_pipeline(
             prediction_time=now,
             target_time=target_time,
             predicted_congestion=ml_result["congestion_level"],
-            predicted_vehicle_count=int(bundle["previous_records"].get("vehicle_count") or 250),
+            predicted_vehicle_count=int(bundle["previous_records"]["vehicle_count"]),
             confidence_score=ml_result.get("confidence_score"),
             created_at=now
         )

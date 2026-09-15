@@ -117,18 +117,19 @@ def reverse_geocode(latitude: float, longitude: float) -> Optional[Dict[str, Any
         return None
 
 
-def find_nearest_road_by_coordinates(db: Session, latitude: float, longitude: float) -> Optional[Road]:
+def find_nearest_road_by_coordinates(db: Session, latitude: float, longitude: float, max_distance_meters: float = 3000.0) -> Optional[Road]:
     """
-    Uses PostGIS spatial indexing to find the closest road segment to given coordinates.
-    Falls back safely to point distance if route_geometry is missing.
+    Uses PostGIS spatial indexing to find the closest road segment to given coordinates within max_distance_meters.
+    Returns None if no road is within the threshold.
     """
     try:
+        from geoalchemy2 import func
         point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        # 1. Try finding closest road geometry
         road = (
             db.query(Road)
             .filter(Road.route_geometry.isnot(None))
-            .order_by(ST_Distance(Road.route_geometry, point))
+            .filter(func.ST_DWithin(func.geography(Road.route_geometry), func.geography(point), max_distance_meters))
+            .order_by(func.ST_Distance(func.geography(Road.route_geometry), func.geography(point)))
             .first()
         )
         if road:
@@ -136,13 +137,14 @@ def find_nearest_road_by_coordinates(db: Session, latitude: float, longitude: fl
     except Exception as err:
         logger.debug("PostGIS route_geometry distance query failed: %s", err)
 
-    # 2. Try start_location point distance
     try:
+        from geoalchemy2 import func
         point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
         road = (
             db.query(Road)
             .filter(Road.start_location.isnot(None))
-            .order_by(ST_Distance(Road.start_location, point))
+            .filter(func.ST_DWithin(func.geography(Road.start_location), func.geography(point), max_distance_meters))
+            .order_by(func.ST_Distance(func.geography(Road.start_location), func.geography(point)))
             .first()
         )
         if road:
@@ -150,21 +152,8 @@ def find_nearest_road_by_coordinates(db: Session, latitude: float, longitude: fl
     except Exception as err:
         logger.debug("PostGIS start_location distance query failed: %s", err)
 
-    # 3. Python-level fallback for geometry shapes
-    all_roads = db.query(Road).filter(Road.start_location.isnot(None)).all()
-    best_dist = float("inf")
-    best_road = None
-    for r in all_roads:
-        try:
-            pt = to_shape(r.start_location)
-            d = (pt.y - latitude) ** 2 + (pt.x - longitude) ** 2
-            if d < best_dist:
-                best_dist = d
-                best_road = r
-        except Exception:
-            continue
+    return None
 
-    return best_road
 
 
 # In-memory driving route cache: "(round(lat1, 4), round(lng1, 4), round(lat2, 4), round(lng2, 4))" -> route dict
