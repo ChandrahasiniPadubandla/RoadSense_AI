@@ -25,6 +25,7 @@ from app.routers import accident_predictions
 from app.routers import alert
 from app.routers import geocoding
 from app.routers import emergency
+from app.routers import ml
 
 from app.routers.auth import router as auth_router
 
@@ -147,6 +148,12 @@ app.include_router(
 app.include_router(
     accident_predictions.router,
     dependencies=[Depends(get_current_user)]
+)
+
+# ML integration endpoints currently use deterministic placeholders.
+app.include_router(
+    ml.router,
+    prefix="/api/ml"
 )
 
 
