@@ -26,6 +26,7 @@ from app.routers import alert
 from app.routers import geocoding
 from app.routers import emergency
 from app.routers import ml
+from app.routers import reports
 
 from app.routers.auth import router as auth_router
 
@@ -148,6 +149,11 @@ app.include_router(
 app.include_router(
     accident_predictions.router,
     dependencies=[Depends(get_current_user)]
+)
+
+# Reports & Analytics Export (SUPER_ADMIN & TRAFFIC_AUTHORITY)
+app.include_router(
+    reports.router
 )
 
 # ML integration endpoints currently use deterministic placeholders.

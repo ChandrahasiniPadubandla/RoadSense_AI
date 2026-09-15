@@ -14,6 +14,7 @@ from app.schemas.traffic import (
     TrafficUpdate,
     TrafficResponse
 )
+from app.security import require_roles
 
 
 router = APIRouter(
@@ -24,7 +25,8 @@ router = APIRouter(
 
 @router.post(
     "",
-    response_model=TrafficResponse
+    response_model=TrafficResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def create_traffic_record(
     traffic: TrafficCreate,
@@ -154,7 +156,8 @@ def get_road_traffic(
 # UPDATE TRAFFIC RECORD
 @router.put(
     "/{traffic_id}",
-    response_model=TrafficResponse
+    response_model=TrafficResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def update_traffic_record(
     traffic_id: UUID,
@@ -226,7 +229,10 @@ def update_traffic_record(
 
 
 # DELETE TRAFFIC RECORD
-@router.delete("/{traffic_id}")
+@router.delete(
+    "/{traffic_id}",
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def delete_traffic_record(
     traffic_id: UUID,
     db: Session = Depends(get_db)

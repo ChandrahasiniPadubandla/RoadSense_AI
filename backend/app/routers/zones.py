@@ -7,6 +7,7 @@ from geoalchemy2.elements import WKTElement
 from app.database.connection import get_db
 from app.database.models import TrafficZone
 from app.schemas.traffic import ZoneCreate, ZoneResponse
+from app.security import require_roles
 
 
 router = APIRouter(
@@ -34,7 +35,11 @@ def _format_zone_response(zone: TrafficZone) -> ZoneResponse:
 
 
 # CREATE ZONE
-@router.post("/", response_model=ZoneResponse)
+@router.post(
+    "/",
+    response_model=ZoneResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def create_zone(
     zone: ZoneCreate,
     db: Session = Depends(get_db)
@@ -88,7 +93,11 @@ def get_zone(
 
 
 # UPDATE ZONE
-@router.put("/{zone_id}", response_model=ZoneResponse)
+@router.put(
+    "/{zone_id}",
+    response_model=ZoneResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def update_zone(
     zone_id: UUID,
     zone: ZoneCreate,
@@ -121,7 +130,10 @@ def update_zone(
 
 
 # DELETE ZONE
-@router.delete("/{zone_id}")
+@router.delete(
+    "/{zone_id}",
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def delete_zone(
     zone_id: UUID,
     db: Session = Depends(get_db)

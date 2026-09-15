@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models import EmergencyResponse
+from app.security import require_roles
 
 
 router = APIRouter(
@@ -90,7 +91,8 @@ def _serialize_emergency(emergency: EmergencyResponse):
 @router.post(
     "",
     summary="Create a new emergency response",
-    status_code=201
+    status_code=201,
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY", "EMERGENCY_RESPONSE"))]
 )
 def create_emergency(
     emergency_data: EmergencyCreateRequest,
@@ -222,7 +224,8 @@ def get_emergency(
 
 @router.patch(
     "/{response_id}",
-    summary="Update an emergency response"
+    summary="Update an emergency response",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "EMERGENCY_RESPONSE"))]
 )
 def update_emergency(
     response_id: UUID,
@@ -291,7 +294,8 @@ def update_emergency(
 
 @router.delete(
     "/{response_id}",
-    summary="Delete an emergency response"
+    summary="Delete an emergency response",
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
 )
 def delete_emergency(
     response_id: UUID,

@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import AuditLog
 from app.schemas.audit import AuditLogCreate, AuditLogResponse, AuditLogUpdate
-from app.security import get_current_user
+from app.security import get_current_user, require_roles
 
 
 router = APIRouter(
     prefix="/api/audit-logs",
-    tags=["Audit Logs"]
+    tags=["Audit Logs"],
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
 )
 
 

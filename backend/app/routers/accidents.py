@@ -5,13 +5,13 @@ from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
 
 from app.database.connection import get_db
-from app.database.models import Accident, Road
+from app.database.models import Accident, Road, User
 from app.schemas.accident import (
     AccidentCreate,
     AccidentUpdate,
     AccidentResponse
 )
-from app.security import get_current_user
+from app.security import get_current_user, require_roles
 
 
 router = APIRouter(
@@ -51,7 +51,7 @@ def _format_accident_response(accident: Accident) -> AccidentResponse:
 def create_accident(
     accident: AccidentCreate,
     db: Session = Depends(get_db),
-    current_user_id: UUID = Depends(get_current_user)
+    current_user: User = Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))
 ):
 
     # Check whether road exists
@@ -84,7 +84,7 @@ def create_accident(
         fatalities=accident.fatalities,
         injuries=accident.injuries,
         description=accident.description,
-        created_by=current_user_id
+        created_by=current_user.user_id
     )
 
     db.add(db_accident)
@@ -165,7 +165,8 @@ def get_accident(
 # UPDATE ACCIDENT
 @router.put(
     "/{accident_id}",
-    response_model=AccidentResponse
+    response_model=AccidentResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def update_accident(
     accident_id: UUID,
@@ -234,7 +235,10 @@ def update_accident(
 
 
 # DELETE ACCIDENT
-@router.delete("/{accident_id}")
+@router.delete(
+    "/{accident_id}",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
+)
 def delete_accident(
     accident_id: UUID,
     db: Session = Depends(get_db)

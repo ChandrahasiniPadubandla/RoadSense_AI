@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models import Alert
+from app.security import require_roles
 
 
 router = APIRouter(
@@ -70,7 +71,8 @@ def _serialize_alert(alert: Alert):
 @router.post(
     "",
     summary="Create a new accident alert",
-    status_code=201
+    status_code=201,
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def create_alert(
     alert_data: AlertCreateRequest,
@@ -166,7 +168,8 @@ def get_alert(
 
 @router.patch(
     "/{alert_id}",
-    summary="Update an alert"
+    summary="Update an alert",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY", "EMERGENCY_RESPONSE"))]
 )
 def update_alert(
     alert_id: UUID,
@@ -237,7 +240,8 @@ def update_alert(
 
 @router.delete(
     "/{alert_id}",
-    summary="Delete an alert"
+    summary="Delete an alert",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def delete_alert(
     alert_id: UUID,

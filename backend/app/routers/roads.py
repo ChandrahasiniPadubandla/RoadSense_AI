@@ -13,6 +13,7 @@ from app.schemas.traffic import (
     RoadUpdate,
     RoadResponse
 )
+from app.security import require_roles
 
 
 def fetch_osrm_linestring(
@@ -82,7 +83,8 @@ def _format_road_response(road: Road) -> RoadResponse:
 
 @router.post(
     "",
-    response_model=RoadResponse
+    response_model=RoadResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
 )
 def create_road(
     road: RoadCreate,
@@ -181,7 +183,8 @@ def get_road(
 
 @router.put(
     "/{road_id}",
-    response_model=RoadResponse
+    response_model=RoadResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
 )
 def update_road(
     road_id: UUID,
@@ -250,7 +253,10 @@ def update_road(
     return _format_road_response(db_road)
 
 
-@router.delete("/{road_id}")
+@router.delete(
+    "/{road_id}",
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def delete_road(
     road_id: UUID,
     db: Session = Depends(get_db)

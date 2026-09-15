@@ -27,6 +27,7 @@ from app.ml.prediction_engine import (
     resolve_route_bundle,
     trigger_ml_accident_model
 )
+from app.security import require_roles
 
 router = APIRouter(
     tags=["AI Accident Predictions"]
@@ -235,7 +236,8 @@ def run_accident_prediction(
 @router.post(
     "/api/predictions/accidents",
     response_model=AccidentPredictionResponse,
-    summary="Ingest Accident Risk Prediction (ML Pipeline)"
+    summary="Ingest Accident Risk Prediction (ML Pipeline)",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def store_accident_prediction(
     pred_in: AccidentPredictionCreate,
@@ -283,7 +285,8 @@ def store_accident_prediction(
 @router.post(
     "/api/ai/accidents/run-pipeline",
     response_model=AccidentPipelineRunResponse,
-    summary="Run Accident Risk Pipeline across All Active Roads"
+    summary="Run Accident Risk Pipeline across All Active Roads",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def run_accident_pipeline(
     db: Session = Depends(get_db)

@@ -29,6 +29,7 @@ from app.ml.prediction_engine import (
     trigger_ml_traffic_model,
     format_estimated_time
 )
+from app.security import require_roles
 
 router = APIRouter(
     tags=["AI Traffic Predictions"]
@@ -251,7 +252,8 @@ def run_traffic_prediction(
 @router.post(
     "/api/predictions/traffic",
     response_model=TrafficPredictionResponse,
-    summary="Ingest Traffic Congestion Prediction (ML Pipeline)"
+    summary="Ingest Traffic Congestion Prediction (ML Pipeline)",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def store_traffic_prediction(
     pred_in: TrafficPredictionCreate,
@@ -301,7 +303,8 @@ def store_traffic_prediction(
 @router.post(
     "/api/ai/traffic/run-pipeline",
     response_model=TrafficPipelineRunResponse,
-    summary="Run Traffic Congestion Pipeline across All Active Roads"
+    summary="Run Traffic Congestion Pipeline across All Active Roads",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )
 def run_traffic_pipeline(
     db: Session = Depends(get_db)
