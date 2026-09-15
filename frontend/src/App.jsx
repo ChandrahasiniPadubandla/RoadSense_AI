@@ -10,7 +10,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import LiveMap from './pages/LiveMap';
 import TrafficPrediction from './pages/TrafficPrediction';
-import AccidentPrediction from './pages/AccidentPrediction';      
+import AccidentPrediction from './pages/AccidentPrediction';
 import Unauthorized from './pages/Unauthorized';
 import NotFound from './pages/NotFound';
 
