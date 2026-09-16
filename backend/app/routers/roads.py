@@ -43,7 +43,7 @@ def fetch_osrm_linestring(
 
 
 router = APIRouter(
-    prefix="/api/roads",
+    prefix="/roads",
     tags=["Roads"]
 )
 

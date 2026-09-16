@@ -22,7 +22,7 @@ from app.schemas.admin import (
 
 
 router = APIRouter(
-    prefix="/api/admin",
+    prefix="/admin",
     tags=["Administration (Super Admin Only)"],
     dependencies=[Depends(require_roles("SUPER_ADMIN"))]
 )

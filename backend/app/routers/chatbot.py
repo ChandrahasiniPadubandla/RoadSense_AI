@@ -25,7 +25,7 @@ from app.chatbot.service import answer, ChatbotError
 from app.chatbot.config import is_configured
 
 router = APIRouter(
-    prefix="/api/chatbot",
+    prefix="/chatbot",
     tags=["AI Chatbot"]
 )
 

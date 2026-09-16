@@ -15,7 +15,7 @@ from app.schemas.dashboard import DashboardStatsResponse
 
 
 router = APIRouter(
-    prefix="/api/dashboard",
+    prefix="/dashboard",
     tags=["Dashboard"]
 )
 

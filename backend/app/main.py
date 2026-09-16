@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -58,6 +58,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================================
+# API PREFIX COMPATIBILITY (TRANSPARENT REWRITE FOR /api/* CALLS)
+# ============================================================
+
+@app.middleware("http")
+async def api_prefix_compatibility_middleware(request: Request, call_next):
+    path = request.scope.get("path", "")
+    if path.startswith("/api/"):
+        request.scope["path"] = path[4:]
+    return await call_next(request)
 
 
 # ============================================================
@@ -201,7 +213,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Authentication
 app.include_router(auth_router)
-app.include_router(auth_router, prefix="/api")
 
 # Chatbot
 app.include_router(chatbot.router)
@@ -221,11 +232,6 @@ app.include_router(
 # Alerts
 app.include_router(
     alert.router,
-    dependencies=[Depends(get_current_user)]
-)
-app.include_router(
-    alert.router,
-    prefix="/api",
     dependencies=[Depends(get_current_user)]
 )
 
@@ -297,15 +303,15 @@ app.include_router(
 # ML integration endpoints currently use deterministic placeholders.
 app.include_router(
     ml.router,
-    prefix="/api/ml"
+    prefix="/ml"
 )
 app.include_router(
     anomaly.router,
-    prefix="/api/anomaly"
+    prefix="/anomaly"
 )
 app.include_router(
     accident_hotspots.router,
-    prefix="/api/hotspots"
+    prefix="/hotspots"
 )
 
 
@@ -314,7 +320,7 @@ app.include_router(
 # ============================================================
 
 @app.get(
-    "/api/hotspots",
+    "/hotspots",
     tags=["Hotspots"]
 )
 def get_hotspots_list(

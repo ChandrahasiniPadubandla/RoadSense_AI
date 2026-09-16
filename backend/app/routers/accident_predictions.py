@@ -54,7 +54,7 @@ def _format_accident_response(p: AccidentPrediction, road_name: Optional[str] = 
 # =========================================================
 
 @router.post(
-    "/api/predictions/accidents/route",
+    "/predictions/accidents/route",
     response_model=RouteAccidentPredictionResponse,
     summary="Predict Accident Risk for User Start & End Locations"
 )
@@ -153,7 +153,7 @@ def predict_route_accident(
 # =========================================================
 
 @router.post(
-    "/api/predictions/accidents/predict",
+    "/predictions/accidents/predict",
     response_model=AccidentPredictionRunResponse,
     summary="Run Accident Risk Prediction Model"
 )
@@ -234,7 +234,7 @@ def run_accident_prediction(
 # =========================================================
 
 @router.post(
-    "/api/predictions/accidents",
+    "/predictions/accidents",
     response_model=AccidentPredictionResponse,
     summary="Ingest Accident Risk Prediction (ML Pipeline)",
     dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
@@ -283,7 +283,7 @@ def store_accident_prediction(
 
 
 @router.post(
-    "/api/ai/accidents/run-pipeline",
+    "/ai/accidents/run-pipeline",
     response_model=AccidentPipelineRunResponse,
     summary="Run Accident Risk Pipeline across All Active Roads",
     dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
@@ -341,7 +341,7 @@ def run_accident_pipeline(
 # =========================================================
 
 @router.get(
-    "/api/predictions/accidents/latest",
+    "/predictions/accidents/latest",
     response_model=List[AccidentPredictionResponse],
     summary="Get Latest Accident Risk Predictions Across Roads"
 )
@@ -375,7 +375,7 @@ def get_latest_accident_predictions(
 
 
 @router.get(
-    "/api/predictions/accidents/road/{road_id}",
+    "/predictions/accidents/road/{road_id}",
     response_model=List[AccidentPredictionResponse],
     summary="Get Accident Risk History for a Specific Road"
 )

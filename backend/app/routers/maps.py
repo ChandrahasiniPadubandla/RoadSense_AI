@@ -15,7 +15,7 @@ from app.database.models import (
 )
 
 router = APIRouter(
-    prefix="/api/map",
+    prefix="/map",
     tags=["Map Visualization"]
 )
 

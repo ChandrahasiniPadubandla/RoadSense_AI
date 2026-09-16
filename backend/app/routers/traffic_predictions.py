@@ -63,7 +63,7 @@ def _format_traffic_response(p: TrafficPrediction, road_name: Optional[str] = No
 # =========================================================
 
 @router.post(
-    "/api/predictions/traffic/route",
+    "/predictions/traffic/route",
     response_model=RouteTrafficPredictionResponse,
     summary="Predict Traffic for User Start & End Locations"
 )
@@ -161,7 +161,7 @@ def predict_route_traffic(
 # =========================================================
 
 @router.post(
-    "/api/predictions/traffic/predict",
+    "/predictions/traffic/predict",
     response_model=TrafficPredictionRunResponse,
     summary="Run Traffic Congestion Prediction Model"
 )
@@ -250,7 +250,7 @@ def run_traffic_prediction(
 # =========================================================
 
 @router.post(
-    "/api/predictions/traffic",
+    "/predictions/traffic",
     response_model=TrafficPredictionResponse,
     summary="Ingest Traffic Congestion Prediction (ML Pipeline)",
     dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
@@ -301,7 +301,7 @@ def store_traffic_prediction(
 
 
 @router.post(
-    "/api/ai/traffic/run-pipeline",
+    "/ai/traffic/run-pipeline",
     response_model=TrafficPipelineRunResponse,
     summary="Run Traffic Congestion Pipeline across All Active Roads",
     dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
@@ -361,7 +361,7 @@ def run_traffic_pipeline(
 # =========================================================
 
 @router.get(
-    "/api/predictions/traffic/latest",
+    "/predictions/traffic/latest",
     response_model=List[TrafficPredictionResponse],
     summary="Get Latest Traffic Predictions Across Roads"
 )
@@ -395,7 +395,7 @@ def get_latest_traffic_predictions(
 
 
 @router.get(
-    "/api/predictions/traffic/road/{road_id}",
+    "/predictions/traffic/road/{road_id}",
     response_model=List[TrafficPredictionResponse],
     summary="Get Traffic Predictions Timeline for a Specific Road"
 )
@@ -427,7 +427,7 @@ def get_road_traffic_predictions(
 # =========================================================
 
 @router.get(
-    "/api/predictions/summary",
+    "/predictions/summary",
     response_model=List[RoadRiskSummary],
     summary="Integrated Road Prediction & Safety Summary"
 )

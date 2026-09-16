@@ -11,7 +11,7 @@ from app.security import require_roles
 
 
 router = APIRouter(
-    prefix="/api/zones",
+    prefix="/zones",
     tags=["Traffic Zones"]
 )
 

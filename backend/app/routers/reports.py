@@ -23,7 +23,7 @@ from app.security import require_roles
 
 
 router = APIRouter(
-    prefix="/api/reports",
+    prefix="/reports",
     tags=["Reports & Analytics Export"],
     dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
 )

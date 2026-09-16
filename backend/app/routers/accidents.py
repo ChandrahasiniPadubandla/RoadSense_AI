@@ -15,7 +15,7 @@ from app.security import get_current_user, require_roles
 
 
 router = APIRouter(
-    prefix="/api/accidents",
+    prefix="/accidents",
     tags=["Accidents"]
 )
 

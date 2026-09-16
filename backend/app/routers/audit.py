@@ -11,7 +11,7 @@ from app.security import get_current_user, require_roles
 
 
 router = APIRouter(
-    prefix="/api/audit-logs",
+    prefix="/audit-logs",
     tags=["Audit Logs"],
     dependencies=[Depends(require_roles("SUPER_ADMIN"))]
 )

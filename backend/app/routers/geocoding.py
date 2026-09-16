@@ -20,7 +20,7 @@ from app.services.geocoding import (
 logger = logging.getLogger("roadsense.geocoding_router")
 
 router = APIRouter(
-    prefix="/api/geo",
+    prefix="/geo",
     tags=["Geocoding & Spatial Location"]
 )
 

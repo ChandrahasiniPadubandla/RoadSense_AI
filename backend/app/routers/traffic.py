@@ -18,8 +18,8 @@ from app.security import require_roles
 
 
 router = APIRouter(
-    prefix="/api/traffic",
-    tags=["Traffic Management"]
+    prefix="/traffic",
+    tags=["Traffic"]
 )
 
 

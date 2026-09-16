@@ -9,7 +9,7 @@ from app.database.models import Road
 from app.services.weather import get_live_weather
 
 router = APIRouter(
-    prefix="/api/weather",
+    prefix="/weather",
     tags=["Real-Time Weather Telemetry"]
 )
 
