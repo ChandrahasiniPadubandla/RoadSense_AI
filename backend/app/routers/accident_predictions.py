@@ -184,7 +184,7 @@ def run_accident_prediction(
         ml_result = {
             "risk_percentage": round(risk_pct, 1),
             "risk_level": risk_lvl.upper(),
-            "confidence_score": req.confidence_score or 90.0,
+            "confidence_score": req.confidence_score if req.confidence_score is not None else None,
             "ml_source": "caller-override"
         }
     else:

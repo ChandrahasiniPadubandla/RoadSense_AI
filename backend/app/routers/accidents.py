@@ -47,7 +47,7 @@ def _format_accident_response(accident: Accident) -> AccidentResponse:
 
 
 # CREATE ACCIDENT
-@router.post("/", response_model=AccidentResponse)
+@router.post("", response_model=AccidentResponse)
 def create_accident(
     accident: AccidentCreate,
     db: Session = Depends(get_db),
@@ -95,8 +95,8 @@ def create_accident(
 
 
 # GET ALL ACCIDENTS
-@router.get("/", response_model=list[AccidentResponse])
-def get_accidents(
+@router.get("", response_model=list[AccidentResponse])
+def get_all_accidents(
     db: Session = Depends(get_db)
 ):
 

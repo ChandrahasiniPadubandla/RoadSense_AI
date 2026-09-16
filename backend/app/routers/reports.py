@@ -57,6 +57,11 @@ def _generate_csv_response(filename: str, headers: list[str], rows: list[list[An
         "Restricted to SUPER_ADMIN and TRAFFIC_AUTHORITY roles."
     )
 )
+@router.get(
+    "",
+    summary="Export Traffic, Accident, Hotspot, and Prediction Reports (Root Route)",
+    include_in_schema=False
+)
 def export_report(
     report_type: str = Query(
         "summary",

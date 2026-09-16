@@ -353,7 +353,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 return {
                     "congestion_level": str(cong).upper(),
                     "estimated_time": result.get("estimated_time") or est_time,
-                    "confidence_score": float(result.get("confidence_score") or 92.0),
+                    "confidence_score": float(result.get("confidence_score")) if result.get("confidence_score") is not None else None,
                     "ml_source": "external-ml-model"
                 }
         except HTTPException:

@@ -196,7 +196,7 @@ def run_traffic_prediction(
         ml_result = {
             "congestion_level": req.predicted_congestion.upper(),
             "estimated_time": format_estimated_time(target_time),
-            "confidence_score": req.confidence_score or 90.0,
+            "confidence_score": req.confidence_score if req.confidence_score is not None else None,
             "ml_source": "caller-override"
         }
     else:

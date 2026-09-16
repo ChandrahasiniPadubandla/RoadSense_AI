@@ -36,7 +36,7 @@ def _format_zone_response(zone: TrafficZone) -> ZoneResponse:
 
 # CREATE ZONE
 @router.post(
-    "/",
+    "",
     response_model=ZoneResponse,
     dependencies=[Depends(require_roles("SUPER_ADMIN"))]
 )
@@ -63,7 +63,7 @@ def create_zone(
 
 
 # GET ALL ZONES
-@router.get("/", response_model=list[ZoneResponse])
+@router.get("", response_model=list[ZoneResponse])
 def get_zones(
     db: Session = Depends(get_db)
 ):
