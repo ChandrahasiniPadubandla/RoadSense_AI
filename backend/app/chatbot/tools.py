@@ -23,7 +23,7 @@ from typing import Optional
 from langchain_core.tools import tool
 
 from app.database.connection import SessionLocal
-from app.database.models import Road, TrafficRecord, Accident, AccidentHotspot, TrafficZone
+from app.database.models import Road, TrafficRecord, Accident, AccidentHotspot, TrafficZone, Alert
 from app.ml.prediction_engine import (
     resolve_route_bundle,
     trigger_ml_traffic_model,
@@ -230,6 +230,45 @@ def get_historical_accident_data(road_name: str) -> str:
 
 
 @tool
+def get_active_alerts(road_name: Optional[str] = None, limit: int = 10) -> str:
+    """Get REAL active alerts from the alerts table (accident, congestion,
+    road, or emergency alerts that are currently ACTIVE, not yet resolved).
+    Optionally pass road_name to filter to alerts for one specific road. Use
+    this when the user asks what alerts/warnings are currently active, or
+    whether a specific road has any active alert."""
+    db = SessionLocal()
+    try:
+        query = db.query(Alert).filter(Alert.status == "ACTIVE")
+
+        if road_name:
+            road = _find_road(db, road_name)
+            if not road:
+                return f"'{road_name}' does not match any road in RoadSense AI. Try list_roads to see known road names."
+            query = query.filter(Alert.road_id == road.road_id)
+
+        alerts = (
+            query
+            .order_by(Alert.created_at.desc())
+            .limit(max(1, min(limit, 30)))
+            .all()
+        )
+        if not alerts:
+            scope = f" for {road_name}" if road_name else ""
+            return f"There are no active alerts{scope} in RoadSense AI right now."
+
+        lines = []
+        for a in alerts:
+            road_label = a.road.road_name if a.road else "Unknown road"
+            lines.append(
+                f"- [{a.severity or 'unknown'}] {a.alert_type or 'ALERT'} on {road_label}: "
+                f"{a.message or 'No description'} (raised {a.created_at})"
+            )
+        return "Active alerts (real, from the database):\n" + "\n".join(lines)
+    finally:
+        db.close()
+
+
+@tool
 def get_traffic_statistics() -> str:
     """Get REAL system-wide traffic and accident KPI statistics (active
     roads, roads with high traffic, accident alerts, high-risk zones, total
@@ -261,5 +300,6 @@ ALL_TOOLS = [
     get_route_accident_risk,
     get_accident_hotspots,
     get_historical_accident_data,
+    get_active_alerts,
     get_traffic_statistics,
 ]

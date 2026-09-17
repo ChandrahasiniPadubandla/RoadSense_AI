@@ -5,8 +5,8 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8001)
-const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001';
+// Base URL: reads from VITE_API_BASE_URL (defaults to the local backend port)
+const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
 
 // Single configured Axios instance
@@ -479,6 +479,96 @@ export async function getAdminRoles() {
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/admin/roles:', error);
+    return [];
+  }
+}
+
+export async function updateUserRole(username, roleId) {
+  const { data } = await apiClient.patch(`/api/admin/users/${encodeURIComponent(username)}/role`, {
+    role_id: roleId,
+  });
+  return data;
+}
+
+export async function updateUserStatus(username, isActive) {
+  const { data } = await apiClient.patch(`/api/admin/users/${encodeURIComponent(username)}/status`, {
+    is_active: isActive,
+  });
+  return data;
+}
+
+export async function deleteUser(username) {
+  const { data } = await apiClient.delete(`/api/admin/users/${encodeURIComponent(username)}`);
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// 8. ROAD MANAGEMENT (full CRUD against /api/roads)
+// -----------------------------------------------------------------------------
+
+export async function getAllRoads(search = '') {
+  try {
+    const { data } = await apiClient.get('/api/roads', { params: search ? { search } : {} });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/roads:', error);
+    return [];
+  }
+}
+
+export async function createRoad(payload) {
+  const { data } = await apiClient.post('/api/roads', payload);
+  return data;
+}
+
+export async function updateRoad(roadId, payload) {
+  const { data } = await apiClient.put(`/api/roads/${roadId}`, payload);
+  return data;
+}
+
+export async function deleteRoad(roadId) {
+  const { data } = await apiClient.delete(`/api/roads/${roadId}`);
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// 9. TRAFFIC MANAGEMENT (traffic records against /api/traffic)
+// -----------------------------------------------------------------------------
+
+export async function getTrafficRecords() {
+  try {
+    const { data } = await apiClient.get('/api/traffic');
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/traffic:', error);
+    return [];
+  }
+}
+
+export async function createTrafficRecord(payload) {
+  const { data } = await apiClient.post('/api/traffic', payload);
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// 10. ALERTS — update/resolve (create/list already above)
+// -----------------------------------------------------------------------------
+
+export async function updateAlert(alertId, payload) {
+  const { data } = await apiClient.patch(`/api/alerts/${alertId}`, payload);
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// 11. ACCIDENT HOTSPOTS (real DB-backed list — see backend/app/routers/accident_hotspots.py)
+// -----------------------------------------------------------------------------
+
+export async function getHotspots(limit = 20) {
+  try {
+    const { data } = await apiClient.get('/api/hotspots', { params: { limit } });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/hotspots:', error);
     return [];
   }
 }

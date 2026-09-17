@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity,
@@ -34,21 +35,10 @@ export default function LandingPage() {
   // Mobile menu toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Theme / Mode Toggle State (Dark / Light Mode)
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    try {
-      const saved = localStorage.getItem('roadsense_theme');
-      return saved !== null ? saved === 'dark' : true;
-    } catch {
-      return true;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('roadsense_theme', isDarkMode ? 'dark' : 'light');
-    } catch { }
-  }, [isDarkMode]);
+  // Theme / Mode Toggle — now backed by the app-wide ThemeContext instead of
+  // page-local state, so the choice made here carries into the dashboard,
+  // login, and every other page (and vice versa).
+  const { isDarkMode, toggleTheme } = useTheme();
 
   // Copy email state
   const [copiedEmail, setCopiedEmail] = useState(false);
@@ -317,7 +307,7 @@ export default function LandingPage() {
             {/* Interactive Theme / Mode Toggle Button */}
             <button
               type="button"
-              onClick={() => setIsDarkMode((prev) => !prev)}
+              onClick={toggleTheme}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-mono transition-all shadow-sm group ${theme.toggleBtn}`}
               aria-label="Toggle theme display mode"
               title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}

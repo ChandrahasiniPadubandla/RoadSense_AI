@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import ProtectedRoute from './routes/ProtectedRoute';
+import RoleRoute from './routes/RoleRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 
 import Login from './pages/Login';
@@ -12,8 +13,14 @@ import Dashboard from './pages/Dashboard';
 import LiveMap from './pages/LiveMap';
 import TrafficPrediction from './pages/TrafficPrediction';
 import AccidentPrediction from './pages/AccidentPrediction';
+import TrafficManagement from './pages/TrafficManagement';
+import HotspotsPage from './pages/HotspotsPage';
+import AlertsPage from './pages/AlertsPage';
+import RoadManagement from './pages/RoadManagement';
+import UserManagement from './pages/UserManagement';
 import Unauthorized from './pages/Unauthorized';
 import NotFound from './pages/NotFound';
+import { ROLES } from './utils/constants';
 
 export default function App() {
   return (
@@ -34,6 +41,19 @@ export default function App() {
           <Route path="/live-map" element={<LiveMap />} />
           <Route path="/traffic-prediction" element={<TrafficPrediction />} />
           <Route path="/Accident-Prediction" element={<AccidentPrediction />} />
+          <Route path="/hotspots" element={<HotspotsPage />} />
+          <Route path="/alerts" element={<AlertsPage />} />
+
+          {/* Super Admin + Traffic Authority only */}
+          <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY]} />}>
+            <Route path="/traffic-management" element={<TrafficManagement />} />
+            <Route path="/road-management" element={<RoadManagement />} />
+          </Route>
+
+          {/* Super Admin only */}
+          <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN]} />}>
+            <Route path="/user-management" element={<UserManagement />} />
+          </Route>
         </Route>
       </Route>
 

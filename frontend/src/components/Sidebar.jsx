@@ -8,6 +8,11 @@ const NAV_ITEMS = [
   { to: '/live-map', label: 'Map', roles: 'ALL' },
   { to: '/traffic-prediction', label: 'Traffic Prediction', roles: 'ALL' },
   { to: '/Accident-Prediction', label: 'Accident Prediction', roles: 'ALL' },
+  { to: '/traffic-management', label: 'Traffic Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
+  { to: '/hotspots', label: 'Accident Hotspots', roles: 'ALL' },
+  { to: '/alerts', label: 'Alerts', roles: 'ALL' },
+  { to: '/road-management', label: 'Road Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
+  { to: '/user-management', label: 'User Management', roles: [ROLES.SUPER_ADMIN] },
 ];
 
 export default function Sidebar() {
@@ -18,12 +23,12 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col border-r border-asphalt-700 bg-asphalt-900 md:flex">
-      <div className="border-b border-asphalt-700 px-5 py-5">
-        <p className="text-sm font-semibold tracking-tight text-asphalt-100">
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-asphalt-700 dark:bg-asphalt-900 md:flex">
+      <div className="border-b border-slate-200 px-5 py-5 dark:border-asphalt-700">
+        <p className="text-sm font-semibold tracking-tight text-slate-900 dark:text-asphalt-100">
           Smart Traffic System
         </p>
-        <p className="mt-0.5 text-xs text-asphalt-400">
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-asphalt-400">
           Prediction &amp; Monitoring
         </p>
       </div>
@@ -38,7 +43,7 @@ export default function Sidebar() {
               `block rounded-md px-3 py-2 text-sm transition-colors ${
                 isActive
                   ? 'bg-signal-blue/15 text-signal-blue'
-                  : 'text-asphalt-300 hover:bg-asphalt-800 hover:text-asphalt-100'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-asphalt-300 dark:hover:bg-asphalt-800 dark:hover:text-asphalt-100'
               }`
             }
           >

@@ -11,6 +11,11 @@ const TITLES = {
   '/map': 'Map',
   '/traffic-prediction': 'Traffic Prediction',
   '/Accident-Prediction': 'Accident Prediction',
+  '/traffic-management': 'Traffic Management',
+  '/hotspots': 'Accident Hotspots',
+  '/alerts': 'Alerts',
+  '/road-management': 'Road Management',
+  '/user-management': 'User Management',
 };
 
 export default function DashboardLayout() {
@@ -18,7 +23,7 @@ export default function DashboardLayout() {
   const title = TITLES[pathname] || 'Smart Traffic System';
 
   return (
-    <div className="flex h-screen bg-asphalt-950">
+    <div className="flex h-screen bg-slate-50 dark:bg-asphalt-950">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar title={title} />
