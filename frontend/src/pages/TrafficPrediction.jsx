@@ -206,9 +206,16 @@ export default function TrafficPrediction() {
                   {result.start_location} → {result.end_location}
                 </span>
               </div>
-              <p className="text-xs text-asphalt-400">
-                Matched road: <span className="text-asphalt-200">{result.road_name}</span>
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-asphalt-400">
+                  Matched road: <span className="text-asphalt-200 font-medium">{result.road_name}</span>
+                </p>
+                {result.ml_source && (
+                  <span className="inline-flex items-center rounded-full bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
+                    ⚡ {result.ml_source}
+                  </span>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>

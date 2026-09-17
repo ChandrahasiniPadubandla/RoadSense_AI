@@ -6,6 +6,7 @@ import ChatWidget from '../components/ChatWidget';
 
 const TITLES = {
   '/': 'Dashboard',
+  '/dashboard': 'Dashboard',
   '/live-map': 'Map',
   '/map': 'Map',
   '/traffic-prediction': 'Traffic Prediction',

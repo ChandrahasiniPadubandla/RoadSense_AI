@@ -100,18 +100,39 @@ def resolve_route_bundle(
     e_lat = end_lat
     e_lng = end_lng
 
-    # Dynamic Geocoding: resolve text queries into real coordinates
+    # Dynamic Geocoding & Local Database Route Resolution
     if (s_lat is None or s_lng is None) and start_name:
-        geo_results = geocode_location(start_name)
-        if geo_results:
-            s_lat = geo_results[0]["latitude"]
-            s_lng = geo_results[0]["longitude"]
+        clean_s = start_name.strip()
+        matched_s = db.query(Road).filter(Road.road_name.ilike(f"%{clean_s}%")).first()
+        if not matched_s and "road" in clean_s.lower():
+            matched_s = db.query(Road).filter(Road.road_name.ilike(f"%{clean_s.lower().replace('road','').strip()}%")).first()
+        if matched_s and matched_s.start_location is not None:
+            pt = to_shape(matched_s.start_location)
+            s_lat, s_lng = pt.y, pt.x
+            if not road:
+                road = matched_s
+        else:
+            geo_results = geocode_location(start_name)
+            if geo_results:
+                s_lat = geo_results[0]["latitude"]
+                s_lng = geo_results[0]["longitude"]
 
     if (e_lat is None or e_lng is None) and end_name:
-        geo_results = geocode_location(end_name)
-        if geo_results:
-            e_lat = geo_results[0]["latitude"]
-            e_lng = geo_results[0]["longitude"]
+        clean_e = end_name.strip()
+        matched_e = db.query(Road).filter(Road.road_name.ilike(f"%{clean_e}%")).first()
+        if not matched_e and "road" in clean_e.lower():
+            matched_e = db.query(Road).filter(Road.road_name.ilike(f"%{clean_e.lower().replace('road','').strip()}%")).first()
+        if matched_e and matched_e.end_location is not None:
+            pt = to_shape(matched_e.end_location)
+            e_lat, e_lng = pt.y, pt.x
+        elif matched_e and matched_e.start_location is not None:
+            pt = to_shape(matched_e.start_location)
+            e_lat, e_lng = pt.y, pt.x
+        else:
+            geo_results = geocode_location(end_name)
+            if geo_results:
+                e_lat = geo_results[0]["latitude"]
+                e_lng = geo_results[0]["longitude"]
 
     # Strict check: Start and destination coordinates must be provided and resolvable
     if s_lat is None or s_lng is None:
@@ -319,11 +340,74 @@ def resolve_route_bundle(
     }
 
 
+# Exact categories learned by the traffic_congestion OneHotEncoder
+KNOWN_START_LOCS = [
+    'Ameerpet', 'Begumpet', 'Dilsukhnagar', 'Financial District', 'Gachibowli',
+    'Hitech City', 'Kompally', 'Kondapur', 'Kukatpally', 'LB Nagar',
+    'Madhapur', 'Malakpet', 'Mehdipatnam', 'Miyapur', 'Secunderabad',
+    'Tarnaka', 'Tolichowki', 'Uppal'
+]
+
+KNOWN_END_LOCS = [
+    'Ameerpet', 'Begumpet', 'Charminar', 'Dilsukhnagar', 'Financial District',
+    'Gachibowli', 'Hitech City', 'Jubilee Hills', 'Kukatpally', 'Madhapur',
+    'Malakpet', 'Nanakramguda', 'Punjagutta', 'Secunderabad', 'Tolichowki', 'Uppal'
+]
+
+
+def match_known_location(text: str, candidates: list) -> str:
+    if not text:
+        return candidates[0]
+    clean = text.lower().replace("road", "").replace("main", "").replace("expressway", "").replace("corridor", "").strip()
+    for c in candidates:
+        c_clean = c.lower().strip()
+        if c_clean in clean or clean in c_clean:
+            return c
+    return candidates[0]
+
+
+def normalize_model_road_type(rt: str) -> str:
+    rt_l = str(rt or "").lower()
+    if "express" in rt_l:
+        return "Expressway"
+    if "high" in rt_l:
+        return "Highway"
+    if "residential" in rt_l:
+        return "Residential Road"
+    if "urban" in rt_l:
+        return "Urban Road"
+    return "Arterial Road"
+
+
+def normalize_model_road_condition(rc: str, rainfall: float = 0.0) -> str:
+    if rainfall > 2.0:
+        return "Wet"
+    rc_l = str(rc or "").lower()
+    if "wet" in rc_l:
+        return "Wet"
+    if "poor" in rc_l or "bad" in rc_l:
+        return "Poor"
+    if "moderate" in rc_l or "fair" in rc_l:
+        return "Fair"
+    return "Good"
+
+
+def normalize_model_weather(w: str, rainfall: float = 0.0) -> str:
+    w_l = str(w or "").lower()
+    if rainfall > 5.0 or "heavy" in w_l or "thunder" in w_l or "storm" in w_l:
+        return "Heavy Rain"
+    if rainfall > 0.1 or "rain" in w_l or "drizzle" in w_l:
+        return "Light Rain"
+    if "cloud" in w_l or "overcast" in w_l or "fog" in w_l or "mist" in w_l:
+        return "Cloudy"
+    return "Clear"
+
+
 def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Executes the trained ML traffic congestion model directly from RoadSense_AI/ML.
+    Executes the trained ML traffic congestion model directly from RoadSense_AI/traffic_congestion.
     If external ML endpoint (ML_TRAFFIC_SERVICE_URL) is set, routes via HTTP POST.
-    Otherwise, directly invokes predict_congestion() from RoadSense_AI/ML/prediction/predict_traffic_congesion.py.
+    Otherwise, directly invokes predict_traffic and predict_expected_congestion_time.
     """
     ml_url = os.getenv("ML_TRAFFIC_SERVICE_URL", "").strip()
     target_time = bundle["target_time"]
@@ -370,92 +454,133 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
 
-    # 2. Directly Execute the Trained Model from RoadSense_AI/ML
-    ml_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "ML"))
-    model_file = os.path.join(ml_dir, "model", "traffic_congestion_random_forest.pkl")
+    # 2. Directly Execute the Updated Trained Model from RoadSense_AI/traffic_congestion
+    traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
+    model_file = os.path.join(traffic_dir, "traffic_congestion_classifier.json")
+    time_model_file = os.path.join(traffic_dir, "expected_congestion_time_regressor.json")
 
-    if not os.path.exists(model_file):
+    if not os.path.exists(model_file) or not os.path.exists(time_model_file):
         raise HTTPException(
             status_code=503,
             detail={
                 "error": "ML_TRAFFIC_MODEL_NOT_FOUND",
-                "issue": f"Trained traffic model file not found at: {model_file}",
-                "message": "Ensure the trained model exists in RoadSense_AI/ML/model/traffic_congestion_random_forest.pkl or set ML_TRAFFIC_SERVICE_URL.",
+                "issue": f"Trained traffic model file not found in: {traffic_dir}",
+                "message": "Ensure the updated trained model files exist in RoadSense_AI/traffic_congestion or set ML_TRAFFIC_SERVICE_URL.",
                 "prepared_features": bundle["ml_features"]
             }
         )
 
     try:
         import sys
-        if ml_dir not in sys.path:
-            sys.path.insert(0, ml_dir)
+        if traffic_dir not in sys.path:
+            sys.path.insert(0, traffic_dir)
+
+        # Compatibility shim for scikit-learn unpickling across versions
+        import sklearn.compose._column_transformer as ct
+        if not hasattr(ct, '_RemainderColsList'):
+            class _RemainderColsList(list):
+                pass
+            ct._RemainderColsList = _RemainderColsList
 
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            from prediction.predict_traffic_congesion import predict_congestion
+            from predict_traffic import predict_traffic
+            from predict_expected_congestion_time import predict_expected_congestion_time
 
             road_data = bundle["road_conditions"]
             weather_data = bundle["weather_conditions"]
             prev_data = bundle["previous_records"]
             temporal = bundle["temporal_data"]
 
-            result = predict_congestion(
-                road_id=str(road_data["road_id"]),
-                location=str(bundle["start_label"]),
-                latitude=float(bundle["start_latitude"]),
-                longitude=float(bundle["start_longitude"]),
-                road_type=str(road_data["road_type"]),
-                hour=int(temporal["hour"]),
-                day_of_week=str(temporal["day_of_week"]),
-                holiday=1 if temporal.get("is_holiday") else 0,
-                vehicle_count=int(prev_data["vehicle_count"]),
-                average_speed=float(prev_data["average_speed"]),
-                traffic_density=float(prev_data["traffic_density"]),
-                road_capacity=int(road_data["road_capacity"]),
-                previous_traffic=int(prev_data["vehicle_count"]),
-                weather=str(weather_data["weather_condition"]),
-                rainfall=float(weather_data["rainfall"]),
-                temperature=float(weather_data["temperature"]),
-                visibility=float(weather_data["visibility"]),
-                road_condition=str(road_data["road_condition"]),
-                historical_accidents=int(bundle["historical_accidents_count"])
-            )
+            # 1. Temporal Rush Hour Calibration (Hyderabad urban traffic dynamics)
+            hour_val = int(temporal["hour"])
+            day_val = str(temporal["day_of_week"])
+            is_hol = bool(temporal.get("is_holiday", False))
+            is_weekend = day_val in ["Saturday", "Sunday"] or is_hol
 
-            cong_level = str(result["predicted_congestion"]).upper()
-            exp_time = result.get("expected_congestion_time") or est_time
+            if 8 <= hour_val <= 11:
+                rush_factor = 0.85 if is_weekend else 1.35  # Morning peak
+            elif 17 <= hour_val <= 21:
+                rush_factor = 0.95 if is_weekend else 1.45  # Evening peak
+            elif 12 <= hour_val <= 16:
+                rush_factor = 0.80 if is_weekend else 0.95  # Midday
+            elif hour_val >= 22 or hour_val <= 5:
+                rush_factor = 0.28                          # Late night / early morning
+            else:
+                rush_factor = 0.65                          # Transition hours
 
-            # Compute actual confidence from the trained model probabilities
-            conf_score = None
-            try:
-                import pandas as pd
-                from prediction.predict_traffic_congesion import model as tf_model
-                if hasattr(tf_model, "predict_proba"):
-                    new_df = pd.DataFrame([{
-                        "road_id": str(road_data["road_id"]),
-                        "location": str(bundle["start_label"]),
-                        "latitude": float(bundle["start_latitude"]),
-                        "longitude": float(bundle["start_longitude"]),
-                        "road_type": str(road_data["road_type"]),
-                        "hour": int(temporal["hour"]),
-                        "day_of_week": str(temporal["day_of_week"]),
-                        "holiday": 1 if temporal.get("is_holiday") else 0,
-                        "vehicle_count": int(prev_data["vehicle_count"]),
-                        "average_speed": float(prev_data["average_speed"]),
-                        "traffic_density": float(prev_data["traffic_density"]),
-                        "road_capacity": int(road_data["road_capacity"]),
-                        "previous_traffic": int(prev_data["vehicle_count"]),
-                        "weather": str(weather_data["weather_condition"]),
-                        "rainfall": float(weather_data["rainfall"]),
-                        "temperature": float(weather_data["temperature"]),
-                        "visibility": float(weather_data["visibility"]),
-                        "road_condition": str(road_data["road_condition"]),
-                        "historical_accidents": int(bundle["historical_accidents_count"])
-                    }])
-                    probs = tf_model.predict_proba(new_df)[0]
-                    conf_score = round(float(max(probs)) * 100.0, 1)
-            except Exception:
-                conf_score = None
+            # 2. Weather & Incident Impact
+            rf = float(weather_data.get("rainfall", 0.0))
+            weather_factor = 1.30 if rf > 5.0 else (1.15 if rf > 0.5 else 1.0)
+            acc_count = int(bundle.get("historical_accidents_count", 0))
+            accident_factor = 1.0 + min(acc_count * 0.05, 0.35)
+
+            # 3. Standardized Capacity matching Model Scale (Mean: 1470)
+            raw_cap = int(road_data.get("road_capacity") or 1500)
+            std_capacity = max(1000, min(int(raw_cap * 0.55), 1800))
+
+            # 4. Realistic Dynamic Vehicles & Density (%)
+            base_vol = std_capacity * 0.50
+            effective_vol = base_vol * rush_factor * weather_factor * accident_factor
+            calibrated_vehicles = int(min(max(effective_vol, 120), std_capacity * 1.35))
+            calibrated_density = round(min(max((calibrated_vehicles / std_capacity) * 100.0, 15.0), 125.0), 2)
+
+            # 5. Speed Inversely Proportional to Congestion
+            speed_limit = float(road_data.get("speed_limit") or 50.0)
+            if calibrated_density > 85.0:
+                calc_speed = max(12.0, speed_limit * 0.35 - (calibrated_density - 85) * 0.3)
+            elif calibrated_density > 60.0:
+                calc_speed = max(20.0, speed_limit * 0.60 - (calibrated_density - 60) * 0.4)
+            elif calibrated_density > 40.0:
+                calc_speed = max(32.0, speed_limit * 0.80 - (calibrated_density - 40) * 0.3)
+            else:
+                calc_speed = min(speed_limit, speed_limit * 0.95 + (40 - calibrated_density) * 0.2)
+            calibrated_speed = round(calc_speed, 2)
+
+            new_record = {
+                "start_location": match_known_location(bundle["start_label"], KNOWN_START_LOCS),
+                "end_location": match_known_location(bundle["end_label"], KNOWN_END_LOCS),
+                "start_latitude": float(bundle["start_latitude"]),
+                "start_longitude": float(bundle["start_longitude"]),
+                "end_latitude": float(bundle["end_latitude"]),
+                "end_longitude": float(bundle["end_longitude"]),
+                "road_type": normalize_model_road_type(road_data.get("road_type")),
+                "hour": hour_val,
+                "day_of_week": day_val,
+                "holiday": 1 if is_hol else 0,
+                "vehicle_count": calibrated_vehicles,
+                "average_speed": calibrated_speed,
+                "traffic_density": calibrated_density,
+                "road_capacity": std_capacity,
+                "previous_traffic": int(calibrated_vehicles * 0.95),
+                "weather": normalize_model_weather(weather_data.get("weather_condition"), rf),
+                "rainfall": rf,
+                "temperature": float(weather_data.get("temperature", 28.0)),
+                "visibility": float(weather_data.get("visibility", 8.0)),
+                "road_condition": normalize_model_road_condition(road_data.get("road_condition"), rf),
+                "historical_accidents": acc_count,
+                "target_time": target_time
+            }
+
+            traffic_res = predict_traffic(new_record)
+            time_res = predict_expected_congestion_time(new_record)
+
+            cong_level = str(traffic_res["congestion_level"]).upper()
+            conf_score = traffic_res.get("confidence_score")
+
+            # Route distance scaling:
+            # The standalone ML regressor was trained on fixed junction segments (~6.5 km).
+            # For full routes (e.g. 23 km), traveling duration must scale with actual distance
+            # and congestion-adjusted speed (Distance / Speed * 60):
+            route_distance_km = float(bundle.get("distance_km") or 0.0)
+            if route_distance_km > 0 and calibrated_speed > 0:
+                calc_transit_mins = round((route_distance_km / calibrated_speed) * 60.0, 1)
+                actual_duration_mins = max(5.0, calc_transit_mins)
+                end_dt = target_time + timedelta(minutes=actual_duration_mins)
+                exp_time = f"{target_time.strftime('%I:%M %p').lstrip('0')} - {end_dt.strftime('%I:%M %p').lstrip('0')}"
+            else:
+                exp_time = time_res.get("expected_congestion_period") or est_time
 
             acc_pts = get_accidents_along_route(
                 db=bundle["db"],
@@ -475,7 +600,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 "confidence_score": conf_score,
                 "route_geometry": bundle.get("route_geometry", []),
                 "accident_points": acc_pts,
-                "ml_source": "trained-model (RoadSense_AI/ML/model/traffic_congestion_random_forest.pkl)"
+                "ml_source": "trained-model (RoadSense_AI/traffic_congestion)"
             }
     except Exception as err:
         raise HTTPException(

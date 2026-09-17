@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.security import get_current_user
 from app.database.connection import get_db
-from app.database.models import AccidentHotspot, Accident
+from app.database.models import Road, TrafficRecord, Accident, Alert, AccidentHotspot
+from app.services.weather import get_live_weather
 
 from app.routers import zones
 from app.routers import roads
@@ -25,9 +26,6 @@ from app.routers import accident_predictions
 from app.routers import alert
 from app.routers import geocoding
 from app.routers import emergency
-from app.routers import ml
-from app.routers import anomaly
-from app.routers import accident_hotspots
 from app.routers import reports
 
 from app.routers.auth import router as auth_router
@@ -300,61 +298,81 @@ app.include_router(
     reports.router
 )
 
-# ML integration endpoints currently use deterministic placeholders.
-app.include_router(
-    ml.router,
-    prefix="/ml"
-)
-app.include_router(
-    anomaly.router,
-    prefix="/anomaly"
-)
-app.include_router(
-    accident_hotspots.router,
-    prefix="/hotspots"
-)
-
-
 # ============================================================
-# ACCIDENT HOTSPOTS
+# PUBLIC REAL-TIME TELEMETRY (100% REAL DATA — NO DUMMY DATA)
 # ============================================================
 
 @app.get(
-    "/hotspots",
-    tags=["Hotspots"]
+    "/public/telemetry",
+    tags=["Public Telemetry"],
+    summary="Get live database metrics, real monitored road corridors, and live weather"
 )
-def get_hotspots_list(
-    db: Session = Depends(get_db)
-):
-    hotspots = db.query(AccidentHotspot).all()
+def get_public_telemetry(db: Session = Depends(get_db)):
+    """
+    Returns 100% real database metrics and real-time Open-Meteo meteorological telemetry.
+    Contains zero synthetic or dummy fallback data.
+    """
+    total_roads = db.query(Road).count()
+    active_roads = db.query(Road).filter(Road.is_active == True).count()
+    total_traffic = db.query(TrafficRecord).count()
+    total_accidents = db.query(Accident).count()
+    total_alerts = db.query(Alert).filter(Alert.status == "ACTIVE").count()
 
-    if hotspots:
-        return [
-            {
-                "road_id": str(
-                    h.zone_id or h.hotspot_id
-                ),
-                "hotspot_id": str(h.hotspot_id),
-                "accident_count": h.accident_count or 0,
-                "risk_level": h.risk_level or "MODERATE"
-            }
-            for h in hotspots
-        ]
+    # Fetch top active real road corridors from the database
+    real_roads = (
+        db.query(Road)
+        .filter(Road.is_active == True)
+        .order_by(Road.road_name.asc())
+        .limit(6)
+        .all()
+    )
 
-    accidents = db.query(Accident).limit(20).all()
+    corridors = []
+    for r in real_roads:
+        latest_record = (
+            db.query(TrafficRecord)
+            .filter(TrafficRecord.road_id == r.road_id)
+            .order_by(TrafficRecord.timestamp.desc())
+            .first()
+        )
+        corridors.append({
+            "road_id": str(r.road_id),
+            "name": r.road_name,
+            "type": r.road_type,
+            "speed_limit": float(r.speed_limit) if r.speed_limit is not None else None,
+            "lanes": r.number_of_lanes,
+            "capacity": r.road_capacity,
+            "condition": r.road_condition,
+            "observed_speed": float(latest_record.average_speed) if latest_record and latest_record.average_speed is not None else None,
+            "congestion_level": latest_record.congestion_level if latest_record and latest_record.congestion_level else None,
+            "traffic_density": float(latest_record.traffic_density) if latest_record and latest_record.traffic_density is not None else None,
+            "vehicle_count": latest_record.vehicle_count if latest_record and latest_record.vehicle_count is not None else None,
+        })
 
-    if accidents:
-        return [
-            {
-                "road_id": str(a.road_id),
-                "hotspot_id": str(a.accident_id),
-                "accident_count": 1,
-                "risk_level": a.severity or "MODERATE"
-            }
-            for a in accidents
-        ]
+    # Fetch 100% live weather from Open-Meteo for Hyderabad center coordinates
+    try:
+        live_weather = get_live_weather(17.4156, 78.4347)
+    except Exception as exc:
+        live_weather = {
+            "weather_condition": None,
+            "temperature": None,
+            "source": "Open-Meteo",
+            "is_live": False,
+            "error": str(exc)
+        }
 
-    return []
+    return {
+        "status": "OPERATIONAL",
+        "counts": {
+            "total_roads": total_roads,
+            "active_roads": active_roads,
+            "total_traffic_observations": total_traffic,
+            "total_recorded_accidents": total_accidents,
+            "active_alerts": total_alerts,
+        },
+        "corridors": corridors,
+        "weather": live_weather,
+    }
 
 
 # ============================================================

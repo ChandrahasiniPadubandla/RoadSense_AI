@@ -7,6 +7,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
+import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import LiveMap from './pages/LiveMap';
 import TrafficPrediction from './pages/TrafficPrediction';
@@ -17,18 +18,20 @@ import NotFound from './pages/NotFound';
 export default function App() {
   return (
     <Routes>
+      {/* Public Landing Page */}
+      <Route path="/" element={<LandingPage />} />
+
+      {/* Authentication & Onboarding */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route path="/verify-email" element={<Navigate to="/register" replace />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
 
       {/* Everything below requires a logged-in user */}
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/live-map" element={<LiveMap />} />
-          <Route path="/map" element={<Navigate to="/live-map" replace />} />
           <Route path="/traffic-prediction" element={<TrafficPrediction />} />
           <Route path="/Accident-Prediction" element={<AccidentPrediction />} />
         </Route>

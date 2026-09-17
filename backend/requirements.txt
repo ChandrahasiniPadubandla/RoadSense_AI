@@ -25,6 +25,7 @@ scikit-learn>=1.6.1
 joblib>=1.4.0
 pandas>=2.2.0
 numpy>=1.26.0
+xgboost>=2.0.0
 
 # --- Chatbot (LangChain + Groq) ---
 # openai>=1.100.0 removed: the chatbot now uses Groq via LangChain instead

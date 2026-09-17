@@ -8,8 +8,8 @@ export default function Topbar({ title }) {
   const navigate = useNavigate();
 
   async function handleLogout() {
+    navigate('/', { replace: true });
     await logout();
-    navigate('/login', { replace: true });
   }
 
   return (

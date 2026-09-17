@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../utils/constants';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', roles: 'ALL' },
+  { to: '/dashboard', label: 'Dashboard', roles: 'ALL' },
   { to: '/live-map', label: 'Map', roles: 'ALL' },
   { to: '/traffic-prediction', label: 'Traffic Prediction', roles: 'ALL' },
   { to: '/Accident-Prediction', label: 'Accident Prediction', roles: 'ALL' },
@@ -33,7 +33,7 @@ export default function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/'}
+            end={item.to === '/dashboard'}
             className={({ isActive }) =>
               `block rounded-md px-3 py-2 text-sm transition-colors ${
                 isActive
