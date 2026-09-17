@@ -1,3 +1,4 @@
+from uuid import UUID
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
@@ -11,11 +12,11 @@ class ZoneCreate(BaseModel):
 
 
 class ZoneResponse(BaseModel):
-    zone_id: int
+    zone_id: UUID
     zone_name: str
     description: Optional[str] = None
-    latitude: float
-    longitude: float
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     created_at: Optional[datetime] = None
 
     class Config:
@@ -28,7 +29,7 @@ class ZoneResponse(BaseModel):
 
 class RoadCreate(BaseModel):
 
-    zone_id: Optional[int] = None
+    zone_id: Optional[UUID] = None
 
     road_name: str
 
@@ -50,26 +51,65 @@ class RoadCreate(BaseModel):
 
     number_of_lanes: Optional[int] = None
 
+    is_active: Optional[bool] = True
+
+
+class RoadUpdate(BaseModel):
+
+    zone_id: Optional[UUID] = None
+
+    road_name: Optional[str] = None
+
+    road_type: Optional[str] = None
+
+    start_latitude: Optional[float] = None
+
+    start_longitude: Optional[float] = None
+
+    end_latitude: Optional[float] = None
+
+    end_longitude: Optional[float] = None
+
+    road_capacity: Optional[int] = None
+
+    speed_limit: Optional[float] = None
+
+    road_condition: Optional[str] = None
+
+    number_of_lanes: Optional[int] = None
+
+    is_active: Optional[bool] = None
+
 
 class RoadResponse(BaseModel):
 
-    road_id: int
+    road_id: UUID
 
-    zone_id: Optional[int]
+    zone_id: Optional[UUID] = None
 
     road_name: str
 
-    road_type: Optional[str]
+    road_type: Optional[str] = None
 
-    road_capacity: Optional[int]
+    start_latitude: Optional[float] = None
 
-    speed_limit: Optional[float]
+    start_longitude: Optional[float] = None
 
-    road_condition: Optional[str]
+    end_latitude: Optional[float] = None
 
-    number_of_lanes: Optional[int]
+    end_longitude: Optional[float] = None
+
+    road_capacity: Optional[int] = None
+
+    speed_limit: Optional[float] = None
+
+    road_condition: Optional[str] = None
+
+    number_of_lanes: Optional[int] = None
 
     is_active: bool
+
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -81,7 +121,7 @@ class RoadResponse(BaseModel):
 
 class TrafficCreate(BaseModel):
 
-    road_id: int
+    road_id: UUID
 
     timestamp: datetime
 
@@ -119,33 +159,48 @@ class TrafficCreate(BaseModel):
     is_holiday: bool = False
 
 
+class TrafficUpdate(BaseModel):
+    road_id: Optional[UUID] = None
+    timestamp: Optional[datetime] = None
+    vehicle_count: Optional[int] = Field(default=None, ge=0)
+    average_speed: Optional[float] = Field(default=None, ge=0)
+    traffic_density: Optional[float] = Field(default=None, ge=0, le=100)
+    congestion_level: Optional[str] = None
+    road_condition: Optional[str] = None
+    weather_condition: Optional[str] = None
+    rainfall: Optional[float] = Field(default=None, ge=0)
+    temperature: Optional[float] = None
+    visibility: Optional[float] = Field(default=None, ge=0)
+    is_holiday: Optional[bool] = None
+
+
 class TrafficResponse(BaseModel):
 
-    traffic_id: int
+    traffic_id: UUID
 
-    road_id: int
+    road_id: UUID
 
     timestamp: datetime
 
     vehicle_count: int
 
-    average_speed: Optional[float]
+    average_speed: Optional[float] = None
 
-    traffic_density: Optional[float]
+    traffic_density: Optional[float] = None
 
-    congestion_level: Optional[str]
+    congestion_level: Optional[str] = None
 
-    road_condition: Optional[str]
+    road_condition: Optional[str] = None
 
-    weather_condition: Optional[str]
+    weather_condition: Optional[str] = None
 
-    rainfall: Optional[float]
+    rainfall: Optional[float] = None
 
-    temperature: Optional[float]
+    temperature: Optional[float] = None
 
-    visibility: Optional[float]
+    visibility: Optional[float] = None
 
-    is_holiday: bool
+    is_holiday: bool = False
 
     class Config:
         from_attributes = True

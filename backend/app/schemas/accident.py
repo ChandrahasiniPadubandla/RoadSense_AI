@@ -1,3 +1,4 @@
+from uuid import UUID
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
@@ -5,7 +6,7 @@ from datetime import datetime
 
 class AccidentCreate(BaseModel):
 
-    road_id: int
+    road_id: UUID
 
     latitude: float = Field(
         ...,
@@ -45,15 +46,29 @@ class AccidentCreate(BaseModel):
     description: Optional[str] = None
 
 
+class AccidentUpdate(BaseModel):
+    road_id: Optional[UUID] = None
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    accident_time: Optional[datetime] = None
+    weather_condition: Optional[str] = None
+    road_condition: Optional[str] = None
+    vehicle_count: Optional[int] = Field(default=None, ge=0)
+    severity: Optional[str] = None
+    fatalities: Optional[int] = Field(default=None, ge=0)
+    injuries: Optional[int] = Field(default=None, ge=0)
+    description: Optional[str] = None
+
+
 class AccidentResponse(BaseModel):
 
-    accident_id: int
+    accident_id: UUID
 
-    road_id: int
+    road_id: UUID
 
-    latitude: float
+    latitude: Optional[float] = None
 
-    longitude: float
+    longitude: Optional[float] = None
 
     accident_time: datetime
 
@@ -65,13 +80,13 @@ class AccidentResponse(BaseModel):
 
     severity: Optional[str] = None
 
-    fatalities: int
+    fatalities: int = 0
 
-    injuries: int
+    injuries: int = 0
 
     description: Optional[str] = None
 
-    created_by: Optional[int] = None
+    created_by: Optional[UUID] = None
 
     created_at: Optional[datetime] = None
 

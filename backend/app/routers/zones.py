@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
@@ -6,16 +7,39 @@ from geoalchemy2.elements import WKTElement
 from app.database.connection import get_db
 from app.database.models import TrafficZone
 from app.schemas.traffic import ZoneCreate, ZoneResponse
+from app.security import require_roles
 
 
 router = APIRouter(
-    prefix="/api/zones",
+    prefix="/zones",
     tags=["Traffic Zones"]
 )
 
 
+def _format_zone_response(zone: TrafficZone) -> ZoneResponse:
+    lat = None
+    lon = None
+    if zone.location is not None:
+        point = to_shape(zone.location)
+        lat = point.y
+        lon = point.x
+
+    return ZoneResponse(
+        zone_id=zone.zone_id,
+        zone_name=zone.zone_name,
+        description=zone.description,
+        latitude=lat,
+        longitude=lon,
+        created_at=zone.created_at
+    )
+
+
 # CREATE ZONE
-@router.post("/", response_model=ZoneResponse)
+@router.post(
+    "",
+    response_model=ZoneResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def create_zone(
     zone: ZoneCreate,
     db: Session = Depends(get_db)
@@ -35,48 +59,22 @@ def create_zone(
     db.commit()
     db.refresh(db_zone)
 
-    point = to_shape(db_zone.location)
-
-    return ZoneResponse(
-        zone_id=db_zone.zone_id,
-        zone_name=db_zone.zone_name,
-        description=db_zone.description,
-        latitude=point.y,
-        longitude=point.x,
-        created_at=db_zone.created_at
-    )
+    return _format_zone_response(db_zone)
 
 
 # GET ALL ZONES
-@router.get("/", response_model=list[ZoneResponse])
+@router.get("", response_model=list[ZoneResponse])
 def get_zones(
     db: Session = Depends(get_db)
 ):
     zones = db.query(TrafficZone).all()
-
-    result = []
-
-    for zone in zones:
-        point = to_shape(zone.location)
-
-        result.append(
-            ZoneResponse(
-                zone_id=zone.zone_id,
-                zone_name=zone.zone_name,
-                description=zone.description,
-                latitude=point.y,
-                longitude=point.x,
-                created_at=zone.created_at
-            )
-        )
-
-    return result
+    return [_format_zone_response(zone) for zone in zones]
 
 
 # GET ONE ZONE
 @router.get("/{zone_id}", response_model=ZoneResponse)
 def get_zone(
-    zone_id: int,
+    zone_id: UUID,
     db: Session = Depends(get_db)
 ):
     zone = (
@@ -88,25 +86,20 @@ def get_zone(
     if not zone:
         raise HTTPException(
             status_code=404,
-            detail="Traffic zone not found"
+            detail=f"Traffic zone with ID '{zone_id}' does not exist. Please check the zone ID and try again."
         )
 
-    point = to_shape(zone.location)
-
-    return ZoneResponse(
-        zone_id=zone.zone_id,
-        zone_name=zone.zone_name,
-        description=zone.description,
-        latitude=point.y,
-        longitude=point.x,
-        created_at=zone.created_at
-    )
+    return _format_zone_response(zone)
 
 
 # UPDATE ZONE
-@router.put("/{zone_id}", response_model=ZoneResponse)
+@router.put(
+    "/{zone_id}",
+    response_model=ZoneResponse,
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def update_zone(
-    zone_id: int,
+    zone_id: UUID,
     zone: ZoneCreate,
     db: Session = Depends(get_db)
 ):
@@ -119,7 +112,7 @@ def update_zone(
     if not db_zone:
         raise HTTPException(
             status_code=404,
-            detail="Traffic zone not found"
+            detail=f"Cannot update: Traffic zone with ID '{zone_id}' does not exist."
         )
 
     db_zone.zone_name = zone.zone_name
@@ -133,22 +126,16 @@ def update_zone(
     db.commit()
     db.refresh(db_zone)
 
-    point = to_shape(db_zone.location)
-
-    return ZoneResponse(
-        zone_id=db_zone.zone_id,
-        zone_name=db_zone.zone_name,
-        description=db_zone.description,
-        latitude=point.y,
-        longitude=point.x,
-        created_at=db_zone.created_at
-    )
+    return _format_zone_response(db_zone)
 
 
 # DELETE ZONE
-@router.delete("/{zone_id}")
+@router.delete(
+    "/{zone_id}",
+    dependencies=[Depends(require_roles("SUPER_ADMIN"))]
+)
 def delete_zone(
-    zone_id: int,
+    zone_id: UUID,
     db: Session = Depends(get_db)
 ):
     db_zone = (
@@ -160,7 +147,7 @@ def delete_zone(
     if not db_zone:
         raise HTTPException(
             status_code=404,
-            detail="Traffic zone not found"
+            detail=f"Cannot delete: Traffic zone with ID '{zone_id}' does not exist."
         )
 
     db.delete(db_zone)
