@@ -615,9 +615,9 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
 
 def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Executes the trained ML accident risk model directly from RoadSense_AI/ML.
+    Executes the trained ML accident risk model directly from RoadSense_AI/predict_accident_risk.
     If external ML endpoint (ML_ACCIDENT_SERVICE_URL) is set, routes via HTTP POST.
-    Otherwise, directly invokes predict_record() from RoadSense_AI/ML/prediction/predict_accident_risk.py.
+    Otherwise, directly invokes predict_accident_risk() from RoadSense_AI/predict_accident_risk/predict_accident_risk.py.
     """
     ml_url = os.getenv("ML_ACCIDENT_SERVICE_URL", "").strip()
 

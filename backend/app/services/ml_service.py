@@ -17,9 +17,9 @@ from app.schemas.ml import (
 
 DATASET_PATH = (
     Path(__file__).resolve().parents[3]
-    / "ML"
+    / "predict_accident_risk"
     / "dataset"
-    / "traffic_accident_balanced_10000.csv"
+    / "hyderabad_traffic_accident_balanced_15000.csv"
 )
 
 
@@ -114,9 +114,13 @@ class MLService:
 
         accident_data = df[df["accident_occurred"] == 1].copy()
 
+        loc_col = "location" if "location" in accident_data.columns else "start_location"
+        lat_col = "latitude" if "latitude" in accident_data.columns else "start_latitude"
+        lng_col = "longitude" if "longitude" in accident_data.columns else "start_longitude"
+
         hotspots = (
             accident_data
-            .groupby(["location", "latitude", "longitude"])
+            .groupby([loc_col, lat_col, lng_col])
             .size()
             .reset_index(name="accident_count")
             .sort_values("accident_count", ascending=False)
@@ -126,16 +130,16 @@ class MLService:
 
         road_for_location = (
             accident_data
-            .groupby("location")["road_id"]
+            .groupby(loc_col)["road_id"]
             .agg(lambda ids: ids.mode().iloc[0])
             .to_dict()
         )
-        hotspots["road_id"] = hotspots["location"].map(road_for_location)
+        hotspots["road_id"] = hotspots[loc_col].map(road_for_location)
 
         def _risk_level(count: int) -> str:
-            if count >= 700:
+            if count >= 100:
                 return "HIGH"
-            elif count >= 600:
+            elif count >= 50:
                 return "MEDIUM"
             return "LOW"
 
@@ -144,9 +148,9 @@ class MLService:
         items = [
             HotspotItem(
                 road_id=row["road_id"],
-                location=row["location"],
-                latitude=row["latitude"],
-                longitude=row["longitude"],
+                location=row[loc_col],
+                latitude=row[lat_col],
+                longitude=row[lng_col],
                 accident_count=int(row["accident_count"]),
                 risk_level=row["risk_level"],
             )
