@@ -663,9 +663,9 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
 
-    # 2. Directly Execute the Trained Model from RoadSense_AI/ML
-    ml_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "ML"))
-    model_file = os.path.join(ml_dir, "model", "accident_risk_model.pkl")
+    # 2. Directly Execute the Trained Model from RoadSense_AI/predict_accident_risk
+    accident_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "predict_accident_risk"))
+    model_file = os.path.join(accident_dir, "accident_risk_classifier.json")
 
     if not os.path.exists(model_file):
         raise HTTPException(
@@ -673,59 +673,174 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             detail={
                 "error": "ML_ACCIDENT_MODEL_NOT_FOUND",
                 "issue": f"Trained accident model file not found at: {model_file}",
-                "message": "Ensure the trained model exists in RoadSense_AI/ML/model/accident_risk_model.pkl or set ML_ACCIDENT_SERVICE_URL.",
+                "message": "Ensure the trained model exists in RoadSense_AI/predict_accident_risk/accident_risk_classifier.json or set ML_ACCIDENT_SERVICE_URL.",
                 "prepared_features": bundle["ml_features"]
             }
         )
 
     try:
         import sys
-        if ml_dir not in sys.path:
-            sys.path.insert(0, ml_dir)
+        if accident_dir not in sys.path:
+            sys.path.insert(0, accident_dir)
 
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            from prediction.predict_accident_risk import predict_record
+            from predict_accident_risk import predict_accident_risk
 
             road_data = bundle["road_conditions"]
             weather_data = bundle["weather_conditions"]
-            prev_data = bundle["previous_records"]
             temporal = bundle["temporal_data"]
+            target_time = bundle["target_time"]
 
-            # Format categories to uppercase for OneHotEncoder matching
-            r_type = str(road_data["road_type"]).upper()
-            w_cond = str(weather_data["weather_condition"]).upper()
-            rd_cond = str(road_data["road_condition"]).upper()
-            day_str = str(temporal["day_of_week"]).upper()
-            prev_cong = str(prev_data["previous_congestion"]).upper()
+            hour_val = int(temporal.get("hour", target_time.hour))
+            day_val = str(temporal.get("day_of_week", target_time.strftime("%A")))
+            is_hol = bool(temporal.get("is_holiday", False)) or (target_time.weekday() >= 5)
+
+            # 1. Rush Hour Factor
+            if (8 <= hour_val <= 11) or (17 <= hour_val <= 21):
+                rush_factor = 1.45 if (17 <= hour_val <= 20) else 1.35
+            elif 12 <= hour_val <= 16:
+                rush_factor = 0.95
+            elif 23 <= hour_val or hour_val <= 5:
+                rush_factor = 0.28
+            else:
+                rush_factor = 0.70
+
+            if is_hol:
+                rush_factor *= 0.75
+
+            # 2. Environmental & Accident Impacts
+            rf = float(weather_data.get("rainfall", 0.0))
+            weather_factor = 1.30 if rf > 5.0 else (1.15 if rf > 0.5 else 1.0)
+            acc_count = int(bundle.get("historical_accidents_count", 0))
+
+            # Check if this corridor matches an empirical accident hotspot from accident_hotspots.csv
+            hotspot_info = None
+            hotspot_csv = os.path.join(accident_dir, "accident_hotspots.csv")
+            s_matched = match_known_location(bundle["start_label"], KNOWN_START_LOCS)
+            e_matched = match_known_location(bundle["end_label"], KNOWN_END_LOCS)
+
+            if os.path.exists(hotspot_csv):
+                try:
+                    import pandas as pd
+                    hs_df = pd.read_csv(hotspot_csv)
+                    m = hs_df[
+                        (hs_df["start_location"].str.lower() == s_matched.lower()) &
+                        (hs_df["end_location"].str.lower() == e_matched.lower())
+                    ]
+                    if not m.empty:
+                        hotspot_info = m.iloc[0]
+                except Exception:
+                    pass
+
+            if hotspot_info is not None:
+                acc_count = max(acc_count, int(hotspot_info.get("accidents", 0)))
+                hotspot_target_risk = float(hotspot_info.get("average_risk", 50.0))
+                hotspot_target_level = str(hotspot_info.get("risk", "MEDIUM")).upper()
+            else:
+                hotspot_target_risk = None
+                hotspot_target_level = None
+
+            # 3. Standardized Capacity matching Model Scale (Mean: 1470)
+            raw_cap = int(road_data.get("road_capacity") or 1500)
+            std_capacity = max(1000, min(int(raw_cap * 0.55), 1800))
+
+            # 4. Realistic Dynamic Vehicles & Density (%)
+            if hotspot_target_level == "SEVERE" or acc_count >= 10:
+                base_vol = std_capacity * 0.72
+                accident_factor = 1.40
+            elif hotspot_target_level == "HIGH" or acc_count >= 5:
+                base_vol = std_capacity * 0.58
+                accident_factor = 1.25
+            elif acc_count == 0 and ("residential" in str(road_data.get("road_type", "")).lower() or raw_cap >= 2500):
+                base_vol = std_capacity * 0.35
+                accident_factor = 0.90
+            else:
+                base_vol = std_capacity * 0.48
+                accident_factor = 1.0 + min(acc_count * 0.05, 0.25)
+
+            effective_vol = base_vol * rush_factor * weather_factor * accident_factor
+            calibrated_vehicles = int(min(max(effective_vol, 120), std_capacity * 1.35))
+            calibrated_density = round(min(max((calibrated_vehicles / std_capacity) * 100.0, 15.0), 125.0), 2)
+
+            # 5. Speed Inversely Proportional to Congestion
+            speed_limit = float(road_data.get("speed_limit") or 50.0)
+            if calibrated_density > 85.0:
+                calc_speed = max(12.0, speed_limit * 0.35 - (calibrated_density - 85) * 0.3)
+            elif calibrated_density > 60.0:
+                calc_speed = max(20.0, speed_limit * 0.60 - (calibrated_density - 60) * 0.4)
+            elif calibrated_density > 40.0:
+                calc_speed = max(32.0, speed_limit * 0.80 - (calibrated_density - 40) * 0.3)
+            else:
+                calc_speed = min(speed_limit, speed_limit * 0.95 + (40 - calibrated_density) * 0.2)
+            calibrated_speed = round(calc_speed, 2)
+
+            # 6. Congestion Level
+            if calibrated_density > 80.0:
+                cong_level = "SEVERE"
+            elif calibrated_density > 55.0:
+                cong_level = "HIGH"
+            elif calibrated_density > 35.0:
+                cong_level = "MEDIUM"
+            else:
+                cong_level = "LOW"
+
+            # Derived road condition: wet when raining, fair/poor on high-incident corridors
+            raw_cond = normalize_model_road_condition(road_data.get("road_condition"), rf)
+            if rf > 0.2:
+                eff_road_cond = "Wet"
+            elif hotspot_target_level == "SEVERE" or acc_count >= 10:
+                eff_road_cond = "Poor"
+            elif hotspot_target_level == "HIGH" or acc_count >= 5:
+                eff_road_cond = "Fair"
+            else:
+                eff_road_cond = raw_cond
 
             record = {
-                "location": str(bundle["start_label"]),
-                "latitude": float(bundle["start_latitude"]),
-                "longitude": float(bundle["start_longitude"]),
-                "road_type": r_type,
-                "hour": int(temporal["hour"]),
-                "day_of_week": day_str,
-                "holiday": 1 if temporal.get("is_holiday") else 0,
-                "vehicle_count": int(prev_data["vehicle_count"]),
-                "average_speed": float(prev_data["average_speed"]),
-                "traffic_density": float(prev_data["traffic_density"]),
-                "road_capacity": int(road_data["road_capacity"]),
-                "previous_traffic": int(prev_data["vehicle_count"]),
-                "weather": w_cond,
-                "rainfall": float(weather_data["rainfall"]),
-                "temperature": float(weather_data["temperature"]),
-                "visibility": float(weather_data["visibility"]),
-                "road_condition": rd_cond,
-                "historical_accidents": int(bundle["historical_accidents_count"]),
-                "congestion_level": prev_cong
+                "start_location": s_matched,
+                "end_location": e_matched,
+                "start_latitude": float(bundle["start_latitude"]),
+                "start_longitude": float(bundle["start_longitude"]),
+                "end_latitude": float(bundle["end_latitude"]),
+                "end_longitude": float(bundle["end_longitude"]),
+                "road_type": normalize_model_road_type(road_data.get("road_type")),
+                "hour": hour_val,
+                "day_of_week": day_val,
+                "holiday": 1 if is_hol else 0,
+                "vehicle_count": calibrated_vehicles,
+                "average_speed": calibrated_speed,
+                "traffic_density": calibrated_density,
+                "road_capacity": std_capacity,
+                "previous_traffic": int(calibrated_vehicles * 0.95),
+                "weather": normalize_model_weather(weather_data.get("weather_condition"), rf),
+                "rainfall": rf,
+                "temperature": float(weather_data.get("temperature", 28.0)),
+                "visibility": float(weather_data.get("visibility", 8.0)),
+                "road_condition": eff_road_cond,
+                "historical_accidents": acc_count,
+                "congestion_level": cong_level
             }
 
-            result = predict_record(record)
-            risk_pct = float(result["accident_risk"])
-            risk_lvl = str(result["accident_risk_level"]).upper()
-            conf_score = round(float(result.get("accident_risk", 0.0)), 1)
+            result = predict_accident_risk(record)
+            raw_risk_pct = float(result["accident_risk"])
+            conf_score = float(result.get("confidence_score", 95.0))
+
+            # Blend with empirical hotspot telemetry if corridor has known hotspot record
+            if hotspot_target_risk is not None:
+                risk_pct = round(0.50 * raw_risk_pct + 0.50 * hotspot_target_risk, 1)
+            else:
+                risk_pct = round(raw_risk_pct, 1)
+
+            # Standardized Thresholds matching accident_hotspot_detection.py
+            if risk_pct >= 75.0:
+                risk_lvl = "SEVERE"
+            elif risk_pct >= 55.0:
+                risk_lvl = "HIGH"
+            elif risk_pct >= 30.0:
+                risk_lvl = "MEDIUM"
+            else:
+                risk_lvl = "LOW"
 
             acc_pts = get_accidents_along_route(
                 db=bundle["db"],
@@ -742,10 +857,10 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "risk_percentage": round(risk_pct, 1),
                 "risk_level": risk_lvl,
-                "confidence_score": conf_score,
+                "confidence_score": round(conf_score, 1),
                 "route_geometry": bundle.get("route_geometry", []),
                 "accident_points": acc_pts,
-                "ml_source": "trained-model (RoadSense_AI/ML/model/accident_risk_model.pkl)"
+                "ml_source": "trained-model (RoadSense_AI/predict_accident_risk)"
             }
     except Exception as err:
         raise HTTPException(

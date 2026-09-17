@@ -128,29 +128,92 @@ class AccidentRiskFeatureService:
             .count()
         )
 
+        from app.ml.prediction_engine import (
+            match_known_location,
+            normalize_model_road_type,
+            normalize_model_road_condition,
+            normalize_model_weather,
+            KNOWN_START_LOCS,
+            KNOWN_END_LOCS,
+        )
+
+        hour_val = int(prediction_time.hour)
+        day_val = prediction_time.strftime("%A")
+        is_hol = 1 if (traffic_record.is_holiday is True or prediction_time.weekday() >= 5) else 0
+
+        # 1. Rush Hour Factor
+        if (8 <= hour_val <= 11) or (17 <= hour_val <= 21):
+            rush_factor = 1.45 if (17 <= hour_val <= 20) else 1.35
+        elif 12 <= hour_val <= 16:
+            rush_factor = 0.95
+        elif 23 <= hour_val or hour_val <= 5:
+            rush_factor = 0.28
+        else:
+            rush_factor = 0.70
+
+        if is_hol:
+            rush_factor *= 0.75
+
+        # 2. Environmental & Accident Factors
+        rf = float(rainfall)
+        weather_factor = 1.30 if rf > 5.0 else (1.15 if rf > 0.5 else 1.0)
+        accident_factor = 1.0 + min(historical_accidents * 0.05, 0.35)
+
+        # 3. Standardized Capacity matching Model Scale (Mean: 1470)
+        raw_cap = int(road_capacity or 1500)
+        std_capacity = max(1000, min(int(raw_cap * 0.55), 1800))
+
+        # 4. Realistic Dynamic Density & Vehicles
+        base_vol = std_capacity * 0.50
+        effective_vol = base_vol * rush_factor * weather_factor * accident_factor
+        calibrated_vehicles = int(min(max(effective_vol, 120), std_capacity * 1.35))
+        calibrated_density = round(min(max((calibrated_vehicles / std_capacity) * 100.0, 15.0), 125.0), 2)
+
+        # 5. Speed Inversely Proportional to Congestion
+        speed_limit = float(road.speed_limit or 50.0)
+        if calibrated_density > 85.0:
+            calc_speed = max(12.0, speed_limit * 0.35 - (calibrated_density - 85) * 0.3)
+        elif calibrated_density > 60.0:
+            calc_speed = max(20.0, speed_limit * 0.60 - (calibrated_density - 60) * 0.4)
+        elif calibrated_density > 40.0:
+            calc_speed = max(32.0, speed_limit * 0.80 - (calibrated_density - 40) * 0.3)
+        else:
+            calc_speed = min(speed_limit, speed_limit * 0.95 + (40 - calibrated_density) * 0.2)
+        calibrated_speed = round(calc_speed, 2)
+
+        # 6. Congestion Level Mapping
+        if calibrated_density > 80.0:
+            cong_level = "SEVERE"
+        elif calibrated_density > 55.0:
+            cong_level = "HIGH"
+        elif calibrated_density > 35.0:
+            cong_level = "MEDIUM"
+        else:
+            cong_level = "LOW"
+
         payload = {
-            "start_location": road_name,
-            "end_location": road_name,
+            "start_location": match_known_location(road_name, KNOWN_START_LOCS),
+            "end_location": match_known_location(road_name, KNOWN_END_LOCS),
             "start_latitude": float(start_lat),
             "start_longitude": float(start_lon),
             "end_latitude": float(end_lat),
             "end_longitude": float(end_lon),
-            "road_type": str(road_type),
-            "hour": int(prediction_time.hour),
-            "day_of_week": prediction_time.strftime("%A"),
-            "holiday": 1 if (traffic_record.is_holiday is True or prediction_time.weekday() >= 5) else 0,
-            "vehicle_count": int(vehicle_count),
-            "average_speed": float(average_speed),
-            "traffic_density": float(traffic_density),
-            "road_capacity": int(road_capacity),
-            "previous_traffic": self._get_previous_traffic_count(db, road_id, traffic_record),
-            "weather": str(weather_name),
-            "rainfall": float(rainfall),
+            "road_type": normalize_model_road_type(road_type),
+            "hour": hour_val,
+            "day_of_week": day_val,
+            "holiday": is_hol,
+            "vehicle_count": calibrated_vehicles,
+            "average_speed": calibrated_speed,
+            "traffic_density": calibrated_density,
+            "road_capacity": std_capacity,
+            "previous_traffic": int(calibrated_vehicles * 0.95),
+            "weather": normalize_model_weather(weather_name, rf),
+            "rainfall": rf,
             "temperature": float(temperature),
             "visibility": float(visibility),
-            "road_condition": str(road_condition),
+            "road_condition": normalize_model_road_condition(road_condition, rf),
             "historical_accidents": int(historical_accidents),
-            "congestion_level": str(congestion_level).upper(),
+            "congestion_level": cong_level,
             "road_id": str(road_id),
             "road_name": road_name,
         }

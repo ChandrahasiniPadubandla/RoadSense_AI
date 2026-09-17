@@ -14,6 +14,7 @@ const RISK_BADGE_CLASS = {
   LOW: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
   MEDIUM: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400',
   HIGH: 'border-orange-500/40 bg-orange-500/10 text-orange-400',
+  SEVERE: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
   CRITICAL: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
 };
 
@@ -271,11 +272,11 @@ export default function AccidentPrediction() {
                 </p>
 
                 <p className="mt-1 text-sm text-asphalt-200">
-                  {['HIGH', 'CRITICAL'].includes(
-                    (result.risk_level || '').toUpperCase()
-                  )
-                    ? 'Drive carefully, reduce speed, keep a safe distance, and consider an alternative route.'
-                    : 'Follow normal road-safety practices and stay alert while driving.'}
+                  {(result.risk_level || '').toUpperCase() === 'SEVERE'
+                    ? 'Critical accident hotspot corridor! Exercise extreme caution, sharply reduce speed, and consider taking a safer alternate route.'
+                    : ['HIGH', 'CRITICAL'].includes((result.risk_level || '').toUpperCase())
+                    ? 'Elevated accident risk corridor. Drive carefully, reduce speed, keep a safe braking distance, and avoid abrupt overtaking.'
+                    : 'Follow normal road-safety practices, maintain safe speed, and stay alert while driving.'}
                 </p>
               </div>
             </div>

@@ -94,14 +94,19 @@ def get_live_weather(latitude: float, longitude: float) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as err:
-        logger.error("Live weather query failed for (%s, %s): %s", latitude, longitude, err)
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Real-time weather data could not be retrieved for coordinates "
-                f"({latitude:.4f}, {longitude:.4f}). "
-                f"Prediction aborted to prevent inaccurate results. Please verify your connection and try again."
-            )
-        )
+        logger.warning("Live weather query failed for (%s, %s): %s. Using baseline meteorological fallback.", latitude, longitude, err)
+        fallback = {
+            "weather_condition": "Clear",
+            "temperature": 29.0,
+            "rainfall": 0.0,
+            "humidity": 50.0,
+            "visibility": 9.0,
+            "wind_speed": 11.0,
+            "is_live": False,
+            "source": "Hyderabad Meteorological Baseline (Fallback)",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        _WEATHER_CACHE[cache_key] = (now_ts, fallback)
+        return fallback
 
 

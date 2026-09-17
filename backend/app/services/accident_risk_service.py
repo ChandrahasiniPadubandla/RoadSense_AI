@@ -106,6 +106,9 @@ class AccidentRiskService:
             level_prediction = self.classifier.predict(processed)
             risk_level = self.label_encoder.inverse_transform(level_prediction.astype(int))[0]
 
+            probs = self.classifier.predict_proba(processed)[0]
+            confidence = float(np.max(probs) * 100)
+
             risk_prediction = self.regressor.predict(processed)[0]
             accident_risk = float(np.clip(float(risk_prediction), 0.0, 100.0))
 
@@ -113,8 +116,10 @@ class AccidentRiskService:
                 "success": True,
                 "accident_risk": round(accident_risk, 2),
                 "accident_risk_level": str(risk_level).upper(),
+                "confidence_score": round(confidence, 1),
+                "probabilities": {cls: round(float(p), 4) for cls, p in zip(self.label_encoder.classes_, probs)}
             }
-            logger.info("Accident risk prediction produced %s for level %s", result["accident_risk"], result["accident_risk_level"])
+            logger.info("Accident risk prediction produced %s for level %s (confidence: %s%%)", result["accident_risk"], result["accident_risk_level"], result["confidence_score"])
             return result
         except Exception as exc:
             logger.exception("Accident risk prediction failed")

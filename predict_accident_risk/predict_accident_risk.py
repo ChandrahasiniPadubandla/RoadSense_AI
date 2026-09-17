@@ -1,21 +1,30 @@
+import os
 import joblib
 import pandas as pd
 import numpy as np
 from xgboost import XGBClassifier, XGBRegressor
 
+# Compatibility shim for scikit-learn models pickled across versions
+import sklearn.compose._column_transformer as ct
+if not hasattr(ct, '_RemainderColsList'):
+    class _RemainderColsList(list):
+        pass
+    ct._RemainderColsList = _RemainderColsList
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --------------------------------------------------
 # Load trained models and preprocessing files
 # --------------------------------------------------
 
 classifier = XGBClassifier()
-classifier.load_model("accident_risk_classifier.json")
+classifier.load_model(os.path.join(BASE_DIR, "accident_risk_classifier.json"))
 
 regressor = XGBRegressor()
-regressor.load_model("accident_risk_regressor.json")
+regressor.load_model(os.path.join(BASE_DIR, "accident_risk_regressor.json"))
 
-preprocessor = joblib.load("accident_preprocessor.pkl")
-label_encoder = joblib.load("accident_label_encoder.pkl")
+preprocessor = joblib.load(os.path.join(BASE_DIR, "accident_preprocessor.pkl"))
+label_encoder = joblib.load(os.path.join(BASE_DIR, "accident_label_encoder.pkl"))
 
 
 # --------------------------------------------------
@@ -24,14 +33,17 @@ label_encoder = joblib.load("accident_label_encoder.pkl")
 
 def predict_accident_risk(new_data):
 
-    # Convert input dictionary into DataFrame
-    data = pd.DataFrame([new_data])
+    # Convert input dictionary into DataFrame if needed
+    if isinstance(new_data, pd.DataFrame):
+        data = new_data
+    else:
+        data = pd.DataFrame([new_data])
 
     # Apply the same preprocessing used during training
     data_processed = preprocessor.transform(data)
 
     # ----------------------------------------------
-    # Predict accident risk level
+    # Predict accident risk level and confidence
     # ----------------------------------------------
 
     level_prediction = classifier.predict(data_processed)
@@ -39,6 +51,10 @@ def predict_accident_risk(new_data):
     risk_level = label_encoder.inverse_transform(
         level_prediction.astype(int)
     )[0]
+
+    # Calculate classification confidence score
+    probs = classifier.predict_proba(data_processed)[0]
+    confidence_score = float(np.max(probs) * 100)
 
     # ----------------------------------------------
     # Predict accident risk percentage
@@ -54,7 +70,9 @@ def predict_accident_risk(new_data):
 
     return {
         "accident_risk": round(risk_percentage, 2),
-        "accident_risk_level": risk_level
+        "accident_risk_level": risk_level,
+        "confidence_score": round(confidence_score, 1),
+        "probabilities": {cls: round(float(p), 4) for cls, p in zip(label_encoder.classes_, probs)}
     }
 
 
