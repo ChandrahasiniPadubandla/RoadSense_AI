@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -23,6 +24,13 @@ from app.schemas.prediction import (
     RoutePredictionRequest,
     RouteAccidentPredictionResponse
 )
+from app.schemas.accident_risk import (
+    AccidentRiskPredictionRequest,
+    AccidentRiskPredictionResponse,
+    RoadSearchResult,
+)
+from app.services.accident_risk_service import accident_risk_service
+from app.services.accident_risk_feature_service import accident_risk_feature_service
 from app.ml.prediction_engine import (
     resolve_route_bundle,
     trigger_ml_accident_model
@@ -32,6 +40,84 @@ from app.security import require_roles
 router = APIRouter(
     tags=["AI Accident Predictions"]
 )
+
+
+@router.get(
+    "/roads",
+    response_model=list[RoadSearchResult],
+    summary="Search roads in the real database by road name"
+)
+def search_roads(
+    search: str = Query(default="", min_length=1),
+    db: Session = Depends(get_db),
+):
+    if not search.strip():
+        return []
+
+    roads = (
+        db.query(Road)
+        .filter(Road.road_name.ilike(f"%{search.strip()}%"))
+        .order_by(Road.road_name.asc())
+        .limit(20)
+        .all()
+    )
+
+    return [RoadSearchResult(road_id=road.road_id, road_name=road.road_name) for road in roads]
+
+
+@router.post(
+    "/accident-predictions/predict",
+    response_model=AccidentRiskPredictionResponse,
+    summary="Predict accident risk for a real road using database-derived features"
+)
+def predict_accident_risk_route(
+    req: AccidentRiskPredictionRequest,
+    db: Session = Depends(get_db),
+):
+    road = db.query(Road).filter(Road.road_id == req.road_id).first()
+    if road is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "ROAD_NOT_FOUND",
+                "message": f"Road with ID '{req.road_id}' does not exist in the database.",
+                "field": "road_id",
+            },
+        )
+
+    try:
+        feature_payload = accident_risk_feature_service.build_feature_payload(db, req.road_id)
+        result = accident_risk_service.predict(feature_payload)
+    except ValueError as exc:
+        logger = logging.getLogger("roadsense")
+        logger.exception("Accident-risk feature preparation failed for road_id=%s", req.road_id)
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "MISSING_PREDICTION_DATA",
+                "message": str(exc),
+                "field": "road_id",
+            },
+        ) from exc
+    except RuntimeError as exc:
+        logger = logging.getLogger("roadsense")
+        logger.exception("Accident-risk prediction failed for road_id=%s", req.road_id)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": "MODEL_PREDICTION_FAILED",
+                "message": "Accident-risk prediction failed during inference.",
+            },
+        ) from exc
+
+    return AccidentRiskPredictionResponse(
+        success=True,
+        road_id=road.road_id,
+        road_name=road.road_name,
+        accident_risk=result["accident_risk"],
+        accident_risk_level=result["accident_risk_level"],
+        model_status="loaded",
+    )
 
 
 def _format_accident_response(p: AccidentPrediction, road_name: Optional[str] = None) -> AccidentPredictionResponse:

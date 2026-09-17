@@ -1,6 +1,6 @@
 from uuid import UUID
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
@@ -152,9 +152,13 @@ def create_road(
     response_model=list[RoadResponse]
 )
 def get_roads(
+    search: Optional[str] = Query(default=None, description="Optional road name fragment to search for in the real roads table"),
     db: Session = Depends(get_db)
 ):
-    roads = db.query(Road).all()
+    query = db.query(Road)
+    if search is not None and search.strip():
+        query = query.filter(Road.road_name.ilike(f"%{search.strip()}%"))
+    roads = query.order_by(Road.road_name.asc()).all()
     return [_format_road_response(road) for road in roads]
 
 

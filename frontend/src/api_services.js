@@ -5,8 +5,8 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8000)
-const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+// Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8001)
+const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001';
 export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
 
 // Single configured Axios instance
