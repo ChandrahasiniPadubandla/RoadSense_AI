@@ -5,7 +5,8 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to the local backend port)
+// Base URL: read from VITE_API_BASE_URL when provided; otherwise call the
+// backend directly on the API server port. No proxy server is required.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
 
