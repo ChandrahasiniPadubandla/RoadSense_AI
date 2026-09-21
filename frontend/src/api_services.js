@@ -18,6 +18,28 @@ export const apiClient = axios.create({
   },
 });
 
+// Share concurrent GET requests (including React StrictMode's development
+// double-effect invocation) instead of sending duplicate network requests.
+const inFlightGetRequests = new Map();
+
+async function getShared(path, config = {}) {
+  const paramsKey = JSON.stringify(config.params || {});
+  const requestKey = `${path}?${paramsKey}`;
+  const existingRequest = inFlightGetRequests.get(requestKey);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const request = apiClient
+    .get(path, config)
+    .finally(() => {
+      inFlightGetRequests.delete(requestKey);
+    });
+
+  inFlightGetRequests.set(requestKey, request);
+  return request;
+}
+
 // Request interceptor: attach bearer token
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
@@ -361,7 +383,7 @@ export async function predictRouteAccident(payload) {
  */
 export async function getLatestAccidentPredictions() {
   try {
-    const { data } = await apiClient.get('/api/predictions/accidents/latest');
+    const { data } = await getShared('/api/predictions/accidents/latest');
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/predictions/accidents/latest:', error);
@@ -508,7 +530,9 @@ export async function deleteUser(username) {
 
 export async function getAllRoads(search = '') {
   try {
-    const { data } = await apiClient.get('/api/roads', { params: search ? { search } : {} });
+    const { data } = await getShared('/api/roads', {
+      params: search ? { search } : {},
+    });
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/roads:', error);

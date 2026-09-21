@@ -3,11 +3,11 @@ import DataTable from '../components/DataTable';
 import {
   predictRouteAccident,
   getLatestAccidentPredictions,
+  getAllRoads,
 } from '../api_services';
 
 const emptyForm = {
-  start_location: '',
-  end_location: '',
+  road_id: '',
 };
 
 const RISK_BADGE_CLASS = {
@@ -40,9 +40,49 @@ export default function AccidentPrediction() {
 
   const [recent, setRecent] = useState([]);
   const [recentLoading, setRecentLoading] = useState(true);
+  const [roads, setRoads] = useState([]);
+  const [roadsLoading, setRoadsLoading] = useState(true);
+  const [roadsError, setRoadsError] = useState('');
 
   useEffect(() => {
     loadRecentPredictions();
+
+    let isMounted = true;
+
+    async function loadRoads() {
+      setRoadsLoading(true);
+      setRoadsError('');
+
+      try {
+        const data = await getAllRoads();
+        if (isMounted) {
+          setRoads(data);
+          setForm((previous) => ({
+            ...previous,
+            road_id:
+              previous.road_id && data.some((road) => road.road_id === previous.road_id)
+                ? previous.road_id
+                : data[0]?.road_id || '',
+          }));
+        }
+      } catch {
+        if (isMounted) {
+          setRoadsError('Could not load roads from the database.');
+        }
+      } finally {
+        if (isMounted) {
+          setRoadsLoading(false);
+        }
+      }
+    }
+
+    loadRoads();
+    const refreshTimer = window.setInterval(loadRoads, 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(refreshTimer);
+    };
   }, []);
 
   async function loadRecentPredictions() {
@@ -64,8 +104,9 @@ export default function AccidentPrediction() {
     setError('');
     setResult(null);
 
-    if (!form.start_location.trim() || !form.end_location.trim()) {
-      setError('Please enter both the starting point and destination.');
+    const selectedRoad = roads.find((road) => road.road_id === form.road_id);
+    if (!selectedRoad) {
+      setError('Please select a road from the list.');
       return;
     }
 
@@ -73,8 +114,9 @@ export default function AccidentPrediction() {
 
     try {
       const payload = {
-        start_location: form.start_location.trim(),
-        end_location: form.end_location.trim(),
+        road_id: selectedRoad.road_id,
+        start_location: selectedRoad.road_name,
+        end_location: selectedRoad.road_name,
         persist: true,
       };
 
@@ -84,8 +126,9 @@ export default function AccidentPrediction() {
       await loadRecentPredictions();
     } catch (err) {
       if (err.response?.status === 404) {
+        const detail = err.response.data?.detail;
         setError(
-          err.response.data?.detail ||
+          (typeof detail === 'string' ? detail : detail?.message) ||
             'The selected route could not be found.'
         );
       } else if (err.response?.status === 422) {
@@ -93,7 +136,9 @@ export default function AccidentPrediction() {
         setError(
           Array.isArray(detail)
             ? detail.map((item) => item.msg).join(', ')
-            : 'Please enter valid locations.'
+            : typeof detail === 'string'
+              ? detail
+              : detail?.message || 'The selected road does not have enough data for prediction.'
         );
       } else if (err.request) {
         setError('Unable to connect to the Accident Prediction service.');
@@ -118,9 +163,8 @@ export default function AccidentPrediction() {
         </h1>
 
         <p className="mt-1 text-sm text-asphalt-400">
-          Enter a starting point and destination. RoadSense AI retrieves road,
-          weather, traffic, and accident-history data from the backend to
-          predict route risk.
+          Select a road from the database. RoadSense AI retrieves road, weather,
+          traffic, and accident-history data from the backend to predict its risk.
         </p>
       </div>
 
@@ -129,35 +173,37 @@ export default function AccidentPrediction() {
           onSubmit={handleSubmit}
           className="rounded-lg border border-asphalt-700 bg-asphalt-900 p-6"
         >
-          <label className={labelClass} htmlFor="start_location">
-            Starting Point *
+          <label className={labelClass} htmlFor="road_id">
+            Road *
           </label>
 
-          <input
-            id="start_location"
-            type="text"
+          <select
+            id="road_id"
             required
-            value={form.start_location}
+            value={form.road_id}
             onChange={(event) =>
-              update('start_location', event.target.value)
+              update('road_id', event.target.value)
             }
             className={inputClass}
-            placeholder="Example: Banjara Hills"
-          />
+            disabled={roadsLoading || roads.length === 0}
+          >
+            <option value="">
+              {roadsLoading ? 'Loading roads…' : 'Select a road'}
+            </option>
+            {roads.map((road) => (
+              <option key={road.road_id} value={road.road_id}>
+                {road.road_name}
+              </option>
+            ))}
+          </select>
 
-          <label className={`${labelClass} mt-4`} htmlFor="end_location">
-            Destination *
-          </label>
+          {roadsError && (
+            <p className="mt-2 text-xs text-signal-red">{roadsError}</p>
+          )}
 
-          <input
-            id="end_location"
-            type="text"
-            required
-            value={form.end_location}
-            onChange={(event) => update('end_location', event.target.value)}
-            className={inputClass}
-            placeholder="Example: Hitec City"
-          />
+          <p className="mt-2 text-xs text-asphalt-500">
+            This list is refreshed automatically every 30 seconds.
+          </p>
 
           {error && (
             <p className="mt-4 rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-xs text-signal-red">
