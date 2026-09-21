@@ -5,9 +5,8 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: read from VITE_API_BASE_URL when provided; otherwise call the
-// backend directly on the API server port. No proxy server is required.
-const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+// Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8001)
+const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001';
 export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
 
 // Single configured Axios instance
@@ -18,28 +17,6 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
-
-// Share concurrent GET requests (including React StrictMode's development
-// double-effect invocation) instead of sending duplicate network requests.
-const inFlightGetRequests = new Map();
-
-async function getShared(path, config = {}) {
-  const paramsKey = JSON.stringify(config.params || {});
-  const requestKey = `${path}?${paramsKey}`;
-  const existingRequest = inFlightGetRequests.get(requestKey);
-  if (existingRequest) {
-    return existingRequest;
-  }
-
-  const request = apiClient
-    .get(path, config)
-    .finally(() => {
-      inFlightGetRequests.delete(requestKey);
-    });
-
-  inFlightGetRequests.set(requestKey, request);
-  return request;
-}
 
 // Request interceptor: attach bearer token
 apiClient.interceptors.request.use((config) => {
@@ -193,6 +170,23 @@ export async function getRoads() {
   }
 
   return [];
+}
+
+/** Fetch the newest traffic anomalies recorded by the ML service. */
+export async function getAnomalies(limit = 20) {
+  try {
+    const { data } = await apiClient.get('/api/anomalies', { params: { limit } });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching traffic anomalies:', error);
+    throw error;
+  }
+}
+
+/** Run the trained anomaly model against supplied or road-derived telemetry. */
+export async function predictAnomaly(payload) {
+  const { data } = await apiClient.post('/api/anomalies/predict', payload);
+  return data;
 }
 
 // -----------------------------------------------------------------------------
@@ -379,21 +373,12 @@ export async function predictRouteAccident(payload) {
 }
 
 /**
- * Run the database-backed accident prediction for one selected road.
- * POST /api/predictions/accidents/predict
- */
-export async function predictAccident(payload) {
-  const { data } = await apiClient.post('/api/predictions/accidents/predict', payload);
-  return data;
-}
-
-/**
  * Fetch the latest stored accident risk prediction per road.
  * GET /api/predictions/accidents/latest -> AccidentPredictionResponse[]
  */
 export async function getLatestAccidentPredictions() {
   try {
-    const { data } = await getShared('/api/predictions/accidents/latest');
+    const { data } = await apiClient.get('/api/predictions/accidents/latest');
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/predictions/accidents/latest:', error);
@@ -540,9 +525,7 @@ export async function deleteUser(username) {
 
 export async function getAllRoads(search = '') {
   try {
-    const { data } = await getShared('/api/roads', {
-      params: search ? { search } : {},
-    });
+    const { data } = await apiClient.get('/api/roads', { params: search ? { search } : {} });
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/roads:', error);
@@ -648,12 +631,23 @@ export async function getDrivingRoute(startLat, startLng, endLat, endLng) {
   return data;
 }
 
+/**
+ * Reverse geocode: turn GPS coordinates (e.g. from the browser's location
+ * API) into a human-readable label. Used by "Use my current location".
+ */
+export async function reverseGeocode(lat, lng) {
+  const { data } = await apiClient.get('/api/geo/reverse', { params: { lat, lng } });
+  return data;
+}
+
 export default {
   API_BASE_URL,
   apiClient,
   getDashboardStats,
   getDashboardTrend,
   getRoads,
+  getAnomalies,
+  predictAnomaly,
   getTrafficLayer,
   getAccidentLayer,
   getHotspotsLayer,
@@ -667,7 +661,6 @@ export default {
   sendChatbotMessage,
   predictRouteTraffic,
   predictRouteAccident,
-  predictAccident,
   predictTraffic,
   getLatestTrafficPredictions,
   getLatestAccidentPredictions,

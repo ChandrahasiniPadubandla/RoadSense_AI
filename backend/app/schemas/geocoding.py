@@ -34,9 +34,20 @@ class NearestRoadResult(BaseModel):
     road_condition: Optional[str] = None
 
 
+class RouteStep(BaseModel):
+    instruction: str = Field(..., description="Human-readable turn-by-turn instruction, e.g. 'Turn right onto Banjara Hills Road'")
+    road_name: Optional[str] = Field(default=None, description="Name of the road for this step, if known")
+    distance_meters: float = Field(..., description="Length of this step in meters")
+    duration_seconds: float = Field(..., description="Estimated time for this step in seconds")
+    maneuver_type: Optional[str] = Field(default=None, description="Raw OSRM maneuver type, e.g. 'turn', 'depart', 'arrive'")
+    maneuver_modifier: Optional[str] = Field(default=None, description="Raw OSRM maneuver modifier, e.g. 'left', 'right', 'straight'")
+    coordinates: Optional[List[float]] = Field(default=None, description="[latitude, longitude] of the maneuver point")
+
+
 class DrivingRouteResult(BaseModel):
     coordinates: List[List[float]] = Field(..., description="Array of [latitude, longitude] route waypoints along actual streets")
     distance_km: float = Field(..., description="Real street driving distance in kilometers")
     duration_minutes: float = Field(..., description="Estimated travel time in minutes")
     is_real_route: bool = Field(default=True, description="Whether routed via real road network or straight line fallback")
+    steps: List[RouteStep] = Field(default_factory=list, description="Turn-by-turn directions, empty if unavailable (e.g. straight-line fallback)")
 

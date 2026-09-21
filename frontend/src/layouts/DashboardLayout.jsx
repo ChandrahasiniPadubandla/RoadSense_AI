@@ -14,6 +14,7 @@ const TITLES = {
   '/traffic-management': 'Traffic Management',
   '/hotspots': 'Accident Hotspots',
   '/alerts': 'Alerts',
+  '/anomalies': 'Traffic Anomalies',
   '/road-management': 'Road Management',
   '/user-management': 'User Management',
 };
