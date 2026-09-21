@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: '/alerts', label: 'Alerts', roles: 'ALL' },
   { to: '/road-management', label: 'Road Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
   { to: '/user-management', label: 'User Management', roles: [ROLES.SUPER_ADMIN] },
+  { to: '/anomalies', label: 'Anomalies', roles: 'ALL' },
 ];
 
 export default function Sidebar() {
