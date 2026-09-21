@@ -98,7 +98,7 @@ def get_dashboard_stats(
     # High-risk zones: hotspots or zones associated with accidents
     hotspot_count = (
         db.query(AccidentHotspot)
-        .filter(AccidentHotspot.risk_level.in_(["HIGH", "CRITICAL", "High", "Critical"]))
+        .filter(AccidentHotspot.risk_level.in_(["HIGH", "CRITICAL", "High", "Critical", "SEVERE", "Severe"]))
         .count()
     )
 
