@@ -318,6 +318,10 @@ class RouteTrafficPredictionResponse(BaseModel):
         default=None,
         description="Traffic anomaly detection analysis: prediction (NORMAL/ANOMALY), is_anomaly, anomaly_score, confidence_score"
     )
+    live_traffic: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Real-time live traffic telemetry: current speed, free-flow speed, delay, congestion percentage"
+    )
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 

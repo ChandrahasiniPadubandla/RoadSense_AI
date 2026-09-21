@@ -174,6 +174,7 @@ def predict_route_traffic(
         route_geometry=bundle.get("route_geometry") or ml_result.get("route_geometry"),
         accident_points=ml_result.get("accident_points", []),
         anomaly_detection=anomaly_result,
+        live_traffic=bundle.get("live_traffic") or ml_result.get("live_traffic"),
         ml_features=bundle["ml_features"],
         ml_source=ml_result.get("ml_source", "backend-feature-engine"),
         created_at=now
