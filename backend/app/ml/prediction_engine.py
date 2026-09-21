@@ -44,6 +44,101 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return round(R * c, 2)
 
+def compute_temporal_traffic_projection(
+    target_time: datetime,
+    road_capacity: int = 1500,
+    speed_limit: float = 50.0,
+    rainfall: float = 0.0,
+    accident_count: int = 0,
+    live_traffic: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Dynamically projects traffic metrics (speed, density, vehicle count, congestion tier)
+    for any target prediction time window.
+    - If target_time is current / near-term (<= 60 mins ahead), smoothly blends with
+      real-time TomTom sensor telemetry using a temporal decay window.
+    - If target_time is in the future (> 60 mins ahead, e.g. 330 mins / 5.5 hours),
+      forecasts based on Hyderabad urban diurnal rush patterns, target hour, day of week,
+      road capacity, and weather forecast without being distorted by the present moment.
+    """
+    now = datetime.now()
+    delta_mins = max(0.0, (target_time - now).total_seconds() / 60.0)
+
+    hour_val = target_time.hour
+    day_val = target_time.strftime("%A")
+    is_weekend = day_val in ["Saturday", "Sunday"]
+
+    # Hyderabad urban diurnal rush-hour pattern
+    if 8 <= hour_val <= 11:
+        rush_factor = 0.85 if is_weekend else 1.35   # Morning peak
+    elif 17 <= hour_val <= 20:
+        rush_factor = 0.95 if is_weekend else 1.50   # Evening rush peak
+    elif hour_val == 21:
+        rush_factor = 0.85 if is_weekend else 1.15   # Evening post-peak tapering
+    elif 12 <= hour_val <= 16:
+        rush_factor = 0.80 if is_weekend else 0.95   # Midday flow
+    elif hour_val >= 22 or hour_val <= 5:
+        rush_factor = 0.28                           # Late night / early morning clear flow
+    else:
+        rush_factor = 0.65                           # Transition hours
+
+    # Weather & historical incident impact
+    weather_factor = 1.30 if rainfall > 5.0 else (1.15 if rainfall > 0.5 else 1.0)
+    accident_factor = 1.0 + min(accident_count * 0.05, 0.35)
+
+    # Standardized capacity & volume matching ML model scale
+    std_capacity = max(1000, min(int(road_capacity * 0.55), 1800))
+    base_vol = std_capacity * 0.50
+    effective_vol = base_vol * rush_factor * weather_factor * accident_factor
+
+    temp_vehicles = int(min(max(effective_vol, 120), std_capacity * 1.35))
+    temp_density = round(min(max((temp_vehicles / std_capacity) * 100.0, 15.0), 125.0), 2)
+
+    # Empirical speed inversely proportional to congestion
+    spd_limit = float(speed_limit or 50.0)
+    if temp_density > 85.0:
+        calc_speed = max(12.0, spd_limit * 0.35 - (temp_density - 85) * 0.3)
+    elif temp_density > 60.0:
+        calc_speed = max(20.0, spd_limit * 0.60 - (temp_density - 60) * 0.4)
+    elif temp_density > 40.0:
+        calc_speed = max(32.0, spd_limit * 0.80 - (temp_density - 40) * 0.3)
+    else:
+        calc_speed = min(spd_limit, spd_limit * 0.95 + (40 - temp_density) * 0.2)
+    temp_speed = round(calc_speed, 2)
+
+    # Horizon weight for live telemetry (decay from 1.0 at 0m to 0.0 at 60m)
+    if live_traffic and live_traffic.get("is_live") and live_traffic.get("current_speed_kmh"):
+        w_live = max(0.0, min(1.0, 1.0 - (delta_mins / 60.0)))
+        live_speed = float(live_traffic["current_speed_kmh"])
+        slowdown_pct = float(live_traffic.get("slowdown_percentage", 0.0))
+        live_density = round(min(120.0, max(15.0, 28.0 + (slowdown_pct * 0.85))), 2)
+        live_vehicles = max(150, int(std_capacity * (live_density / 100.0)))
+
+        final_speed = round(w_live * live_speed + (1.0 - w_live) * temp_speed, 1)
+        final_density = round(w_live * live_density + (1.0 - w_live) * temp_density, 1)
+        final_vehicles = int(w_live * live_vehicles + (1.0 - w_live) * temp_vehicles)
+    else:
+        final_speed = temp_speed
+        final_density = temp_density
+        final_vehicles = temp_vehicles
+
+    if final_density > 85.0:
+        cong = "SEVERE"
+    elif final_density > 65.0:
+        cong = "HIGH"
+    elif final_density > 45.0:
+        cong = "MEDIUM"
+    else:
+        cong = "LOW"
+
+    return {
+        "vehicle_count": final_vehicles,
+        "average_speed": final_speed,
+        "traffic_density": final_density,
+        "predicted_congestion": cong,
+        "std_capacity": std_capacity
+    }
+
 
 def resolve_route_bundle(
     db: Session,
@@ -252,28 +347,25 @@ def resolve_route_bundle(
         road_type=road.road_type
     )
 
-    # 4. Telemetry Baseline: Directly derived from real-time live traffic telemetry & road capacity (No DB traffic records used)
-    raw_cap = int(road.road_capacity or 1500)
-    if live_traffic:
-        avg_speed = float(live_traffic["current_speed_kmh"])
-        traf_density = float(live_traffic["slowdown_percentage"])
-        prev_cong = live_traffic["traffic_condition"]
-        veh_count = max(100, int(raw_cap * (traf_density / 100.0)))
-    else:
-        # Strictly from registered road capacity and speed limits - zero dummy fallbacks
-        avg_speed = float(road.speed_limit or 50.0)
-        traf_density = 0.0
-        prev_cong = "Clear"
-        veh_count = 0
-
-    # 5. Historical Accident Statistics
+    # 4. Historical Accident Statistics
     accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
 
+    # 5. Telemetry Baseline: Dynamic blend between real-time TomTom telemetry (near-term) and temporal forecast (future)
+    raw_cap = int(road.road_capacity or 1500)
+    baseline = compute_temporal_traffic_projection(
+        target_time=target_time,
+        road_capacity=raw_cap,
+        speed_limit=float(road.speed_limit or 50.0),
+        rainfall=float(live_weather.get("rainfall", 0.0)),
+        accident_count=accidents_count,
+        live_traffic=live_traffic
+    )
+
     previous_records = {
-        "vehicle_count": veh_count,
-        "average_speed": avg_speed,
-        "traffic_density": traf_density,
-        "previous_congestion": prev_cong,
+        "vehicle_count": baseline["vehicle_count"],
+        "average_speed": baseline["average_speed"],
+        "traffic_density": baseline["traffic_density"],
+        "previous_congestion": baseline["predicted_congestion"],
         "historical_accidents": accidents_count
     }
 
@@ -324,30 +416,7 @@ def resolve_route_bundle(
     }
 
 
-# Exact categories learned by the traffic_congestion OneHotEncoder
-KNOWN_START_LOCS = [
-    'Ameerpet', 'Begumpet', 'Dilsukhnagar', 'Financial District', 'Gachibowli',
-    'Hitech City', 'Kompally', 'Kondapur', 'Kukatpally', 'LB Nagar',
-    'Madhapur', 'Malakpet', 'Mehdipatnam', 'Miyapur', 'Secunderabad',
-    'Tarnaka', 'Tolichowki', 'Uppal'
-]
 
-KNOWN_END_LOCS = [
-    'Ameerpet', 'Begumpet', 'Charminar', 'Dilsukhnagar', 'Financial District',
-    'Gachibowli', 'Hitech City', 'Jubilee Hills', 'Kukatpally', 'Madhapur',
-    'Malakpet', 'Nanakramguda', 'Punjagutta', 'Secunderabad', 'Tolichowki', 'Uppal'
-]
-
-
-def match_known_location(text: str, candidates: list) -> str:
-    if not text:
-        return candidates[0]
-    clean = text.lower().replace("road", "").replace("main", "").replace("expressway", "").replace("corridor", "").strip()
-    for c in candidates:
-        c_clean = c.lower().strip()
-        if c_clean in clean or clean in c_clean:
-            return c
-    return candidates[0]
 
 
 def normalize_model_road_type(rt: str) -> str:
@@ -477,61 +546,29 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             prev_data = bundle["previous_records"]
             temporal = bundle["temporal_data"]
 
-            # 1. Temporal Rush Hour Calibration (Hyderabad urban traffic dynamics)
-            hour_val = int(temporal["hour"])
-            day_val = str(temporal["day_of_week"])
-            is_hol = bool(temporal.get("is_holiday", False))
-            is_weekend = day_val in ["Saturday", "Sunday"] or is_hol
-
-            if 8 <= hour_val <= 11:
-                rush_factor = 0.85 if is_weekend else 1.35  # Morning peak
-            elif 17 <= hour_val <= 21:
-                rush_factor = 0.95 if is_weekend else 1.45  # Evening peak
-            elif 12 <= hour_val <= 16:
-                rush_factor = 0.80 if is_weekend else 0.95  # Midday
-            elif hour_val >= 22 or hour_val <= 5:
-                rush_factor = 0.28                          # Late night / early morning
-            else:
-                rush_factor = 0.65                          # Transition hours
-
-            # 2. Weather & Incident Impact
             rf = float(weather_data.get("rainfall", 0.0))
-            weather_factor = 1.30 if rf > 5.0 else (1.15 if rf > 0.5 else 1.0)
             acc_count = int(bundle.get("historical_accidents_count", 0))
-            accident_factor = 1.0 + min(acc_count * 0.05, 0.35)
+            hour_val = int(temporal.get("hour", target_time.hour))
+            day_val = str(temporal.get("day_of_week", target_time.strftime("%A")))
+            is_hol = bool(temporal.get("is_holiday", False))
 
-            # 3. Standardized Capacity matching Model Scale (Mean: 1470)
-            raw_cap = int(road_data.get("road_capacity") or 1500)
-            std_capacity = max(1000, min(int(raw_cap * 0.55), 1800))
-
-            # 4. Realistic Dynamic Vehicles & Density (%)
-            base_vol = std_capacity * 0.50
-            effective_vol = base_vol * rush_factor * weather_factor * accident_factor
-            calibrated_vehicles = int(min(max(effective_vol, 120), std_capacity * 1.35))
-            calibrated_density = round(min(max((calibrated_vehicles / std_capacity) * 100.0, 15.0), 125.0), 2)
-
-            # 5. Speed Inversely Proportional to Congestion
-            speed_limit = float(road_data.get("speed_limit") or 50.0)
-            if calibrated_density > 85.0:
-                calc_speed = max(12.0, speed_limit * 0.35 - (calibrated_density - 85) * 0.3)
-            elif calibrated_density > 60.0:
-                calc_speed = max(20.0, speed_limit * 0.60 - (calibrated_density - 60) * 0.4)
-            elif calibrated_density > 40.0:
-                calc_speed = max(32.0, speed_limit * 0.80 - (calibrated_density - 40) * 0.3)
-            else:
-                calc_speed = min(speed_limit, speed_limit * 0.95 + (40 - calibrated_density) * 0.2)
-            calibrated_speed = round(calc_speed, 2)
-
-            # 5b. Incorporate real-time live sensor speed if available from TomTom
-            live_tr = bundle.get("live_traffic") or {}
-            if live_tr.get("is_live") and live_tr.get("current_speed_kmh"):
-                calibrated_speed = float(live_tr["current_speed_kmh"])
-                if live_tr.get("slowdown_percentage") is not None:
-                    calibrated_density = round(min(100.0, max(15.0, live_tr["slowdown_percentage"] * 1.1)), 2)
+            # Dynamic temporal forecast projection (balances current live telemetry with future target hour)
+            proj = compute_temporal_traffic_projection(
+                target_time=target_time,
+                road_capacity=int(road_data.get("road_capacity") or 1500),
+                speed_limit=float(road_data.get("speed_limit") or 50.0),
+                rainfall=rf,
+                accident_count=acc_count,
+                live_traffic=bundle.get("live_traffic")
+            )
+            calibrated_speed = proj["average_speed"]
+            calibrated_density = proj["traffic_density"]
+            calibrated_vehicles = proj["vehicle_count"]
+            std_capacity = proj["std_capacity"]
 
             new_record = {
-                "start_location": match_known_location(bundle["start_label"], KNOWN_START_LOCS),
-                "end_location": match_known_location(bundle["end_label"], KNOWN_END_LOCS),
+                "start_location": str(bundle.get("start_label") or bundle["road_conditions"]["road_name"]),
+                "end_location": str(bundle.get("end_label") or bundle["road_conditions"]["road_name"]),
                 "start_latitude": float(bundle["start_latitude"]),
                 "start_longitude": float(bundle["start_longitude"]),
                 "end_latitude": float(bundle["end_latitude"]),
@@ -710,16 +747,16 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             # Check if this corridor matches an empirical accident hotspot from accident_hotspots.csv
             hotspot_info = None
             hotspot_csv = os.path.join(accident_dir, "accident_hotspots.csv")
-            s_matched = match_known_location(bundle["start_label"], KNOWN_START_LOCS)
-            e_matched = match_known_location(bundle["end_label"], KNOWN_END_LOCS)
+            s_raw = str(bundle.get("start_label", "")).lower()
+            e_raw = str(bundle.get("end_label", "")).lower()
 
             if os.path.exists(hotspot_csv):
                 try:
                     import pandas as pd
                     hs_df = pd.read_csv(hotspot_csv)
                     m = hs_df[
-                        (hs_df["start_location"].str.lower() == s_matched.lower()) &
-                        (hs_df["end_location"].str.lower() == e_matched.lower())
+                        hs_df["start_location"].str.lower().apply(lambda x: x in s_raw or s_raw in x) &
+                        hs_df["end_location"].str.lower().apply(lambda x: x in e_raw or e_raw in x)
                     ]
                     if not m.empty:
                         hotspot_info = m.iloc[0]
@@ -790,8 +827,8 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 eff_road_cond = raw_cond
 
             record = {
-                "start_location": s_matched,
-                "end_location": e_matched,
+                "start_location": str(bundle.get("start_label") or bundle["road_conditions"]["road_name"]),
+                "end_location": str(bundle.get("end_label") or bundle["road_conditions"]["road_name"]),
                 "start_latitude": float(bundle["start_latitude"]),
                 "start_longitude": float(bundle["start_longitude"]),
                 "end_latitude": float(bundle["end_latitude"]),
