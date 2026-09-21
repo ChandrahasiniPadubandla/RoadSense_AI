@@ -1,18 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import DataTable from '../components/DataTable';
 import {
+  getRoads,
   predictRouteAccident,
   getLatestAccidentPredictions,
 } from '../api_services';
 
 const emptyForm = {
-<<<<<<< HEAD
-  from_road_id: '',
-  to_road_id: '',
-=======
   start_location: '',
   end_location: '',
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
 };
 
 const RISK_BADGE_CLASS = {
@@ -38,62 +34,43 @@ function RiskBadge({ level }) {
 
 export default function AccidentPrediction() {
   const [form, setForm] = useState(emptyForm);
+  const [roadNames, setRoadNames] = useState([]);
+  const [roadsError, setRoadsError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-
   const [recent, setRecent] = useState([]);
   const [recentLoading, setRecentLoading] = useState(true);
 
   useEffect(() => {
+    loadRoadSuggestions();
     loadRecentPredictions();
-<<<<<<< HEAD
-
-    let isMounted = true;
-
-    async function loadRoads() {
-      setRoadsLoading(true);
-      setRoadsError('');
-
-      try {
-        const data = await getAllRoads();
-        if (isMounted) {
-          setRoads(data);
-          setForm((previous) => ({
-            ...previous,
-            from_road_id:
-              previous.from_road_id &&
-              data.some((road) => road.road_id === previous.from_road_id)
-                ? previous.from_road_id
-                : '',
-            to_road_id:
-              previous.to_road_id &&
-              data.some((road) => road.road_id === previous.to_road_id)
-                ? previous.to_road_id
-                : data[0]?.road_id || '',
-          }));
-        }
-      } catch {
-        if (isMounted) {
-          setRoadsError('Could not load roads from the database.');
-        }
-      } finally {
-        if (isMounted) {
-          setRoadsLoading(false);
-        }
-      }
-    }
-
-    loadRoads();
-    const refreshTimer = window.setInterval(loadRoads, 30000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(refreshTimer);
-    };
-=======
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
   }, []);
+
+  async function loadRoadSuggestions() {
+    try {
+      const predictionData = await getLatestAccidentPredictions();
+      const predictionNames = [
+        ...new Set(
+          predictionData
+            .map((item) => item.road_name || item.start_location || item.end_location)
+            .filter(Boolean)
+        ),
+      ];
+
+      if (predictionNames.length > 0) {
+        setRoadNames(predictionNames);
+        return;
+      }
+
+      const fallbackData = await getRoads();
+      setRoadNames(
+        [...new Set(fallbackData.map((road) => road.name).filter(Boolean))]
+      );
+    } catch (err) {
+      setRoadsError('Could not load accident prediction locations from the database.');
+    }
+  }
 
   async function loadRecentPredictions() {
     setRecentLoading(true);
@@ -114,19 +91,8 @@ export default function AccidentPrediction() {
     setError('');
     setResult(null);
 
-<<<<<<< HEAD
-    const fromRoad = roads.find((road) => road.road_id === form.from_road_id);
-    const toRoad = roads.find((road) => road.road_id === form.to_road_id);
-    if (!fromRoad || !toRoad) {
-      setError('Please select both a From road and a To road.');
-      return;
-    }
-    if (fromRoad.road_id === toRoad.road_id) {
-      setError('From road and To road must be different.');
-=======
     if (!form.start_location.trim() || !form.end_location.trim()) {
       setError('Please enter both the starting point and destination.');
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
       return;
     }
 
@@ -134,36 +100,19 @@ export default function AccidentPrediction() {
 
     try {
       const payload = {
-<<<<<<< HEAD
-        start_location: fromRoad.road_name,
-        end_location: toRoad.road_name,
-=======
         start_location: form.start_location.trim(),
         end_location: form.end_location.trim(),
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
         persist: true,
       };
-
-      if (
-        fromRoad.start_latitude != null &&
-        fromRoad.start_longitude != null
-      ) {
-        payload.start_latitude = Number(fromRoad.start_latitude);
-        payload.start_longitude = Number(fromRoad.start_longitude);
-      }
-
-      if (toRoad.end_latitude != null && toRoad.end_longitude != null) {
-        payload.end_latitude = Number(toRoad.end_latitude);
-        payload.end_longitude = Number(toRoad.end_longitude);
-      }
 
       const data = await predictRouteAccident(payload);
 
       setResult({
         ...data,
-        from_road_name: data.start_location || fromRoad.road_name,
-        to_road_name: data.end_location || toRoad.road_name,
+        from_road_name: data.start_location || form.start_location.trim(),
+        to_road_name: data.end_location || form.end_location.trim(),
       });
+
       await loadRecentPredictions();
     } catch (err) {
       if (err.response?.status === 404) {
@@ -200,17 +149,10 @@ export default function AccidentPrediction() {
           Accident Prediction
         </h1>
 
-<<<<<<< HEAD
-        <p className="mt-1 text-sm text-asphalt-400">
-          Select a From and To road. RoadSense AI calculates the route between
-          them and uses road, weather, traffic, and accident-history data to
-          predict accident risk.
-=======
         <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
           Enter a starting point and destination. RoadSense AI retrieves road,
           weather, traffic, and accident-history data from the backend to
           predict route risk.
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
         </p>
       </div>
 
@@ -219,76 +161,49 @@ export default function AccidentPrediction() {
           onSubmit={handleSubmit}
           className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-6"
         >
-<<<<<<< HEAD
-          <label className={labelClass} htmlFor="from_road_id">
-            From Road *
-          </label>
-
-          <select
-            id="from_road_id"
-            required
-            value={form.from_road_id}
-            onChange={(event) =>
-              update('from_road_id', event.target.value)
-=======
           <label className={labelClass} htmlFor="start_location">
             Starting Point *
           </label>
 
-          <input
+          <select
             id="start_location"
-            type="text"
             required
             value={form.start_location}
-            onChange={(event) =>
-              update('start_location', event.target.value)
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
-            }
+            onChange={(event) => update('start_location', event.target.value)}
             className={inputClass}
-            placeholder="Example: Banjara Hills"
-          />
+          >
+            <option value="">Select starting point</option>
+            {roadNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
 
-<<<<<<< HEAD
-          <label className={`${labelClass} mt-4`} htmlFor="to_road_id">
-            To Road *
+          <label className={`${labelClass} mt-4`} htmlFor="end_location">
+            Destination *
           </label>
 
           <select
-            id="to_road_id"
+            id="end_location"
             required
-            value={form.to_road_id}
-            onChange={(event) => update('to_road_id', event.target.value)}
+            value={form.end_location}
+            onChange={(event) => update('end_location', event.target.value)}
             className={inputClass}
-            disabled={roadsLoading || roads.length === 0}
           >
-            <option value="">
-              {roadsLoading ? 'Loading roads…' : 'Select a destination road'}
-            </option>
-            {roads.map((road) => (
-              <option key={road.road_id} value={road.road_id}>
-                {road.road_name}
+            <option value="">Select destination</option>
+            {roadNames.map((name) => (
+              <option key={`${name}-end`} value={name}>
+                {name}
               </option>
             ))}
           </select>
 
           {roadsError && (
-            <p className="mt-2 text-xs text-signal-red">{roadsError}</p>
+            <p className="mt-2 text-xs text-slate-400 dark:text-asphalt-500">
+              {roadsError}
+            </p>
           )}
-=======
-          <label className={`${labelClass} mt-4`} htmlFor="end_location">
-            Destination *
-          </label>
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
-
-          <input
-            id="end_location"
-            type="text"
-            required
-            value={form.end_location}
-            onChange={(event) => update('end_location', event.target.value)}
-            className={inputClass}
-            placeholder="Example: Hitec City"
-          />
 
           {error && (
             <p className="mt-4 rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-xs text-signal-red">
@@ -311,13 +226,8 @@ export default function AccidentPrediction() {
           </p>
 
           {!result && !isSubmitting && (
-<<<<<<< HEAD
-            <p className="mt-4 text-sm text-asphalt-400">
-              Select both roads and run a prediction to see the result.
-=======
             <p className="mt-4 text-sm text-slate-500 dark:text-asphalt-400">
               Enter your route and run a prediction to see the result.
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
             </p>
           )}
 
@@ -330,17 +240,9 @@ export default function AccidentPrediction() {
           {result && !isSubmitting && (
             <div className="mt-4 space-y-4">
               <div className="flex items-center gap-3">
-<<<<<<< HEAD
-                <RiskBadge
-                  level={result.risk_level || result.accident_risk_level}
-                />
-                <span className="text-sm text-asphalt-300">
-                {result.road_name || 'Selected road'}
-=======
-                <RiskBadge level={result.risk_level} />
+                <RiskBadge level={result.risk_level || result.accident_risk_level} />
                 <span className="text-sm text-slate-600 dark:text-asphalt-300">
                   {result.road_name || 'Selected route'}
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
                 </span>
               </div>
 
@@ -349,28 +251,17 @@ export default function AccidentPrediction() {
                   Predicted accident risk
                 </p>
 
-<<<<<<< HEAD
-                <p className="mt-1 text-3xl font-semibold text-asphalt-100">
-                  {Number(result.risk_percentage ?? result.accident_risk).toFixed(1)}%
-=======
                 <p className="mt-1 text-3xl font-semibold text-slate-900 dark:text-asphalt-100">
-                  {Number(result.risk_percentage).toFixed(1)}%
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
+                  {Number(result.risk_percentage ?? result.accident_risk ?? 0).toFixed(1)}%
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-<<<<<<< HEAD
-                  <p className="text-xs text-asphalt-400">Route</p>
-                  <p className="text-asphalt-100">
-                    {result.from_road_name || result.start_location} →{' '}
-                    {result.to_road_name || result.end_location}
-=======
                   <p className="text-xs text-slate-500 dark:text-asphalt-400">Route</p>
                   <p className="text-slate-900 dark:text-asphalt-100">
-                    {result.start_location} → {result.end_location}
->>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
+                    {(result.from_road_name || result.start_location || form.start_location).trim() || 'Unknown location'} →{' '}
+                    {(result.to_road_name || result.end_location || form.end_location).trim() || 'Unknown destination'}
                   </p>
                 </div>
 
