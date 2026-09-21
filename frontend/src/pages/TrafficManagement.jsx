@@ -38,7 +38,7 @@ export default function TrafficManagement() {
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4 dark:border-asphalt-800">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">Traffic Management</h2>
+        <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">Traffic Management</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
           Real recorded traffic observations from the database — vehicle counts, speeds, congestion levels, and conditions.
         </p>

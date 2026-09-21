@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, ForeignKey, Numeric, Uuid
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
@@ -317,7 +317,7 @@ class AuditLog(Base):
     action = Column(String(50))
     entity_type = Column(String(100))
     entity_id = Column(Uuid)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     ip_address = Column(String(50))
     details = Column(Text)
 

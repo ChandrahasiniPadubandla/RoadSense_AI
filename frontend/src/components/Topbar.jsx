@@ -16,7 +16,7 @@ export default function Topbar({ title }) {
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-asphalt-700 dark:bg-asphalt-900">
-      <h1 className="text-sm font-medium text-slate-900 dark:text-asphalt-100">{title}</h1>
+      <h1 className="text-base font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">{title}</h1>
 
       <div className="flex items-center gap-4">
         <button

@@ -3,19 +3,22 @@ import DataTable from '../components/DataTable';
 import {
   predictRouteAccident,
   getLatestAccidentPredictions,
-  getAllRoads,
 } from '../api_services';
 
 const emptyForm = {
+<<<<<<< HEAD
   from_road_id: '',
   to_road_id: '',
+=======
+  start_location: '',
+  end_location: '',
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
 };
 
 const RISK_BADGE_CLASS = {
   LOW: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
   MEDIUM: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400',
   HIGH: 'border-orange-500/40 bg-orange-500/10 text-orange-400',
-  SEVERE: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
   CRITICAL: 'border-signal-red/40 bg-signal-red/10 text-signal-red',
 };
 
@@ -41,12 +44,10 @@ export default function AccidentPrediction() {
 
   const [recent, setRecent] = useState([]);
   const [recentLoading, setRecentLoading] = useState(true);
-  const [roads, setRoads] = useState([]);
-  const [roadsLoading, setRoadsLoading] = useState(true);
-  const [roadsError, setRoadsError] = useState('');
 
   useEffect(() => {
     loadRecentPredictions();
+<<<<<<< HEAD
 
     let isMounted = true;
 
@@ -90,6 +91,8 @@ export default function AccidentPrediction() {
       isMounted = false;
       window.clearInterval(refreshTimer);
     };
+=======
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
   }, []);
 
   async function loadRecentPredictions() {
@@ -111,6 +114,7 @@ export default function AccidentPrediction() {
     setError('');
     setResult(null);
 
+<<<<<<< HEAD
     const fromRoad = roads.find((road) => road.road_id === form.from_road_id);
     const toRoad = roads.find((road) => road.road_id === form.to_road_id);
     if (!fromRoad || !toRoad) {
@@ -119,6 +123,10 @@ export default function AccidentPrediction() {
     }
     if (fromRoad.road_id === toRoad.road_id) {
       setError('From road and To road must be different.');
+=======
+    if (!form.start_location.trim() || !form.end_location.trim()) {
+      setError('Please enter both the starting point and destination.');
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
       return;
     }
 
@@ -126,8 +134,13 @@ export default function AccidentPrediction() {
 
     try {
       const payload = {
+<<<<<<< HEAD
         start_location: fromRoad.road_name,
         end_location: toRoad.road_name,
+=======
+        start_location: form.start_location.trim(),
+        end_location: form.end_location.trim(),
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
         persist: true,
       };
 
@@ -154,9 +167,8 @@ export default function AccidentPrediction() {
       await loadRecentPredictions();
     } catch (err) {
       if (err.response?.status === 404) {
-        const detail = err.response.data?.detail;
         setError(
-          (typeof detail === 'string' ? detail : detail?.message) ||
+          err.response.data?.detail ||
             'The selected route could not be found.'
         );
       } else if (err.response?.status === 422) {
@@ -164,9 +176,7 @@ export default function AccidentPrediction() {
         setError(
           Array.isArray(detail)
             ? detail.map((item) => item.msg).join(', ')
-            : typeof detail === 'string'
-              ? detail
-              : detail?.message || 'The selected road does not have enough data for prediction.'
+            : 'Please enter valid locations.'
         );
       } else if (err.request) {
         setError('Unable to connect to the Accident Prediction service.');
@@ -179,29 +189,37 @@ export default function AccidentPrediction() {
   }
 
   const inputClass =
-    'mt-1 w-full rounded-md border border-asphalt-600 bg-asphalt-800 px-3 py-2 text-sm text-asphalt-100 outline-none focus:border-signal-blue';
+    'mt-1 w-full rounded-md border border-slate-300 dark:border-asphalt-600 bg-slate-100 dark:bg-asphalt-800 px-3 py-2 text-sm text-slate-900 dark:text-asphalt-100 outline-none focus:border-signal-blue';
 
-  const labelClass = 'block text-xs text-asphalt-400';
+  const labelClass = 'block text-xs text-slate-500 dark:text-asphalt-400';
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-asphalt-100">
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">
           Accident Prediction
         </h1>
 
+<<<<<<< HEAD
         <p className="mt-1 text-sm text-asphalt-400">
           Select a From and To road. RoadSense AI calculates the route between
           them and uses road, weather, traffic, and accident-history data to
           predict accident risk.
+=======
+        <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
+          Enter a starting point and destination. RoadSense AI retrieves road,
+          weather, traffic, and accident-history data from the backend to
+          predict route risk.
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <form
           onSubmit={handleSubmit}
-          className="rounded-lg border border-asphalt-700 bg-asphalt-900 p-6"
+          className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-6"
         >
+<<<<<<< HEAD
           <label className={labelClass} htmlFor="from_road_id">
             From Road *
           </label>
@@ -212,20 +230,25 @@ export default function AccidentPrediction() {
             value={form.from_road_id}
             onChange={(event) =>
               update('from_road_id', event.target.value)
+=======
+          <label className={labelClass} htmlFor="start_location">
+            Starting Point *
+          </label>
+
+          <input
+            id="start_location"
+            type="text"
+            required
+            value={form.start_location}
+            onChange={(event) =>
+              update('start_location', event.target.value)
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
             }
             className={inputClass}
-            disabled={roadsLoading || roads.length === 0}
-          >
-            <option value="">
-              {roadsLoading ? 'Loading roads…' : 'Select a road'}
-            </option>
-            {roads.map((road) => (
-              <option key={road.road_id} value={road.road_id}>
-                {road.road_name}
-              </option>
-            ))}
-          </select>
+            placeholder="Example: Banjara Hills"
+          />
 
+<<<<<<< HEAD
           <label className={`${labelClass} mt-4`} htmlFor="to_road_id">
             To Road *
           </label>
@@ -251,10 +274,21 @@ export default function AccidentPrediction() {
           {roadsError && (
             <p className="mt-2 text-xs text-signal-red">{roadsError}</p>
           )}
+=======
+          <label className={`${labelClass} mt-4`} htmlFor="end_location">
+            Destination *
+          </label>
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
 
-          <p className="mt-2 text-xs text-asphalt-500">
-            This list is refreshed automatically every 30 seconds.
-          </p>
+          <input
+            id="end_location"
+            type="text"
+            required
+            value={form.end_location}
+            onChange={(event) => update('end_location', event.target.value)}
+            className={inputClass}
+            placeholder="Example: Hitec City"
+          />
 
           {error && (
             <p className="mt-4 rounded-md border border-signal-red/40 bg-signal-red/10 px-3 py-2 text-xs text-signal-red">
@@ -271,19 +305,24 @@ export default function AccidentPrediction() {
           </button>
         </form>
 
-        <div className="rounded-lg border border-asphalt-700 bg-asphalt-900 p-6">
-          <p className="text-xs uppercase tracking-wide text-asphalt-400">
+        <div className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-6">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-asphalt-400">
             Prediction Result
           </p>
 
           {!result && !isSubmitting && (
+<<<<<<< HEAD
             <p className="mt-4 text-sm text-asphalt-400">
               Select both roads and run a prediction to see the result.
+=======
+            <p className="mt-4 text-sm text-slate-500 dark:text-asphalt-400">
+              Enter your route and run a prediction to see the result.
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
             </p>
           )}
 
           {isSubmitting && (
-            <p className="mt-4 text-sm text-asphalt-400">
+            <p className="mt-4 text-sm text-slate-500 dark:text-asphalt-400">
               Analyzing road, traffic, weather, and accident-history data…
             </p>
           )}
@@ -291,36 +330,53 @@ export default function AccidentPrediction() {
           {result && !isSubmitting && (
             <div className="mt-4 space-y-4">
               <div className="flex items-center gap-3">
+<<<<<<< HEAD
                 <RiskBadge
                   level={result.risk_level || result.accident_risk_level}
                 />
                 <span className="text-sm text-asphalt-300">
                 {result.road_name || 'Selected road'}
+=======
+                <RiskBadge level={result.risk_level} />
+                <span className="text-sm text-slate-600 dark:text-asphalt-300">
+                  {result.road_name || 'Selected route'}
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
                 </span>
               </div>
 
-              <div className="rounded-md border border-asphalt-700 bg-asphalt-950/50 p-4">
-                <p className="text-xs text-asphalt-400">
+              <div className="rounded-md border border-slate-200 dark:border-asphalt-700 bg-slate-50 dark:bg-asphalt-950/50 p-4">
+                <p className="text-xs text-slate-500 dark:text-asphalt-400">
                   Predicted accident risk
                 </p>
 
+<<<<<<< HEAD
                 <p className="mt-1 text-3xl font-semibold text-asphalt-100">
                   {Number(result.risk_percentage ?? result.accident_risk).toFixed(1)}%
+=======
+                <p className="mt-1 text-3xl font-semibold text-slate-900 dark:text-asphalt-100">
+                  {Number(result.risk_percentage).toFixed(1)}%
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
+<<<<<<< HEAD
                   <p className="text-xs text-asphalt-400">Route</p>
                   <p className="text-asphalt-100">
                     {result.from_road_name || result.start_location} →{' '}
                     {result.to_road_name || result.end_location}
+=======
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Route</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">
+                    {result.start_location} → {result.end_location}
+>>>>>>> 7222f1e6bceae26fff4fad7af174e13e00df8386
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-asphalt-400">Distance</p>
-                  <p className="text-asphalt-100">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Distance</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.distance_km != null
                       ? `${Number(result.distance_km).toFixed(1)} km`
                       : '—'}
@@ -328,8 +384,8 @@ export default function AccidentPrediction() {
                 </div>
 
                 <div>
-                  <p className="text-xs text-asphalt-400">Confidence</p>
-                  <p className="text-asphalt-100">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Confidence</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.confidence_score != null
                       ? `${Number(result.confidence_score).toFixed(1)}%`
                       : '—'}
@@ -337,17 +393,17 @@ export default function AccidentPrediction() {
                 </div>
 
                 <div>
-                  <p className="text-xs text-asphalt-400">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">
                     Historical accidents
                   </p>
-                  <p className="text-asphalt-100">
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.historical_accidents_count ?? '—'}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-asphalt-400">Weather</p>
-                  <p className="text-asphalt-100">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Weather</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.weather_conditions?.condition ||
                       result.weather_conditions?.weather_condition ||
                       '—'}
@@ -355,10 +411,10 @@ export default function AccidentPrediction() {
                 </div>
 
                 <div>
-                  <p className="text-xs text-asphalt-400">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">
                     Prediction time
                   </p>
-                  <p className="text-asphalt-100">
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.prediction_time
                       ? new Date(result.prediction_time).toLocaleString()
                       : '—'}
@@ -371,12 +427,12 @@ export default function AccidentPrediction() {
                   Safety Recommendation
                 </p>
 
-                <p className="mt-1 text-sm text-asphalt-200">
-                  {(result.risk_level || '').toUpperCase() === 'SEVERE'
-                    ? 'Critical accident hotspot corridor! Exercise extreme caution, sharply reduce speed, and consider taking a safer alternate route.'
-                    : ['HIGH', 'CRITICAL'].includes((result.risk_level || '').toUpperCase())
-                    ? 'Elevated accident risk corridor. Drive carefully, reduce speed, keep a safe braking distance, and avoid abrupt overtaking.'
-                    : 'Follow normal road-safety practices, maintain safe speed, and stay alert while driving.'}
+                <p className="mt-1 text-sm text-slate-800 dark:text-asphalt-200">
+                  {['HIGH', 'CRITICAL'].includes(
+                    (result.risk_level || '').toUpperCase()
+                  )
+                    ? 'Drive carefully, reduce speed, keep a safe distance, and consider an alternative route.'
+                    : 'Follow normal road-safety practices and stay alert while driving.'}
                 </p>
               </div>
             </div>
@@ -385,12 +441,12 @@ export default function AccidentPrediction() {
       </div>
 
       <div>
-        <p className="mb-2 text-xs uppercase tracking-wide text-asphalt-400">
+        <p className="mb-2 text-xs uppercase tracking-wide text-slate-500 dark:text-asphalt-400">
           Latest Accident Predictions
         </p>
 
         {recentLoading ? (
-          <p className="text-sm text-asphalt-400">Loading…</p>
+          <p className="text-sm text-slate-500 dark:text-asphalt-400">Loading…</p>
         ) : (
           <DataTable
             columns={[
