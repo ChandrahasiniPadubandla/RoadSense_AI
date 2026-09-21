@@ -27,6 +27,7 @@ from app.schemas.prediction import (
 from app.ml.prediction_engine import (
     resolve_route_bundle,
     trigger_ml_traffic_model,
+    trigger_ml_anomaly_model,
     format_estimated_time
 )
 from app.security import require_roles
@@ -130,6 +131,28 @@ def predict_route_traffic(
         db.commit()
         db.refresh(pred_record)
 
+    # 3. Evaluate Traffic Anomaly Detection in the same call
+    anomaly_result = None
+    try:
+        anomaly_features = {
+            "vehicle_count": float(bundle["previous_records"].get("vehicle_count") or 800),
+            "average_speed": float(bundle["previous_records"].get("average_speed") or 35.0),
+            "traffic_density": float(bundle["previous_records"].get("traffic_density") or 50.0),
+            "road_capacity": float(bundle["road_conditions"].get("road_capacity") or 1500),
+            "previous_traffic": float(bundle["previous_records"].get("previous_traffic") or bundle["previous_records"].get("vehicle_count") or 800),
+            "hour": float(target_time.hour)
+        }
+        res_anom = trigger_ml_anomaly_model(anomaly_features)
+        anomaly_result = {
+            "prediction": res_anom.get("prediction", "NORMAL"),
+            "is_anomaly": res_anom.get("is_anomaly", False),
+            "anomaly_score": res_anom.get("anomaly_score", 0.0),
+            "confidence_score": res_anom.get("confidence_score", 55.0),
+            "model_status": res_anom.get("model_status", "trained-isolation-forest")
+        }
+    except Exception:
+        anomaly_result = None
+
     return RouteTrafficPredictionResponse(
         prediction_id=pred_record.prediction_id if pred_record else None,
         road_id=bundle["road"].road_id if bundle["road"] else None,
@@ -150,6 +173,7 @@ def predict_route_traffic(
         previous_records=bundle["previous_records"],
         route_geometry=bundle.get("route_geometry") or ml_result.get("route_geometry"),
         accident_points=ml_result.get("accident_points", []),
+        anomaly_detection=anomaly_result,
         ml_features=bundle["ml_features"],
         ml_source=ml_result.get("ml_source", "backend-feature-engine"),
         created_at=now
@@ -230,6 +254,28 @@ def run_traffic_prediction(
         db.commit()
         db.refresh(pred_record)
 
+    # Evaluate Anomaly Detection in the same call
+    anomaly_result = None
+    try:
+        anomaly_features = {
+            "vehicle_count": float(req.predicted_vehicle_count if req.predicted_vehicle_count is not None else bundle["previous_records"]["vehicle_count"]),
+            "average_speed": float(bundle["previous_records"].get("average_speed") or 35.0),
+            "traffic_density": float(bundle["previous_records"].get("traffic_density") or 50.0),
+            "road_capacity": float(bundle["road_conditions"].get("road_capacity") or 1500),
+            "previous_traffic": float(bundle["previous_records"].get("previous_traffic") or bundle["previous_records"].get("vehicle_count") or 800),
+            "hour": float(target_time.hour)
+        }
+        res_anom = trigger_ml_anomaly_model(anomaly_features)
+        anomaly_result = {
+            "prediction": res_anom.get("prediction", "NORMAL"),
+            "is_anomaly": res_anom.get("is_anomaly", False),
+            "anomaly_score": res_anom.get("anomaly_score", 0.0),
+            "confidence_score": res_anom.get("confidence_score", 55.0),
+            "model_status": res_anom.get("model_status", "trained-isolation-forest")
+        }
+    except Exception:
+        anomaly_result = None
+
     return TrafficPredictionRunResponse(
         prediction_id=pred_record.prediction_id if pred_record else None,
         road_id=road.road_id,
@@ -241,6 +287,7 @@ def run_traffic_prediction(
         predicted_vehicle_count=int(req.predicted_vehicle_count if req.predicted_vehicle_count is not None else bundle["previous_records"]["vehicle_count"]),
         confidence_score=ml_result.get("confidence_score"),
         class_probabilities={ml_result["congestion_level"]: ml_result.get("confidence_score")},
+        anomaly_detection=anomaly_result,
         created_at=now
     )
 

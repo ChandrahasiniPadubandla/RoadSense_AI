@@ -72,6 +72,7 @@ class TrafficPredictionRunResponse(BaseModel):
     predicted_vehicle_count: Optional[int] = None
     confidence_score: Optional[float] = None
     class_probabilities: Optional[Dict[str, float]] = None
+    anomaly_detection: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
 
 
@@ -312,6 +313,10 @@ class RouteTrafficPredictionResponse(BaseModel):
     accident_points: Optional[List[Dict[str, Any]]] = Field(
         default=None,
         description="Accident incident points and predicted risk hazard points along the route"
+    )
+    anomaly_detection: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Traffic anomaly detection analysis: prediction (NORMAL/ANOMALY), is_anomaly, anomaly_score, confidence_score"
     )
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None

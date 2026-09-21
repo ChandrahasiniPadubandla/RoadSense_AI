@@ -1,4 +1,6 @@
 from predict_expected_congestion_time import predict_expected_congestion_time
+from predict_traffic import predict_traffic
+from predict_anomaly import predict_anomaly, predict_anomaly_detailed
 
 new_record = {
     "start_location": "Secunderabad",
@@ -24,7 +26,11 @@ new_record = {
     "historical_accidents": 11
 }
 
-result = predict_expected_congestion_time(new_record)
+result_time = predict_expected_congestion_time(new_record)
+print("Expected Congestion Period:", result_time["expected_congestion_period"])
 
-print("Expected Congestion Period:",
-      result["expected_congestion_period"])
+result_traffic = predict_traffic(new_record)
+print("Traffic Congestion Level:", result_traffic["congestion_level"])
+
+result_anomaly = predict_anomaly_detailed(new_record)
+print("Traffic Anomaly Detection:", result_anomaly["prediction"], f"(score: {result_anomaly['anomaly_score']})")

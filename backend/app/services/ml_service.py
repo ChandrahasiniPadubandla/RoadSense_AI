@@ -83,25 +83,131 @@ class MLService:
         self,
         request: AnomalyPredictionRequest,
     ) -> AnomalyPredictionResponse:
-        road = self._get_road_record(request.road_id)
-        traffic = self._get_latest_traffic(str(road.road_id))
+        from app.ml.prediction_engine import trigger_ml_anomaly_model
 
-        vehicle_count = int(request.vehicle_count) if request.vehicle_count is not None else int(traffic.vehicle_count or 0)
-        previous_traffic = int(request.previous_traffic) if request.previous_traffic is not None else int(traffic.vehicle_count or 0)
-        road_capacity = int(request.road_capacity) if request.road_capacity is not None else int(road.road_capacity or 1)
-        density = float(request.traffic_density) if request.traffic_density is not None else float(traffic.traffic_density or 0)
+        road = None
+        traffic = None
+        road_name = None
 
-        capacity_ratio = vehicle_count / max(road_capacity, 1)
-        traffic_change = abs(vehicle_count - previous_traffic) / max(previous_traffic, 1)
-        is_anomaly = (
-            density >= 90
-            or capacity_ratio >= 1.0
-            or traffic_change >= 0.5
-        )
+        if request.road_id:
+            try:
+                road = self._get_road_record(request.road_id)
+                road_name = road.road_name
+                try:
+                    traffic = self._get_latest_traffic(str(road.road_id))
+                except Exception:
+                    traffic = None
+            except Exception:
+                road = None
+
+        if not road and (request.start_location or request.end_location or request.start_latitude):
+            from app.ml.prediction_engine import resolve_route_bundle
+            db_bundle = SessionLocal()
+            try:
+                bundle = resolve_route_bundle(
+                    db=db_bundle,
+                    start_name=request.start_location,
+                    end_name=request.end_location,
+                    start_lat=request.start_latitude,
+                    start_lng=request.start_longitude,
+                    end_lat=request.end_latitude,
+                    end_lng=request.end_longitude
+                )
+                road = bundle.get("road")
+                road_name = bundle.get("road_conditions", {}).get("road_name") or bundle.get("start_label")
+                prev = bundle.get("previous_records", {})
+                r_cond = bundle.get("road_conditions", {})
+                if request.vehicle_count is None and prev.get("vehicle_count") is not None:
+                    request.vehicle_count = int(prev["vehicle_count"])
+                if request.average_speed is None and prev.get("average_speed") is not None:
+                    request.average_speed = float(prev["average_speed"])
+                if request.traffic_density is None and prev.get("traffic_density") is not None:
+                    request.traffic_density = float(prev["traffic_density"])
+                if request.previous_traffic is None and prev.get("previous_traffic") is not None:
+                    request.previous_traffic = int(prev["previous_traffic"])
+                if request.road_capacity is None and r_cond.get("road_capacity") is not None:
+                    request.road_capacity = int(r_cond["road_capacity"])
+            except Exception:
+                pass
+            finally:
+                db_bundle.close()
+
+        vehicle_count = request.vehicle_count
+        if vehicle_count is None:
+            vehicle_count = int(traffic.vehicle_count) if (traffic and traffic.vehicle_count is not None) else 800
+
+        average_speed = request.average_speed
+        if average_speed is None:
+            average_speed = float(traffic.average_speed) if (traffic and traffic.average_speed is not None) else 35.0
+
+        road_capacity = request.road_capacity
+        if road_capacity is None:
+            road_capacity = int(road.road_capacity) if (road and road.road_capacity) else 1200
+
+        traffic_density = request.traffic_density
+        if traffic_density is None:
+            if traffic and traffic.traffic_density is not None:
+                traffic_density = float(traffic.traffic_density)
+            elif road_capacity > 0:
+                traffic_density = round((vehicle_count / road_capacity) * 100.0, 2)
+            else:
+                traffic_density = 50.0
+
+        previous_traffic = request.previous_traffic
+        if previous_traffic is None:
+            previous_traffic = int(traffic.vehicle_count) if (traffic and traffic.vehicle_count is not None) else int(vehicle_count * 0.95)
+
+        hour = request.hour
+        if hour is None:
+            if traffic and traffic.timestamp:
+                hour = traffic.timestamp.hour
+            else:
+                hour = datetime.now().hour
+
+        features = {
+            "vehicle_count": float(vehicle_count),
+            "average_speed": float(average_speed),
+            "traffic_density": float(traffic_density),
+            "road_capacity": float(road_capacity),
+            "previous_traffic": float(previous_traffic),
+            "hour": float(hour)
+        }
+
+        ml_result = trigger_ml_anomaly_model(features)
+        is_anomaly = ml_result.get("is_anomaly", ml_result.get("prediction") == "ANOMALY")
+        prediction_text = ml_result.get("prediction", "ANOMALY" if is_anomaly else "NORMAL")
+
+        if request.persist and road:
+            db = SessionLocal()
+            try:
+                from app.database.models import TrafficAnomaly
+                anomaly_entry = TrafficAnomaly(
+                    road_id=road.road_id,
+                    traffic_id=traffic.traffic_id if traffic else None,
+                    detected_at=datetime.utcnow(),
+                    normal_vehicle_count=int(previous_traffic),
+                    actual_vehicle_count=int(vehicle_count),
+                    anomaly_score=ml_result.get("anomaly_score"),
+                    anomaly_type="SURGE_CONGESTION" if vehicle_count > road_capacity else "IRREGULAR_FLOW",
+                    description=f"Isolation Forest detected traffic anomaly with score {ml_result.get('anomaly_score')}.",
+                    status="ACTIVE"
+                )
+                db.add(anomaly_entry)
+                db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
 
         return AnomalyPredictionResponse(
-            prediction="ANOMALY" if is_anomaly else "NORMAL",
-            model_status="database-backed",
+            prediction=prediction_text,
+            is_anomaly=is_anomaly,
+            anomaly_score=ml_result.get("anomaly_score"),
+            confidence_score=ml_result.get("confidence_score"),
+            road_id=str(road.road_id) if road else request.road_id,
+            road_name=road_name,
+            features_used=features,
+            model_status="trained-isolation-forest",
         )
 
     def get_accident_hotspots(

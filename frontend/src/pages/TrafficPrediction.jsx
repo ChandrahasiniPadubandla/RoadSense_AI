@@ -217,6 +217,47 @@ export default function TrafficPrediction() {
                 )}
               </div>
 
+              {/* Traffic Anomaly Detection (Single-call Isolation Forest Result) */}
+              {result.anomaly_detection && (
+                <div
+                  className={`rounded-lg border p-3.5 transition-all ${
+                    result.anomaly_detection.is_anomaly
+                      ? 'border-rose-500/40 bg-rose-950/20 text-rose-300'
+                      : 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">
+                        {result.anomaly_detection.is_anomaly ? '⚠️' : '✓'}
+                      </span>
+                      <span className="text-xs font-semibold text-asphalt-100">
+                        Traffic Anomaly Analysis
+                      </span>
+                    </div>
+                    <span
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        result.anomaly_detection.is_anomaly
+                          ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
+                          : 'border border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {result.anomaly_detection.prediction}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-asphalt-300">
+                    {result.anomaly_detection.is_anomaly
+                      ? 'Unusual traffic pattern or unexpected volume surge detected along this corridor.'
+                      : 'Traffic patterns are conforming to normal historical parameters.'}
+                    {result.anomaly_detection.anomaly_score != null && (
+                      <span className="text-asphalt-400 font-mono ml-1">
+                        (score: {result.anomaly_detection.anomaly_score.toFixed(4)})
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-asphalt-400">Estimated time window</p>

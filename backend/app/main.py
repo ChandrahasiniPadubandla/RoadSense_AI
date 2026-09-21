@@ -28,6 +28,7 @@ from app.routers import geocoding
 from app.routers import emergency
 from app.routers import reports
 from app.routers import accident_hotspots
+from app.routers import anomaly
 
 from app.routers.auth import router as auth_router
 
@@ -303,6 +304,11 @@ app.include_router(
 app.include_router(
     accident_hotspots.router,
     dependencies=[Depends(get_current_user)]
+)
+
+# Traffic Anomaly Detection (AI - Trained Isolation Forest)
+app.include_router(
+    anomaly.router
 )
 
 # ============================================================
