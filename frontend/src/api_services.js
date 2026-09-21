@@ -195,6 +195,23 @@ export async function getRoads() {
   return [];
 }
 
+/** Fetch the newest traffic anomalies recorded by the ML service. */
+export async function getAnomalies(limit = 20) {
+  try {
+    const { data } = await apiClient.get('/api/anomalies', { params: { limit } });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching traffic anomalies:', error);
+    throw error;
+  }
+}
+
+/** Run the trained anomaly model against supplied or road-derived telemetry. */
+export async function predictAnomaly(payload) {
+  const { data } = await apiClient.post('/api/anomalies/predict', payload);
+  return data;
+}
+
 // -----------------------------------------------------------------------------
 // 2. MAP VISUALIZATION APIS (Returns real GeoJSON or empty FeatureCollection)
 // -----------------------------------------------------------------------------
@@ -654,6 +671,8 @@ export default {
   getDashboardStats,
   getDashboardTrend,
   getRoads,
+  getAnomalies,
+  predictAnomaly,
   getTrafficLayer,
   getAccidentLayer,
   getHotspotsLayer,

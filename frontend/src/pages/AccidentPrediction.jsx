@@ -49,24 +49,13 @@ export default function AccidentPrediction() {
 
   async function loadRoadSuggestions() {
     try {
-      const predictionData = await getLatestAccidentPredictions();
-      const predictionNames = [
-        ...new Set(
-          predictionData
-            .map((item) => item.road_name || item.start_location || item.end_location)
-            .filter(Boolean)
-        ),
-      ];
-
-      if (predictionNames.length > 0) {
-        setRoadNames(predictionNames);
-        return;
+      // Use the road catalogue directly. The previous dependency on saved
+      // predictions made the dropdown empty in a fresh database.
+      const roads = await getRoads();
+      setRoadNames([...new Set(roads.map((road) => road.name).filter(Boolean))]);
+      if (roads.length === 0) {
+        setRoadsError('No roads are available yet. Add roads before running a prediction.');
       }
-
-      const fallbackData = await getRoads();
-      setRoadNames(
-        [...new Set(fallbackData.map((road) => road.name).filter(Boolean))]
-      );
     } catch (err) {
       setRoadsError('Could not load accident prediction locations from the database.');
     }
