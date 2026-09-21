@@ -184,7 +184,7 @@ def get_driving_route(
     # Call OSRM public routing API (OSRM expects lng,lat format)
     url = (
         f"https://router.project-osrm.org/route/v1/driving/"
-        f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson"
+        f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
     )
 
     try:
@@ -200,12 +200,14 @@ def get_driving_route(
             leaflet_coords = [[round(pt[1], 6), round(pt[0], 6)] for pt in raw_coords]
             dist_km = round(primary_route["distance"] / 1000.0, 2)
             dur_mins = round(primary_route["duration"] / 60.0, 1)
+            steps = _extract_route_steps(primary_route)
 
             res = {
                 "coordinates": leaflet_coords,
                 "distance_km": dist_km,
                 "duration_minutes": dur_mins,
-                "is_real_route": True
+                "is_real_route": True,
+                "steps": steps,
             }
             _ROUTE_CACHE[cache_key] = res
             return res
@@ -228,9 +230,77 @@ def get_driving_route(
         "coordinates": [[round(start_lat, 6), round(start_lng, 6)], [round(end_lat, 6), round(end_lng, 6)]],
         "distance_km": dist_km,
         "duration_minutes": round(dist_km * 2.5, 1),
-        "is_real_route": False
+        "is_real_route": False,
+        "steps": [],
     }
     return fallback_res
+
+
+_MANEUVER_VERBS = {
+    "depart": "Head out",
+    "arrive": "Arrive at your destination",
+    "turn": "Turn",
+    "new name": "Continue",
+    "merge": "Merge",
+    "on ramp": "Take the ramp",
+    "off ramp": "Take the exit",
+    "fork": "Keep",
+    "end of road": "Continue",
+    "continue": "Continue",
+    "roundabout": "At the roundabout, take the exit",
+    "rotary": "At the traffic circle, take the exit",
+    "roundabout turn": "At the roundabout, turn",
+    "notification": "Continue",
+    "exit roundabout": "Exit the roundabout",
+    "exit rotary": "Exit the traffic circle",
+}
+
+
+def _humanize_maneuver(maneuver: Dict[str, Any], road_name: str, is_first: bool, is_last: bool) -> str:
+    """Turns a raw OSRM maneuver object into a Google-Maps-style instruction sentence."""
+    m_type = maneuver.get("type", "")
+    modifier = maneuver.get("modifier")
+
+    if is_first or m_type == "depart":
+        return f"Head out on {road_name}" if road_name else "Head out"
+    if is_last or m_type == "arrive":
+        return "Arrive at your destination"
+
+    verb = _MANEUVER_VERBS.get(m_type, "Continue")
+    if m_type in ("turn", "roundabout turn") and modifier:
+        verb = f"Turn {modifier}"
+    elif m_type == "fork" and modifier:
+        verb = f"Keep {modifier}"
+    elif m_type == "end of road" and modifier:
+        verb = f"Turn {modifier}"
+
+    if road_name:
+        return f"{verb} onto {road_name}"
+    return verb
+
+
+def _extract_route_steps(primary_route: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Flattens OSRM's per-leg steps into a single Google-Maps-style turn list."""
+    steps: List[Dict[str, Any]] = []
+    legs = primary_route.get("legs", [])
+    all_raw_steps = [s for leg in legs for s in leg.get("steps", [])]
+    total = len(all_raw_steps)
+
+    for idx, raw_step in enumerate(all_raw_steps):
+        maneuver = raw_step.get("maneuver", {})
+        road_name = raw_step.get("name") or ""
+        instruction = _humanize_maneuver(maneuver, road_name, idx == 0, idx == total - 1)
+        loc = maneuver.get("location")  # OSRM gives [lng, lat]
+        steps.append({
+            "instruction": instruction,
+            "road_name": road_name or None,
+            "distance_meters": round(raw_step.get("distance", 0.0), 1),
+            "duration_seconds": round(raw_step.get("duration", 0.0), 1),
+            "maneuver_type": maneuver.get("type"),
+            "maneuver_modifier": maneuver.get("modifier"),
+            "coordinates": [round(loc[1], 6), round(loc[0], 6)] if loc else None,
+        })
+    return steps
 
 
 def get_accidents_along_route(
