@@ -5,7 +5,8 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to the local backend port)
+// Base URL: read from VITE_API_BASE_URL when provided; otherwise call the
+// backend directly on the API server port. No proxy server is required.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
 
@@ -595,6 +596,47 @@ export async function getHotspots(limit = 20) {
     console.error('Error fetching /api/hotspots:', error);
     return [];
   }
+}
+
+// -----------------------------------------------------------------------------
+// 12. LIVE GEOCODING & ROUTING (OpenStreetMap Nominatim + OSRM — real 3rd-party
+//     APIs, not mocked; see backend/app/routers/geocoding.py)
+// -----------------------------------------------------------------------------
+
+/**
+ * Live place-name search. Hits OpenStreetMap Nominatim on the backend.
+ * Returns [] on failure/no matches rather than throwing, since this backs
+ * a type-ahead UI that should degrade gracefully.
+ */
+export async function geocodeSearch(query, city = 'Hyderabad', limit = 5) {
+  if (!query || query.trim().length < 2) return [];
+  try {
+    const { data } = await apiClient.get('/api/geo/search', {
+      params: { query: query.trim(), city, limit },
+    });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/geo/search:', error);
+    return [];
+  }
+}
+
+/**
+ * Real street-level driving route between two points, via OSRM
+ * (Open Source Routing Machine — a live public routing API, not a
+ * straight line). Throws on failure so the caller can show a real error
+ * instead of silently drawing nothing.
+ */
+export async function getDrivingRoute(startLat, startLng, endLat, endLng) {
+  const { data } = await apiClient.get('/api/geo/route', {
+    params: {
+      start_lat: startLat,
+      start_lng: startLng,
+      end_lat: endLat,
+      end_lng: endLng,
+    },
+  });
+  return data;
 }
 
 export default {

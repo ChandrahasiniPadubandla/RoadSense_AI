@@ -3,6 +3,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from app import database as db_module
 from app.database.connection import SessionLocal
 from app.database.models import Road
 from app.main import app
@@ -42,6 +43,10 @@ def test_valid_accident_risk_prediction():
 def test_missing_required_field():
     with pytest.raises(Exception):
         AccidentRiskPredictionRequest()
+
+
+def test_database_connection_uses_null_pool_for_supabase():
+    assert db_module.connection.engine.pool.__class__.__name__ == "NullPool"
 
 
 def test_model_loading_failure_raises_runtime_error(tmp_path):
