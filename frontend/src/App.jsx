@@ -43,6 +43,7 @@ export default function App() {
           <Route path="/Accident-Prediction" element={<AccidentPrediction />} />
           <Route path="/hotspots" element={<HotspotsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/anomalies" element={<AnomaliesPage />} />
 
           {/* Super Admin + Traffic Authority only */}
           <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY]} />}>
