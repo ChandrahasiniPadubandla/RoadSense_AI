@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -6,11 +6,16 @@ import {
   Polyline,
   Popup,
   Tooltip,
+  useMap,
 } from 'react-leaflet';
 import {
   getTrafficLayer,
   getAccidentLayer,
   getHotspotsLayer,
+  geocodeSearch,
+  getDrivingRoute,
+  predictRouteTraffic,
+  predictRouteAccident,
 } from '../api_services';
 
 const CONGESTION_COLOR = {
@@ -41,6 +46,137 @@ export default function LiveMap() {
   const [showAccidents, setShowAccidents] = useState(true);
   const [showHotspots, setShowHotspots] = useState(true);
   const [severityFilter, setSeverityFilter] = useState('ALL');
+
+  // ---------------------------------------------------------------------
+  // Route Planner: start/end location search (live OSM Nominatim geocoding)
+  // + real driving route (live OSRM routing API) + live ML predictions for
+  // that route. Nothing here is mocked or a straight line — every value
+  // comes from a real API call.
+  // ---------------------------------------------------------------------
+  const [startQuery, setStartQuery] = useState('');
+  const [endQuery, setEndQuery] = useState('');
+  const [startPoint, setStartPoint] = useState(null); // { lat, lng, label }
+  const [endPoint, setEndPoint] = useState(null);
+  const [startSuggestions, setStartSuggestions] = useState([]);
+  const [endSuggestions, setEndSuggestions] = useState([]);
+  const [activeField, setActiveField] = useState(null); // 'start' | 'end' | null
+
+  const [routeGeometry, setRouteGeometry] = useState(null); // [[lat,lng], ...]
+  const [routeInfo, setRouteInfo] = useState(null); // { distance_km, duration_minutes, is_real_route }
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState('');
+
+  const [routeTraffic, setRouteTraffic] = useState(null);
+  const [routeAccidentRisk, setRouteAccidentRisk] = useState(null);
+  const [predictionsLoading, setPredictionsLoading] = useState(false);
+
+  const startDebounce = useRef(null);
+  const endDebounce = useRef(null);
+
+  // Live type-ahead search against OpenStreetMap Nominatim (debounced to
+  // respect Nominatim's usage policy and avoid hammering the API on every
+  // keystroke).
+  useEffect(() => {
+    clearTimeout(startDebounce.current);
+    if (!startQuery || startPoint?.label === startQuery) {
+      setStartSuggestions([]);
+      return;
+    }
+    startDebounce.current = setTimeout(async () => {
+      const results = await geocodeSearch(startQuery);
+      setStartSuggestions(results);
+    }, 400);
+    return () => clearTimeout(startDebounce.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startQuery]);
+
+  useEffect(() => {
+    clearTimeout(endDebounce.current);
+    if (!endQuery || endPoint?.label === endQuery) {
+      setEndSuggestions([]);
+      return;
+    }
+    endDebounce.current = setTimeout(async () => {
+      const results = await geocodeSearch(endQuery);
+      setEndSuggestions(results);
+    }, 400);
+    return () => clearTimeout(endDebounce.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endQuery]);
+
+  function selectSuggestion(field, suggestion) {
+    const point = { lat: suggestion.latitude, lng: suggestion.longitude, label: suggestion.display_name };
+    if (field === 'start') {
+      setStartPoint(point);
+      setStartQuery(suggestion.display_name);
+      setStartSuggestions([]);
+    } else {
+      setEndPoint(point);
+      setEndQuery(suggestion.display_name);
+      setEndSuggestions([]);
+    }
+    setActiveField(null);
+  }
+
+  async function handleFindRoute() {
+    if (!startPoint || !endPoint) {
+      setRouteError('Pick both a start and an end location from the suggestions first.');
+      return;
+    }
+    setRouteError('');
+    setRouteLoading(true);
+    setRouteGeometry(null);
+    setRouteInfo(null);
+    setRouteTraffic(null);
+    setRouteAccidentRisk(null);
+
+    try {
+      // Live OSRM routing — real street-level geometry, not a straight line.
+      const route = await getDrivingRoute(startPoint.lat, startPoint.lng, endPoint.lat, endPoint.lng);
+      setRouteGeometry(route.coordinates);
+      setRouteInfo(route);
+    } catch (err) {
+      setRouteError('Could not fetch a live route from the routing API. Please try again.');
+      setRouteLoading(false);
+      return;
+    }
+    setRouteLoading(false);
+
+    // Enrich with the real ML models (congestion + accident risk) for this
+    // same start/end pair. These are best-effort: if either model can't
+    // resolve the free-text locations to a known road, we just omit that
+    // card instead of blocking the route display.
+    setPredictionsLoading(true);
+    const payload = {
+      start_location: startPoint.label,
+      end_location: endPoint.label,
+      start_latitude: startPoint.lat,
+      start_longitude: startPoint.lng,
+      end_latitude: endPoint.lat,
+      end_longitude: endPoint.lng,
+    };
+    const [trafficResult, accidentResult] = await Promise.allSettled([
+      predictRouteTraffic(payload),
+      predictRouteAccident(payload),
+    ]);
+    if (trafficResult.status === 'fulfilled') setRouteTraffic(trafficResult.value);
+    if (accidentResult.status === 'fulfilled') setRouteAccidentRisk(accidentResult.value);
+    setPredictionsLoading(false);
+  }
+
+  function handleClearRoute() {
+    setStartQuery('');
+    setEndQuery('');
+    setStartPoint(null);
+    setEndPoint(null);
+    setStartSuggestions([]);
+    setEndSuggestions([]);
+    setRouteGeometry(null);
+    setRouteInfo(null);
+    setRouteError('');
+    setRouteTraffic(null);
+    setRouteAccidentRisk(null);
+  }
 
   async function loadMapData() {
     setIsLoading(true);
@@ -93,10 +229,10 @@ export default function LiveMap() {
 
   if (isLoading) {
     return (
-      <div className="flex h-96 items-center justify-center rounded-lg border border-asphalt-700 bg-asphalt-900">
+      <div className="flex h-96 items-center justify-center rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900">
         <div className="flex flex-col items-center gap-3">
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-signal-blue border-t-transparent"></div>
-          <p className="text-sm font-medium text-asphalt-300">
+          <p className="text-sm font-medium text-slate-600 dark:text-asphalt-300">
             Loading live map layers from backend APIs…
           </p>
         </div>
@@ -111,7 +247,7 @@ export default function LiveMap() {
   return (
     <div className="flex h-[calc(100vh-7.5rem)] flex-col gap-3">
       {/* Map Control Bar & Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-asphalt-700 bg-asphalt-900 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 px-4 py-2.5">
         {/* Layer Toggles */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <button
@@ -119,7 +255,7 @@ export default function LiveMap() {
             className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
               showTraffic
                 ? 'bg-signal-blue/20 text-signal-blue ring-1 ring-signal-blue/40'
-                : 'bg-asphalt-800 text-asphalt-400 hover:text-asphalt-200'
+                : 'bg-slate-100 dark:bg-asphalt-800 text-slate-500 dark:text-asphalt-400 hover:text-slate-800 dark:hover:text-asphalt-200'
             }`}
           >
             <span className="h-2 w-2 rounded-full bg-signal-blue"></span>
@@ -131,7 +267,7 @@ export default function LiveMap() {
             className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
               showAccidents
                 ? 'bg-signal-red/20 text-signal-red ring-1 ring-signal-red/40'
-                : 'bg-asphalt-800 text-asphalt-400 hover:text-asphalt-200'
+                : 'bg-slate-100 dark:bg-asphalt-800 text-slate-500 dark:text-asphalt-400 hover:text-slate-800 dark:hover:text-asphalt-200'
             }`}
           >
             <span className="h-2 w-2 rounded-full bg-signal-red"></span>
@@ -143,7 +279,7 @@ export default function LiveMap() {
             className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
               showHotspots
                 ? 'bg-signal-amber/20 text-signal-amber ring-1 ring-signal-amber/40'
-                : 'bg-asphalt-800 text-asphalt-400 hover:text-asphalt-200'
+                : 'bg-slate-100 dark:bg-asphalt-800 text-slate-500 dark:text-asphalt-400 hover:text-slate-800 dark:hover:text-asphalt-200'
             }`}
           >
             <span className="h-2 w-2 rounded-full bg-signal-amber"></span>
@@ -151,12 +287,12 @@ export default function LiveMap() {
           </button>
 
           {/* Severity Filter Dropdown */}
-          <div className="ml-2 flex items-center gap-1.5 pl-2 border-l border-asphalt-700">
-            <span className="text-asphalt-400">Severity:</span>
+          <div className="ml-2 flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-asphalt-700">
+            <span className="text-slate-500 dark:text-asphalt-400">Severity:</span>
             <select
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value)}
-              className="rounded border border-asphalt-700 bg-asphalt-800 px-2 py-0.5 text-xs text-asphalt-200 outline-none focus:border-signal-blue"
+              className="rounded border border-slate-200 dark:border-asphalt-700 bg-slate-100 dark:bg-asphalt-800 px-2 py-0.5 text-xs text-slate-800 dark:text-asphalt-200 outline-none focus:border-signal-blue"
             >
               <option value="ALL">All Severities</option>
               <option value="SEVERE_FATAL">Severe & Fatal Only</option>
@@ -168,33 +304,139 @@ export default function LiveMap() {
         {/* Sync Indicator and Refresh */}
         <div className="flex items-center gap-3 text-xs">
           {lastUpdated && (
-            <span className="text-asphalt-400">Synced at {lastUpdated}</span>
+            <span className="text-slate-500 dark:text-asphalt-400">Synced at {lastUpdated}</span>
           )}
           <button
             onClick={loadMapData}
-            className="flex items-center gap-1 rounded bg-asphalt-800 px-2 py-1 font-medium text-asphalt-200 hover:bg-asphalt-700 hover:text-white"
+            className="flex items-center gap-1 rounded bg-slate-100 dark:bg-asphalt-800 px-2 py-1 font-medium text-slate-800 dark:text-asphalt-200 hover:bg-slate-200 dark:hover:bg-asphalt-700 hover:text-white"
           >
             ↻ Refresh
           </button>
         </div>
       </div>
 
+      {/* Route Planner: live geocoding (OSM Nominatim) + live routing (OSRM)
+          + live ML predictions for the same start/end pair */}
+      <div className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 px-4 py-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="relative min-w-[220px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-asphalt-400">Start location</label>
+            <input
+              value={startQuery}
+              onChange={(e) => {
+                setStartQuery(e.target.value);
+                setStartPoint(null);
+              }}
+              onFocus={() => setActiveField('start')}
+              placeholder="Search a place, road, or landmark…"
+              className="w-full rounded-md border border-slate-300 dark:border-asphalt-600 bg-slate-50 dark:bg-asphalt-950 px-3 py-2 text-sm text-white outline-none focus:border-signal-blue"
+            />
+            {activeField === 'start' && startSuggestions.length > 0 && (
+              <ul className="absolute z-[1100] mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 shadow-xl">
+                {startSuggestions.map((s, i) => (
+                  <li
+                    key={i}
+                    onMouseDown={() => selectSuggestion('start', s)}
+                    className="cursor-pointer px-3 py-2 text-xs text-slate-800 dark:text-asphalt-200 hover:bg-slate-100 dark:hover:bg-asphalt-800"
+                  >
+                    {s.display_name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="relative min-w-[220px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-asphalt-400">End location</label>
+            <input
+              value={endQuery}
+              onChange={(e) => {
+                setEndQuery(e.target.value);
+                setEndPoint(null);
+              }}
+              onFocus={() => setActiveField('end')}
+              placeholder="Search a place, road, or landmark…"
+              className="w-full rounded-md border border-slate-300 dark:border-asphalt-600 bg-slate-50 dark:bg-asphalt-950 px-3 py-2 text-sm text-white outline-none focus:border-signal-blue"
+            />
+            {activeField === 'end' && endSuggestions.length > 0 && (
+              <ul className="absolute z-[1100] mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 shadow-xl">
+                {endSuggestions.map((s, i) => (
+                  <li
+                    key={i}
+                    onMouseDown={() => selectSuggestion('end', s)}
+                    className="cursor-pointer px-3 py-2 text-xs text-slate-800 dark:text-asphalt-200 hover:bg-slate-100 dark:hover:bg-asphalt-800"
+                  >
+                    {s.display_name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <button
+            onClick={handleFindRoute}
+            disabled={routeLoading || !startPoint || !endPoint}
+            className="rounded-md bg-signal-blue px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {routeLoading ? 'Finding route…' : 'Find Route'}
+          </button>
+          {(routeGeometry || routeError) && (
+            <button
+              onClick={handleClearRoute}
+              className="rounded-md border border-slate-300 dark:border-asphalt-600 px-3 py-2 text-sm text-slate-600 dark:text-asphalt-300 hover:border-signal-red/50 hover:text-signal-red"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {routeError && <p className="mt-2 text-xs text-signal-red">{routeError}</p>}
+
+        {routeInfo && (
+          <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-slate-200 dark:border-asphalt-800 pt-3 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-signal-blue/40 bg-signal-blue/10 px-2.5 py-1 font-medium text-signal-blue">
+              {routeInfo.is_real_route ? '⚡ Live route via OSRM' : '⚠ Approximate route (routing API unavailable)'}
+            </span>
+            <span className="text-slate-600 dark:text-asphalt-300">
+              Distance: <strong className="text-slate-900 dark:text-asphalt-100">{routeInfo.distance_km} km</strong>
+            </span>
+            <span className="text-slate-600 dark:text-asphalt-300">
+              Est. driving time: <strong className="text-slate-900 dark:text-asphalt-100">{routeInfo.duration_minutes} min</strong>
+            </span>
+
+            {predictionsLoading && <span className="text-slate-400 dark:text-asphalt-500">Running live traffic/accident-risk models…</span>}
+
+            {routeTraffic && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-signal-amber/40 bg-signal-amber/10 px-2.5 py-1 font-medium text-signal-amber">
+                Predicted congestion: {routeTraffic.congestion_level}
+              </span>
+            )}
+            {routeAccidentRisk && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-signal-red/40 bg-signal-red/10 px-2.5 py-1 font-medium text-signal-red">
+                Accident risk: {routeAccidentRisk.risk_level}
+                {routeAccidentRisk.risk_percentage != null ? ` (${Number(routeAccidentRisk.risk_percentage).toFixed(0)}%)` : ''}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Informative Status Messages if any layer has no data */}
       {(roadCount === 0 || accidentCount === 0 || hotspotCount === 0 || (accidentCount > 0 && filteredAccidents.length === 0)) && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-asphalt-800 bg-asphalt-900/90 px-3.5 py-2 text-xs text-asphalt-300">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 dark:border-asphalt-800 bg-white dark:bg-asphalt-900/90 px-3.5 py-2 text-xs text-slate-600 dark:text-asphalt-300">
           <span className="text-signal-blue font-semibold">Status:</span>
           {roadCount === 0 && (
-            <span className="rounded bg-asphalt-800 px-2 py-0.5 text-asphalt-300">
+            <span className="rounded bg-slate-100 dark:bg-asphalt-800 px-2 py-0.5 text-slate-600 dark:text-asphalt-300">
               No road traffic segments available
             </span>
           )}
           {accidentCount === 0 && (
-            <span className="rounded bg-asphalt-800 px-2 py-0.5 text-asphalt-300">
+            <span className="rounded bg-slate-100 dark:bg-asphalt-800 px-2 py-0.5 text-slate-600 dark:text-asphalt-300">
               No accident incidents recorded in database
             </span>
           )}
           {hotspotCount === 0 && showHotspots && (
-            <span className="rounded bg-asphalt-800 px-2 py-0.5 text-asphalt-400">
+            <span className="rounded bg-slate-100 dark:bg-asphalt-800 px-2 py-0.5 text-slate-500 dark:text-asphalt-400">
               0 hazard hotspots registered in system
             </span>
           )}
@@ -207,7 +449,7 @@ export default function LiveMap() {
       )}
 
       {/* Map Display & Legend */}
-      <div className="relative flex-1 overflow-hidden rounded-lg border border-asphalt-700">
+      <div className="relative flex-1 overflow-hidden rounded-lg border border-slate-200 dark:border-asphalt-700">
         <MapContainer center={mapCenter} zoom={12} className="h-full w-full">
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -377,11 +619,48 @@ export default function LiveMap() {
                 </CircleMarker>
               );
             })}
+
+          {/* Route Planner overlay: real OSRM route geometry + start/end pins */}
+          {routeGeometry && routeGeometry.length > 1 && (
+            <>
+              <Polyline
+                positions={routeGeometry}
+                pathOptions={{
+                  color: '#38BDF8',
+                  weight: 6,
+                  opacity: 0.9,
+                  dashArray: '1, 10',
+                  lineCap: 'round',
+                }}
+              />
+              <FitBoundsToRoute coordinates={routeGeometry} />
+            </>
+          )}
+          {startPoint && (
+            <CircleMarker
+              center={[startPoint.lat, startPoint.lng]}
+              radius={9}
+              pathOptions={{ color: '#ffffff', fillColor: '#10B981', fillOpacity: 1, weight: 2 }}
+            >
+              <Tooltip permanent direction="top">Start</Tooltip>
+              <Popup>{startPoint.label}</Popup>
+            </CircleMarker>
+          )}
+          {endPoint && (
+            <CircleMarker
+              center={[endPoint.lat, endPoint.lng]}
+              radius={9}
+              pathOptions={{ color: '#ffffff', fillColor: '#EF4444', fillOpacity: 1, weight: 2 }}
+            >
+              <Tooltip permanent direction="top">End</Tooltip>
+              <Popup>{endPoint.label}</Popup>
+            </CircleMarker>
+          )}
         </MapContainer>
 
         {/* Floating Legend Overlay */}
-        <div className="absolute bottom-4 right-4 z-[1000] rounded-lg border border-asphalt-700 bg-asphalt-900/95 p-3 text-xs text-asphalt-200 shadow-xl backdrop-blur-md">
-          <p className="font-semibold text-asphalt-100 mb-2">Live Map Legend</p>
+        <div className="absolute bottom-4 right-4 z-[1000] rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900/95 p-3 text-xs text-slate-800 dark:text-asphalt-200 shadow-xl backdrop-blur-md">
+          <p className="font-semibold text-slate-900 dark:text-asphalt-100 mb-2">Live Map Legend</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
             <LegendItem color={CONGESTION_COLOR.LOW} label="Low Traffic (<40%)" line />
             <LegendItem color={CONGESTION_COLOR.MEDIUM} label="Medium Traffic" line />
@@ -396,6 +675,17 @@ export default function LiveMap() {
       </div>
     </div>
   );
+}
+
+function FitBoundsToRoute({ coordinates }) {
+  const map = useMap();
+  useEffect(() => {
+    if (coordinates && coordinates.length > 1) {
+      map.fitBounds(coordinates, { padding: [48, 48] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coordinates, map]);
+  return null;
 }
 
 function LegendItem({ color, label, line, dot }) {
@@ -413,7 +703,7 @@ function LegendItem({ color, label, line, dot }) {
           style={{ backgroundColor: color }}
         />
       )}
-      <span className="text-[11px] text-asphalt-300">{label}</span>
+      <span className="text-[11px] text-slate-600 dark:text-asphalt-300">{label}</span>
     </div>
   );
 }

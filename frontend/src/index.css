@@ -9,7 +9,8 @@ body,
 }
 
 body {
-  @apply bg-asphalt-950 text-asphalt-100 antialiased;
+  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply dark:bg-asphalt-950 dark:text-asphalt-100;
   font-feature-settings: 'tnum' on, 'lnum' on;
 }
 
@@ -22,6 +23,9 @@ body {
 .leaflet-container {
   height: 100%;
   width: 100%;
+  background: #e5e7eb;
+}
+.dark .leaflet-container {
   background: #15181c;
 }
 
@@ -30,7 +34,8 @@ body {
 }
 
 .input {
-  @apply w-full rounded-md border border-asphalt-600 bg-asphalt-800 px-3 py-2 text-sm text-asphalt-100 outline-none;
+  @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none;
+  @apply dark:border-asphalt-600 dark:bg-asphalt-800 dark:text-asphalt-100;
 }
 .input:focus {
   @apply border-signal-blue;

@@ -11,7 +11,6 @@ class RoadSearchResult(BaseModel):
     road_id: UUID
     road_name: str
 
-
 class AccidentRiskPredictionResponse(BaseModel):
     success: bool = True
     road_id: UUID

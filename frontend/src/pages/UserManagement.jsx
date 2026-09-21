@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
+import ActionMenu from '../components/ActionMenu';
 import { ROLE_LABELS } from '../utils/constants';
 import {
   getAdminUsers,
@@ -94,7 +95,7 @@ export default function UserManagement() {
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4 dark:border-asphalt-800">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">User Management</h2>
+        <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">User Management</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
           Real registered users from the database. Super Admins can change roles, activate/deactivate, or delete accounts.
         </p>
@@ -157,13 +158,9 @@ export default function UserManagement() {
               key: 'is_active',
               header: 'Status',
               render: (u) => (
-                <button
-                  onClick={() => handleToggleActive(u)}
-                  disabled={busyUser === u.user_id}
-                  className={u.is_active ? 'text-signal-green hover:underline' : 'text-signal-red hover:underline'}
-                >
+                <span className={u.is_active ? 'text-signal-green' : 'text-signal-red'}>
                   {u.is_active ? 'Active' : 'Inactive'}
-                </button>
+                </span>
               ),
             },
             {
@@ -173,15 +170,25 @@ export default function UserManagement() {
             },
             {
               key: 'actions',
-              header: 'Actions',
+              header: '',
               render: (u) => (
-                <button
-                  onClick={() => handleDelete(u)}
-                  disabled={busyUser === u.user_id}
-                  className="text-signal-red hover:underline"
-                >
-                  Delete
-                </button>
+                <div className="flex justify-end">
+                  <ActionMenu
+                    items={[
+                      {
+                        label: u.is_active ? 'Deactivate' : 'Activate',
+                        disabled: busyUser === u.user_id,
+                        onClick: () => handleToggleActive(u),
+                      },
+                      {
+                        label: 'Delete',
+                        danger: true,
+                        disabled: busyUser === u.user_id,
+                        onClick: () => handleDelete(u),
+                      },
+                    ]}
+                  />
+                </div>
               ),
             },
           ]}

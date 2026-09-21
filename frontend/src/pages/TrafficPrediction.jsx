@@ -107,14 +107,14 @@ export default function TrafficPrediction() {
   }
 
   const inputClass =
-    'mt-1 w-full rounded-md border border-asphalt-600 bg-asphalt-800 px-3 py-2 text-sm text-asphalt-100 outline-none focus:border-signal-blue';
-  const labelClass = 'block text-xs text-asphalt-400';
+    'mt-1 w-full rounded-md border border-slate-300 dark:border-asphalt-600 bg-slate-100 dark:bg-asphalt-800 px-3 py-2 text-sm text-slate-900 dark:text-asphalt-100 outline-none focus:border-signal-blue';
+  const labelClass = 'block text-xs text-slate-500 dark:text-asphalt-400';
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-asphalt-100">Traffic Prediction</h1>
-        <p className="mt-1 text-sm text-asphalt-400">
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">Traffic Prediction</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
           Predicts congestion along a route between a start location and an end
           location, using RoadSense AI&rsquo;s traffic congestion prediction
           service. The backend resolves the nearest matching road, current
@@ -124,7 +124,7 @@ export default function TrafficPrediction() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* -------------------- FORM -------------------- */}
-        <form onSubmit={handleSubmit} className="rounded-lg border border-asphalt-700 bg-asphalt-900 p-6">
+        <form onSubmit={handleSubmit} className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-6">
           <label className={labelClass} htmlFor="start_location">Start Location *</label>
           <input
             id="start_location"
@@ -156,7 +156,7 @@ export default function TrafficPrediction() {
               <option key={name} value={name} />
             ))}
           </datalist>
-          {roadsError && <p className="mt-1 text-xs text-asphalt-500">{roadsError}</p>}
+          {roadsError && <p className="mt-1 text-xs text-slate-400 dark:text-asphalt-500">{roadsError}</p>}
 
           <label className={labelClass + ' mt-4'} htmlFor="target_minutes_ahead">
             Predict how many minutes ahead
@@ -187,28 +187,28 @@ export default function TrafficPrediction() {
         </form>
 
         {/* -------------------- RESULT -------------------- */}
-        <div className="rounded-lg border border-asphalt-700 bg-asphalt-900 p-6">
-          <p className="text-xs uppercase tracking-wide text-asphalt-400">Prediction Result</p>
+        <div className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-6">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-asphalt-400">Prediction Result</p>
 
           {!result && !isSubmitting && (
-            <p className="mt-4 text-sm text-asphalt-400">
+            <p className="mt-4 text-sm text-slate-500 dark:text-asphalt-400">
               Enter a start and end location, then run a prediction to see the result here.
             </p>
           )}
 
-          {isSubmitting && <p className="mt-4 text-sm text-asphalt-400">Running the model…</p>}
+          {isSubmitting && <p className="mt-4 text-sm text-slate-500 dark:text-asphalt-400">Running the model…</p>}
 
           {result && !isSubmitting && (
             <div className="mt-4 space-y-4">
               <div className="flex flex-wrap items-center gap-3">
                 <LevelBadge level={result.congestion_level} colorMap={TRAFFIC_LEVEL_COLOR} />
-                <span className="text-sm text-asphalt-300">
+                <span className="text-sm text-slate-600 dark:text-asphalt-300">
                   {result.start_location} → {result.end_location}
                 </span>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-asphalt-400">
-                  Matched road: <span className="text-asphalt-200 font-medium">{result.road_name}</span>
+                <p className="text-xs text-slate-500 dark:text-asphalt-400">
+                  Matched road: <span className="text-slate-800 dark:text-asphalt-200 font-medium">{result.road_name}</span>
                 </p>
                 {result.ml_source && (
                   <span className="inline-flex items-center rounded-full bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
@@ -260,24 +260,24 @@ export default function TrafficPrediction() {
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="text-xs text-asphalt-400">Estimated time window</p>
-                  <p className="text-asphalt-100">{result.estimated_time}</p>
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Estimated time window</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">{result.estimated_time}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-asphalt-400">Confidence</p>
-                  <p className="text-asphalt-100">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Confidence</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.confidence_score != null ? `${result.confidence_score.toFixed(1)}%` : '—'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-asphalt-400">Distance</p>
-                  <p className="text-asphalt-100">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Distance</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.distance_km != null ? `${result.distance_km} km` : '—'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-asphalt-400">Target time</p>
-                  <p className="text-asphalt-100">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Target time</p>
+                  <p className="text-slate-900 dark:text-asphalt-100">
                     {result.target_time ? new Date(result.target_time).toLocaleString() : '—'}
                   </p>
                 </div>
@@ -285,8 +285,8 @@ export default function TrafficPrediction() {
 
               {result.weather_conditions && Object.keys(result.weather_conditions).length > 0 && (
                 <div>
-                  <p className="text-xs text-asphalt-400">Weather along route</p>
-                  <p className="mt-1 text-sm text-asphalt-200">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Weather along route</p>
+                  <p className="mt-1 text-sm text-slate-800 dark:text-asphalt-200">
                     {result.weather_conditions.weather_condition ?? '—'}
                     {result.weather_conditions.temperature != null && ` · ${result.weather_conditions.temperature}°C`}
                     {result.weather_conditions.rainfall != null && ` · ${result.weather_conditions.rainfall}mm rain`}
@@ -296,8 +296,8 @@ export default function TrafficPrediction() {
 
               {result.road_conditions && Object.keys(result.road_conditions).length > 0 && (
                 <div>
-                  <p className="text-xs text-asphalt-400">Road conditions</p>
-                  <p className="mt-1 text-sm text-asphalt-200">
+                  <p className="text-xs text-slate-500 dark:text-asphalt-400">Road conditions</p>
+                  <p className="mt-1 text-sm text-slate-800 dark:text-asphalt-200">
                     {result.road_conditions.road_type ?? '—'}
                     {result.road_conditions.speed_limit != null && ` · ${result.road_conditions.speed_limit} km/h limit`}
                     {result.road_conditions.number_of_lanes != null && ` · ${result.road_conditions.number_of_lanes} lanes`}
@@ -312,11 +312,11 @@ export default function TrafficPrediction() {
 
       {/* -------------------- RECENT PREDICTIONS -------------------- */}
       <div>
-        <p className="mb-2 text-xs uppercase tracking-wide text-asphalt-400">
+        <p className="mb-2 text-xs uppercase tracking-wide text-slate-500 dark:text-asphalt-400">
           Latest Predictions (all roads)
         </p>
         {recentLoading ? (
-          <p className="text-sm text-asphalt-400">Loading…</p>
+          <p className="text-sm text-slate-500 dark:text-asphalt-400">Loading…</p>
         ) : (
           <DataTable
             columns={[

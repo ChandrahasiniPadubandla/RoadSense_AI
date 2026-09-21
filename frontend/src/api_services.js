@@ -5,7 +5,8 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to the local backend port)
+// Base URL: read from VITE_API_BASE_URL when provided; otherwise call the
+// backend directly on the API server port. No proxy server is required.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
 
@@ -17,6 +18,28 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Share concurrent GET requests (including React StrictMode's development
+// double-effect invocation) instead of sending duplicate network requests.
+const inFlightGetRequests = new Map();
+
+async function getShared(path, config = {}) {
+  const paramsKey = JSON.stringify(config.params || {});
+  const requestKey = `${path}?${paramsKey}`;
+  const existingRequest = inFlightGetRequests.get(requestKey);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const request = apiClient
+    .get(path, config)
+    .finally(() => {
+      inFlightGetRequests.delete(requestKey);
+    });
+
+  inFlightGetRequests.set(requestKey, request);
+  return request;
+}
 
 // Request interceptor: attach bearer token
 apiClient.interceptors.request.use((config) => {
@@ -356,12 +379,21 @@ export async function predictRouteAccident(payload) {
 }
 
 /**
+ * Run the database-backed accident prediction for one selected road.
+ * POST /api/predictions/accidents/predict
+ */
+export async function predictAccident(payload) {
+  const { data } = await apiClient.post('/api/predictions/accidents/predict', payload);
+  return data;
+}
+
+/**
  * Fetch the latest stored accident risk prediction per road.
  * GET /api/predictions/accidents/latest -> AccidentPredictionResponse[]
  */
 export async function getLatestAccidentPredictions() {
   try {
-    const { data } = await apiClient.get('/api/predictions/accidents/latest');
+    const { data } = await getShared('/api/predictions/accidents/latest');
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/predictions/accidents/latest:', error);
@@ -508,7 +540,9 @@ export async function deleteUser(username) {
 
 export async function getAllRoads(search = '') {
   try {
-    const { data } = await apiClient.get('/api/roads', { params: search ? { search } : {} });
+    const { data } = await getShared('/api/roads', {
+      params: search ? { search } : {},
+    });
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/roads:', error);
@@ -573,6 +607,47 @@ export async function getHotspots(limit = 20) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// 12. LIVE GEOCODING & ROUTING (OpenStreetMap Nominatim + OSRM — real 3rd-party
+//     APIs, not mocked; see backend/app/routers/geocoding.py)
+// -----------------------------------------------------------------------------
+
+/**
+ * Live place-name search. Hits OpenStreetMap Nominatim on the backend.
+ * Returns [] on failure/no matches rather than throwing, since this backs
+ * a type-ahead UI that should degrade gracefully.
+ */
+export async function geocodeSearch(query, city = 'Hyderabad', limit = 5) {
+  if (!query || query.trim().length < 2) return [];
+  try {
+    const { data } = await apiClient.get('/api/geo/search', {
+      params: { query: query.trim(), city, limit },
+    });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/geo/search:', error);
+    return [];
+  }
+}
+
+/**
+ * Real street-level driving route between two points, via OSRM
+ * (Open Source Routing Machine — a live public routing API, not a
+ * straight line). Throws on failure so the caller can show a real error
+ * instead of silently drawing nothing.
+ */
+export async function getDrivingRoute(startLat, startLng, endLat, endLng) {
+  const { data } = await apiClient.get('/api/geo/route', {
+    params: {
+      start_lat: startLat,
+      start_lng: startLng,
+      end_lat: endLat,
+      end_lng: endLng,
+    },
+  });
+  return data;
+}
+
 export default {
   API_BASE_URL,
   apiClient,
@@ -592,6 +667,7 @@ export default {
   sendChatbotMessage,
   predictRouteTraffic,
   predictRouteAccident,
+  predictAccident,
   predictTraffic,
   getLatestTrafficPredictions,
   getLatestAccidentPredictions,

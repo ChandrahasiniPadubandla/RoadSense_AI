@@ -25,7 +25,7 @@ export default function Sidebar() {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-asphalt-700 dark:bg-asphalt-900 md:flex">
       <div className="border-b border-slate-200 px-5 py-5 dark:border-asphalt-700">
-        <p className="text-sm font-semibold tracking-tight text-slate-900 dark:text-asphalt-100">
+        <p className="text-sm font-black tracking-tight text-slate-900 dark:text-asphalt-100">
           Smart Traffic System
         </p>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-asphalt-400">
