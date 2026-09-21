@@ -379,6 +379,15 @@ export async function predictRouteAccident(payload) {
 }
 
 /**
+ * Run the database-backed accident prediction for one selected road.
+ * POST /api/predictions/accidents/predict
+ */
+export async function predictAccident(payload) {
+  const { data } = await apiClient.post('/api/predictions/accidents/predict', payload);
+  return data;
+}
+
+/**
  * Fetch the latest stored accident risk prediction per road.
  * GET /api/predictions/accidents/latest -> AccidentPredictionResponse[]
  */
@@ -658,6 +667,7 @@ export default {
   sendChatbotMessage,
   predictRouteTraffic,
   predictRouteAccident,
+  predictAccident,
   predictTraffic,
   getLatestTrafficPredictions,
   getLatestAccidentPredictions,

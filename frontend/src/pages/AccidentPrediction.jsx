@@ -7,7 +7,8 @@ import {
 } from '../api_services';
 
 const emptyForm = {
-  road_id: '',
+  from_road_id: '',
+  to_road_id: '',
 };
 
 const RISK_BADGE_CLASS = {
@@ -59,9 +60,15 @@ export default function AccidentPrediction() {
           setRoads(data);
           setForm((previous) => ({
             ...previous,
-            road_id:
-              previous.road_id && data.some((road) => road.road_id === previous.road_id)
-                ? previous.road_id
+            from_road_id:
+              previous.from_road_id &&
+              data.some((road) => road.road_id === previous.from_road_id)
+                ? previous.from_road_id
+                : '',
+            to_road_id:
+              previous.to_road_id &&
+              data.some((road) => road.road_id === previous.to_road_id)
+                ? previous.to_road_id
                 : data[0]?.road_id || '',
           }));
         }
@@ -104,9 +111,14 @@ export default function AccidentPrediction() {
     setError('');
     setResult(null);
 
-    const selectedRoad = roads.find((road) => road.road_id === form.road_id);
-    if (!selectedRoad) {
-      setError('Please select a road from the list.');
+    const fromRoad = roads.find((road) => road.road_id === form.from_road_id);
+    const toRoad = roads.find((road) => road.road_id === form.to_road_id);
+    if (!fromRoad || !toRoad) {
+      setError('Please select both a From road and a To road.');
+      return;
+    }
+    if (fromRoad.road_id === toRoad.road_id) {
+      setError('From road and To road must be different.');
       return;
     }
 
@@ -114,15 +126,31 @@ export default function AccidentPrediction() {
 
     try {
       const payload = {
-        road_id: selectedRoad.road_id,
-        start_location: selectedRoad.road_name,
-        end_location: selectedRoad.road_name,
+        start_location: fromRoad.road_name,
+        end_location: toRoad.road_name,
         persist: true,
       };
 
+      if (
+        fromRoad.start_latitude != null &&
+        fromRoad.start_longitude != null
+      ) {
+        payload.start_latitude = Number(fromRoad.start_latitude);
+        payload.start_longitude = Number(fromRoad.start_longitude);
+      }
+
+      if (toRoad.end_latitude != null && toRoad.end_longitude != null) {
+        payload.end_latitude = Number(toRoad.end_latitude);
+        payload.end_longitude = Number(toRoad.end_longitude);
+      }
+
       const data = await predictRouteAccident(payload);
 
-      setResult(data);
+      setResult({
+        ...data,
+        from_road_name: data.start_location || fromRoad.road_name,
+        to_road_name: data.end_location || toRoad.road_name,
+      });
       await loadRecentPredictions();
     } catch (err) {
       if (err.response?.status === 404) {
@@ -163,8 +191,9 @@ export default function AccidentPrediction() {
         </h1>
 
         <p className="mt-1 text-sm text-asphalt-400">
-          Select a road from the database. RoadSense AI retrieves road, weather,
-          traffic, and accident-history data from the backend to predict its risk.
+          Select a From and To road. RoadSense AI calculates the route between
+          them and uses road, weather, traffic, and accident-history data to
+          predict accident risk.
         </p>
       </div>
 
@@ -173,22 +202,44 @@ export default function AccidentPrediction() {
           onSubmit={handleSubmit}
           className="rounded-lg border border-asphalt-700 bg-asphalt-900 p-6"
         >
-          <label className={labelClass} htmlFor="road_id">
-            Road *
+          <label className={labelClass} htmlFor="from_road_id">
+            From Road *
           </label>
 
           <select
-            id="road_id"
+            id="from_road_id"
             required
-            value={form.road_id}
+            value={form.from_road_id}
             onChange={(event) =>
-              update('road_id', event.target.value)
+              update('from_road_id', event.target.value)
             }
             className={inputClass}
             disabled={roadsLoading || roads.length === 0}
           >
             <option value="">
               {roadsLoading ? 'Loading roads…' : 'Select a road'}
+            </option>
+            {roads.map((road) => (
+              <option key={road.road_id} value={road.road_id}>
+                {road.road_name}
+              </option>
+            ))}
+          </select>
+
+          <label className={`${labelClass} mt-4`} htmlFor="to_road_id">
+            To Road *
+          </label>
+
+          <select
+            id="to_road_id"
+            required
+            value={form.to_road_id}
+            onChange={(event) => update('to_road_id', event.target.value)}
+            className={inputClass}
+            disabled={roadsLoading || roads.length === 0}
+          >
+            <option value="">
+              {roadsLoading ? 'Loading roads…' : 'Select a destination road'}
             </option>
             {roads.map((road) => (
               <option key={road.road_id} value={road.road_id}>
@@ -227,7 +278,7 @@ export default function AccidentPrediction() {
 
           {!result && !isSubmitting && (
             <p className="mt-4 text-sm text-asphalt-400">
-              Enter your route and run a prediction to see the result.
+              Select both roads and run a prediction to see the result.
             </p>
           )}
 
@@ -240,9 +291,11 @@ export default function AccidentPrediction() {
           {result && !isSubmitting && (
             <div className="mt-4 space-y-4">
               <div className="flex items-center gap-3">
-                <RiskBadge level={result.risk_level} />
+                <RiskBadge
+                  level={result.risk_level || result.accident_risk_level}
+                />
                 <span className="text-sm text-asphalt-300">
-                  {result.road_name || 'Selected route'}
+                {result.road_name || 'Selected road'}
                 </span>
               </div>
 
@@ -252,7 +305,7 @@ export default function AccidentPrediction() {
                 </p>
 
                 <p className="mt-1 text-3xl font-semibold text-asphalt-100">
-                  {Number(result.risk_percentage).toFixed(1)}%
+                  {Number(result.risk_percentage ?? result.accident_risk).toFixed(1)}%
                 </p>
               </div>
 
@@ -260,7 +313,8 @@ export default function AccidentPrediction() {
                 <div>
                   <p className="text-xs text-asphalt-400">Route</p>
                   <p className="text-asphalt-100">
-                    {result.start_location} → {result.end_location}
+                    {result.from_road_name || result.start_location} →{' '}
+                    {result.to_road_name || result.end_location}
                   </p>
                 </div>
 
