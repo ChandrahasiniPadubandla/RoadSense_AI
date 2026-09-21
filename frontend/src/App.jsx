@@ -19,6 +19,7 @@ import AlertsPage from './pages/AlertsPage';
 import RoadManagement from './pages/RoadManagement';
 import UserManagement from './pages/UserManagement';
 import Unauthorized from './pages/Unauthorized';
+import AnomaliesPage from './pages/AnomaliesPage';
 import NotFound from './pages/NotFound';
 import { ROLES } from './utils/constants';
 
