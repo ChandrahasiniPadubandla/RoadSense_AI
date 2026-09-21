@@ -1,5 +1,5 @@
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
@@ -140,6 +140,7 @@ def delete_user(
         action="DELETE",
         entity_type="user",
         entity_id=user.user_id,
+        timestamp=datetime.now(timezone.utc),
         details=f"Deleted user {user.email}"
     ))
     db.delete(user)

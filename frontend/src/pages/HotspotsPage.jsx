@@ -20,7 +20,7 @@ export default function HotspotsPage() {
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4 dark:border-asphalt-800">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">Accident Hotspots</h2>
+        <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">Accident Hotspots</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
           Zones ranked by recorded accident count, calculated from the real{' '}
           <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-asphalt-800">accident_hotspots</code> database table —

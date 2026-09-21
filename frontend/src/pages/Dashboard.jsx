@@ -45,13 +45,13 @@ export default function Dashboard() {
   }, []);
 
   if (isLoading) {
-    return <p className="text-sm text-asphalt-400">Loading dashboard…</p>;
+    return <p className="text-sm text-slate-500 dark:text-asphalt-400">Loading dashboard…</p>;
   }
 
   return (
     <div className="space-y-6">
       {/* Header controls & Live API Status */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-asphalt-800 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-asphalt-800 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
@@ -62,10 +62,10 @@ export default function Dashboard() {
               Live Backend API Active
             </span>
             {lastUpdated && (
-              <span className="text-xs text-asphalt-500">· Synced at {lastUpdated}</span>
+              <span className="text-xs text-slate-400 dark:text-asphalt-500">· Synced at {lastUpdated}</span>
             )}
           </div>
-          <p className="mt-1 text-sm text-asphalt-300">
+          <p className="mt-1 text-sm text-slate-600 dark:text-asphalt-300">
             Real-time traffic metrics and accident indicators from backend analytics engine.
           </p>
         </div>
@@ -73,7 +73,7 @@ export default function Dashboard() {
         <button
           onClick={loadData}
           disabled={isLoading}
-          className="flex items-center gap-2 rounded-md border border-asphalt-700 bg-asphalt-800 px-3 py-1.5 text-xs font-medium text-asphalt-200 transition-colors hover:border-signal-blue/50 hover:bg-asphalt-700 hover:text-white disabled:opacity-50"
+          className="flex items-center gap-2 rounded-md border border-slate-200 dark:border-asphalt-700 bg-slate-100 dark:bg-asphalt-800 px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-asphalt-200 transition-colors hover:border-signal-blue/50 hover:bg-slate-200 dark:hover:bg-asphalt-700 hover:text-white disabled:opacity-50"
         >
           <span>{isLoading ? 'Syncing...' : '↻ Refresh Data'}</span>
         </button>
@@ -93,7 +93,7 @@ export default function Dashboard() {
         <StatCard label="High Traffic" value={stats?.highTraffic ?? '-'} accent="text-signal-amber" />
         <StatCard label="Accident Alerts" value={stats?.accidentAlerts ?? '-'} accent="text-signal-red" />
         <StatCard label="High Risk Zones" value={stats?.highRiskZones ?? '-'} accent="text-signal-red" />
-        <StatCard label="Total Accidents" value={stats?.totalAccidents ?? '-'} accent="text-asphalt-200" />
+        <StatCard label="Total Accidents" value={stats?.totalAccidents ?? '-'} accent="text-slate-800 dark:text-asphalt-200" />
         <StatCard
           label="Avg Speed"
           value={stats?.averageSpeed ? `${stats.averageSpeed} km/h` : '-'}
@@ -102,13 +102,13 @@ export default function Dashboard() {
       </div>
 
       {/* Vehicle Volume Trend Card */}
-      <div className="rounded-lg border border-asphalt-700 bg-asphalt-900 p-5">
+      <div className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-5">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm font-medium text-asphalt-100">
+          <p className="text-sm font-medium text-slate-900 dark:text-asphalt-100">
             Vehicle volume — live observation trend
           </p>
           {stats?.totalTrafficRecords ? (
-            <span className="text-xs text-asphalt-400">Total records: {stats.totalTrafficRecords}</span>
+            <span className="text-xs text-slate-500 dark:text-asphalt-400">Total records: {stats.totalTrafficRecords}</span>
           ) : null}
         </div>
 
@@ -140,10 +140,10 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="flex h-44 flex-col items-center justify-center rounded-lg border border-dashed border-asphalt-800 bg-asphalt-950/40 p-6 text-center">
+          <div className="flex h-44 flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-asphalt-800 bg-slate-50 dark:bg-asphalt-950/40 p-6 text-center">
             <span className="text-2xl mb-1.5">📈</span>
-            <p className="text-sm font-medium text-asphalt-300">No traffic trend data available</p>
-            <p className="mt-1 max-w-sm text-xs text-asphalt-500">
+            <p className="text-sm font-medium text-slate-600 dark:text-asphalt-300">No traffic trend data available</p>
+            <p className="mt-1 max-w-sm text-xs text-slate-400 dark:text-asphalt-500">
               No traffic volume observations were found in the database. Charts will automatically populate as sensor data is ingested.
             </p>
           </div>
@@ -151,7 +151,7 @@ export default function Dashboard() {
       </div>
 
       <div>
-        <p className="mb-3 text-sm font-medium text-asphalt-100">Road status</p>
+        <p className="mb-3 text-sm font-medium text-slate-900 dark:text-asphalt-100">Road status</p>
         <DataTable
           columns={[
             { key: 'name', header: 'Road' },
