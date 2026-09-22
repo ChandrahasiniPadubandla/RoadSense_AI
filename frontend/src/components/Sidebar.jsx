@@ -4,14 +4,14 @@ import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../utils/constants';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE, ROLES.USER] },
-  { to: '/live-map', label: 'Live Map', roles: [ROLES.SUPER_ADMIN, ROLES.USER,ROLES.EMERGENCY_RESPONSE,ROLES.TRAFFIC_AUTHORITY] },
-  { to: '/traffic-prediction', label: 'Traffic Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.USER] },
-  { to: '/accident-prediction', label: 'Accident Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE,ROLES.USER] },
+  { to: '/dashboard', label: 'Dashboard', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE, ROLES.VIEWER] },
+  { to: '/live-map', label: 'Live Map', roles: [ROLES.SUPER_ADMIN, ROLES.VIEWER,ROLES.EMERGENCY_RESPONSE,ROLES.TRAFFIC_AUTHORITY] },
+  { to: '/traffic-prediction', label: 'Traffic Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.VIEWER] },
+  { to: '/accident-prediction', label: 'Accident Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE,ROLES.VIEWER] },
   { to: '/traffic-management', label: 'Traffic Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
-  { to: '/hotspots', label: 'Accident Hotspots', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE, ROLES.USER] },
+  { to: '/hotspots', label: 'Accident Hotspots', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE, ROLES.VIEWER] },
   { to: '/anomalies', label: 'Anomalies', roles: [ROLES.SUPER_ADMIN] },
-  { to: '/alerts', label: 'Alerts', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.USER] },
+  { to: '/alerts', label: 'Alerts', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.VIEWER] },
   { to: '/incidents', label: 'Incidents', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE] },
   { to: '/road-management', label: 'Road Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
   { to: '/reports', label: 'Reports', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
