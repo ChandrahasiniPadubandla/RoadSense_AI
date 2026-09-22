@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 
 import ProtectedRoute from './routes/ProtectedRoute';
 import RoleRoute from './routes/RoleRoute';
@@ -26,39 +26,58 @@ import { ROLES } from './utils/constants';
 export default function App() {
   return (
     <Routes>
-      {/* Public Landing Page */}
+      {/* Public routes */}
       <Route path="/" element={<LandingPage />} />
-
-      {/* Authentication & Onboarding */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
 
-      {/* Everything below requires a logged-in user */}
+      {/* Protected routes */}
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/live-map" element={<LiveMap />} />
-          <Route path="/traffic-prediction" element={<TrafficPrediction />} />
-          <Route path="/Accident-Prediction" element={<AccidentPrediction />} />
-          <Route path="/hotspots" element={<HotspotsPage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/anomalies" element={<AnomaliesPage />} />
 
-          {/* Super Admin + Traffic Authority only */}
-          <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY]} />}>
+          {/* Super Admin → sees everything */}
+          <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN]} />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/live-map" element={<LiveMap />} />
+            <Route path="/traffic-prediction" element={<TrafficPrediction />} />
+            <Route path="/accident-prediction" element={<AccidentPrediction />} />
+            <Route path="/hotspots" element={<HotspotsPage />} />
+            <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/traffic-management" element={<TrafficManagement />} />
             <Route path="/road-management" element={<RoadManagement />} />
+            <Route path="/user-management" element={<UserManagement />} />
+            <Route path="/anomalies" element={<AnomaliesPage />} />
           </Route>
 
-          {/* Super Admin only */}
-          <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN]} />}>
-            <Route path="/user-management" element={<UserManagement />} />
+          {/* Traffic Authority only */}
+          <Route element={<RoleRoute allow={[ROLES.TRAFFIC_AUTHORITY]} />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/traffic-management" element={<TrafficManagement />} />
+            <Route path="/road-management" element={<RoadManagement />} />
+            <Route path="/alerts" element={<AlertsPage />} />
           </Route>
+
+          {/* Emergency Response only */}
+          <Route element={<RoleRoute allow={[ROLES.EMERGENCY_RESPONSE]} />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/hotspots" element={<HotspotsPage />} />
+            <Route path="/accident-prediction" element={<AccidentPrediction />} />
+          </Route>
+
+          {/* Normal User only */}
+          <Route element={<RoleRoute allow={[ROLES.USER]} />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/live-map" element={<LiveMap />} />
+            <Route path="/traffic-prediction" element={<TrafficPrediction />} />
+            <Route path="/accident-prediction" element={<AccidentPrediction />} />
+          </Route>
+
         </Route>
       </Route>
 
+      {/* Catch-all */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
