@@ -11,7 +11,8 @@ from app.database.models import (
     Road,
     TrafficRecord,
     Accident,
-    AccidentHotspot
+    AccidentHotspot,
+    TrafficAnomaly
 )
 
 router = APIRouter(
@@ -285,6 +286,68 @@ def get_hotspots_layer(
                 "risk_score": float(h.risk_score) if h.risk_score is not None else None,
                 "risk_level": risk_level,
                 "color": "#DC2626" if risk_level.upper() in ["HIGH", "CRITICAL"] else "#F59E0B"
+            }
+        }
+        features.append(feature)
+
+    return {
+        "type": "FeatureCollection",
+        "features": features
+    }
+
+
+@router.get(
+    "/anomalies-layer",
+    summary="Get GeoJSON Traffic Anomaly Layer for Leaflet Map"
+)
+def get_anomalies_layer(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Returns a GeoJSON FeatureCollection of detected traffic anomalies
+    (unusual vehicle-count spikes/drops flagged by the Isolation Forest
+    model), positioned at their road's location, for map display.
+    """
+    rows = (
+        db.query(TrafficAnomaly, Road)
+        .join(Road, TrafficAnomaly.road_id == Road.road_id)
+        .filter(Road.start_location.isnot(None))
+        .order_by(TrafficAnomaly.detected_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    features = []
+    for anomaly, road in rows:
+        try:
+            pt = to_shape(road.start_location)
+        except Exception:
+            continue
+
+        score = float(anomaly.anomaly_score) if anomaly.anomaly_score is not None else None
+        severity = "HIGH" if score is not None and score >= 70 else "MEDIUM"
+
+        feature = {
+            "type": "Feature",
+            "id": str(anomaly.anomaly_id),
+            "geometry": {
+                "type": "Point",
+                "coordinates": [pt.x, pt.y]
+            },
+            "properties": {
+                "anomaly_id": str(anomaly.anomaly_id),
+                "road_id": str(anomaly.road_id),
+                "road_name": road.road_name,
+                "anomaly_type": anomaly.anomaly_type,
+                "anomaly_score": score,
+                "severity": severity,
+                "normal_vehicle_count": anomaly.normal_vehicle_count,
+                "actual_vehicle_count": anomaly.actual_vehicle_count,
+                "description": anomaly.description,
+                "status": anomaly.status,
+                "detected_at": anomaly.detected_at.isoformat() if anomaly.detected_at else None,
+                "color": "#A855F7" if severity == "HIGH" else "#D8B4FE"
             }
         }
         features.append(feature)

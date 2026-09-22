@@ -15,6 +15,7 @@ import {
   getTrafficLayer,
   getAccidentLayer,
   getHotspotsLayer,
+  getAnomaliesLayer,
   geocodeSearch,
   getDrivingRoute,
   reverseGeocode,
@@ -89,6 +90,7 @@ export default function LiveMap() {
   const [trafficLayer, setTrafficLayer] = useState({ features: [] });
   const [accidentLayer, setAccidentLayer] = useState({ features: [] });
   const [hotspotsLayer, setHotspotsLayer] = useState({ features: [] });
+  const [anomalyLayer, setAnomalyLayer] = useState({ features: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -97,6 +99,7 @@ export default function LiveMap() {
   const [showTraffic, setShowTraffic] = useState(true);
   const [showAccidents, setShowAccidents] = useState(true);
   const [showHotspots, setShowHotspots] = useState(true);
+  const [showAnomalies, setShowAnomalies] = useState(true);
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -137,6 +140,98 @@ export default function LiveMap() {
   const [routeTraffic, setRouteTraffic] = useState(null);
   const [routeAccidentRisk, setRouteAccidentRisk] = useState(null);
   const [predictionsLoading, setPredictionsLoading] = useState(false);
+
+  // ---------------------------------------------------------------------
+  // "Start" live navigation — Google-Maps-style turn-by-turn tracking using
+  // the browser's real GPS (navigator.geolocation.watchPosition). Follows
+  // the user's live position, advances to the nearest upcoming step
+  // automatically, and shows a bottom navigation banner.
+  // ---------------------------------------------------------------------
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [navError, setNavError] = useState('');
+  const watchIdRef = useRef(null);
+
+  function haversineMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function startNavigation() {
+    if (!navigator.geolocation) {
+      setNavError('Your browser does not support live GPS tracking.');
+      return;
+    }
+    if (!routeInfo?.steps?.length) {
+      setNavError('No turn-by-turn steps available for this route.');
+      return;
+    }
+    setNavError('');
+    setCurrentStepIndex(0);
+    setIsNavigating(true);
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setUserLocation({ lat, lng });
+        setFlyTarget([lat, lng]);
+
+        // Advance to whichever upcoming step's maneuver point is now
+        // closest — a simple but effective way to track progress without
+        // needing full route map-matching.
+        setCurrentStepIndex((prevIndex) => {
+          const steps = routeInfo.steps;
+          let bestIndex = prevIndex;
+          let bestDist = Infinity;
+          for (let i = prevIndex; i < steps.length; i++) {
+            const coord = steps[i].coordinates;
+            if (!coord) continue;
+            const d = haversineMeters(lat, lng, coord[0], coord[1]);
+            if (d < bestDist) {
+              bestDist = d;
+              bestIndex = i;
+            }
+            // Once we're clearly closer to a later step than the current
+            // one, and within arrival range of it, advance to it.
+            if (i > prevIndex && d < 40) {
+              bestIndex = Math.min(i + 1, steps.length - 1);
+            }
+          }
+          return bestIndex;
+        });
+      },
+      (err) => {
+        setNavError(err.code === 1 ? 'Location permission denied.' : 'Lost GPS signal.');
+      },
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+    );
+  }
+
+  function stopNavigation() {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsNavigating(false);
+    setCurrentStepIndex(0);
+  }
+
+  useEffect(() => {
+    // Safety net: stop any active GPS watch if the component unmounts
+    // mid-navigation (e.g. the user clicks away to another page).
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
 
   const [userLocation, setUserLocation] = useState(null); // { lat, lng }
   const [locating, setLocating] = useState(false);
@@ -311,6 +406,7 @@ export default function LiveMap() {
   }
 
   function handleClearRoute() {
+    stopNavigation();
     setStartQuery('');
     setEndQuery('');
     setStartPoint(null);
@@ -328,14 +424,16 @@ export default function LiveMap() {
   async function loadMapData() {
     setIsLoading(true);
     try {
-      const [trafficRes, accidentRes, hotspotsRes] = await Promise.all([
+      const [trafficRes, accidentRes, hotspotsRes, anomalyRes] = await Promise.all([
         getTrafficLayer(),
         getAccidentLayer(),
         getHotspotsLayer(),
+        getAnomaliesLayer(),
       ]);
       setTrafficLayer(trafficRes || { features: [] });
       setAccidentLayer(accidentRes || { features: [] });
       setHotspotsLayer(hotspotsRes || { features: [] });
+      setAnomalyLayer(anomalyRes || { features: [] });
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
       console.error('Failed to load map data from APIs:', err);
@@ -390,6 +488,7 @@ export default function LiveMap() {
   const roadCount = trafficLayer?.features?.length || 0;
   const accidentCount = accidentLayer?.features?.length || 0;
   const hotspotCount = hotspotsLayer?.features?.length || 0;
+  const anomalyCount = anomalyLayer?.features?.length || 0;
   const anyDataMissing =
     roadCount === 0 || accidentCount === 0 || hotspotCount === 0 || (accidentCount > 0 && filteredAccidents.length === 0);
 
@@ -567,6 +666,58 @@ export default function LiveMap() {
                     <p>Risk Level: {p.risk_level}</p>
                     <p>Accidents Recorded: {p.accident_count}</p>
                     {p.risk_score != null && <p>Risk Score: {p.risk_score}</p>}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
+
+        {/* 4. Anomalies Layer: unusual traffic-volume spikes/drops flagged by the ML model */}
+        {showAnomalies &&
+          anomalyLayer?.features?.map((f) => {
+            const p = f.properties || {};
+            const coords = f.geometry?.coordinates;
+            if (!coords) return null;
+            const [lng, lat] = coords;
+            const color = p.color || '#A855F7';
+
+            return (
+              <CircleMarker
+                key={f.id || p.anomaly_id}
+                center={[lat, lng]}
+                radius={9}
+                pathOptions={{
+                  color: '#ffffff',
+                  fillColor: color,
+                  fillOpacity: 0.9,
+                  weight: 2,
+                  dashArray: '2, 3',
+                }}
+              >
+                <Tooltip>{p.road_name}: traffic anomaly ({p.severity})</Tooltip>
+                <Popup>
+                  <div className="space-y-1 text-xs text-asphalt-900">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-sm text-asphalt-950">Traffic Anomaly</span>
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white uppercase"
+                        style={{ backgroundColor: color }}
+                      >
+                        {p.severity}
+                      </span>
+                    </div>
+                    <p className="font-medium text-asphalt-700">{p.road_name}</p>
+                    <div className="border-t border-asphalt-200 pt-1 text-asphalt-800">
+                      <p><strong>Type:</strong> {p.anomaly_type || 'Unusual volume'}</p>
+                      <p><strong>Expected:</strong> {p.normal_vehicle_count ?? 'N/A'} vehicles</p>
+                      <p><strong>Actual:</strong> {p.actual_vehicle_count ?? 'N/A'} vehicles</p>
+                      {p.anomaly_score != null && <p><strong>Anomaly Score:</strong> {p.anomaly_score}</p>}
+                      {p.detected_at && (
+                        <p className="text-[10px] text-asphalt-500 mt-1">
+                          Detected: {new Date(p.detected_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </Popup>
               </CircleMarker>
@@ -839,6 +990,24 @@ export default function LiveMap() {
                     )}
                   </div>
 
+                  {!isNavigating ? (
+                    <button
+                      onClick={startNavigation}
+                      disabled={!routeInfo.steps?.length}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-signal-blue px-3 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      ▶ Start
+                    </button>
+                  ) : (
+                    <button
+                      onClick={stopNavigation}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-signal-red px-3 py-2 text-sm font-semibold text-signal-red transition-colors hover:bg-signal-red/10"
+                    >
+                      ■ End navigation
+                    </button>
+                  )}
+                  {navError && <p className="mt-1 text-xs text-signal-red">{navError}</p>}
+
                   {routeInfo.steps?.length > 0 && (
                     <div className="mt-2">
                       <button
@@ -850,29 +1019,40 @@ export default function LiveMap() {
                       </button>
                       {stepsExpanded && (
                         <ol className="max-h-64 space-y-0.5 overflow-y-auto">
-                          {routeInfo.steps.map((step, i) => (
-                            <li key={i}>
-                              <button
-                                onClick={() => step.coordinates && setFlyTarget(step.coordinates)}
-                                className="flex w-full items-start gap-2 rounded-md px-1.5 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-asphalt-800"
-                              >
-                                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] dark:bg-asphalt-800">
-                                  {stepGlyph(step)}
-                                </span>
-                                <span className="flex-1 text-slate-700 dark:text-asphalt-200">
-                                  {step.instruction}
-                                  {step.distance_meters > 0 && (
-                                    <span className="ml-1 text-slate-400 dark:text-asphalt-500">
-                                      {' '}-{' '}
-                                      {step.distance_meters >= 1000
-                                        ? `${(step.distance_meters / 1000).toFixed(1)} km`
-                                        : `${Math.round(step.distance_meters)} m`}
-                                    </span>
-                                  )}
-                                </span>
-                              </button>
-                            </li>
-                          ))}
+                          {routeInfo.steps.map((step, i) => {
+                            const isCurrent = isNavigating && i === currentStepIndex;
+                            return (
+                              <li key={i}>
+                                <button
+                                  onClick={() => step.coordinates && setFlyTarget(step.coordinates)}
+                                  className={`flex w-full items-start gap-2 rounded-md px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-slate-100 dark:hover:bg-asphalt-800 ${
+                                    isCurrent ? 'bg-signal-blue/10 ring-1 ring-signal-blue/40' : ''
+                                  }`}
+                                >
+                                  <span
+                                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] ${
+                                      isCurrent
+                                        ? 'bg-signal-blue text-white'
+                                        : 'bg-slate-100 dark:bg-asphalt-800'
+                                    }`}
+                                  >
+                                    {stepGlyph(step)}
+                                  </span>
+                                  <span className={`flex-1 ${isCurrent ? 'font-semibold text-slate-900 dark:text-asphalt-100' : 'text-slate-700 dark:text-asphalt-200'}`}>
+                                    {step.instruction}
+                                    {step.distance_meters > 0 && (
+                                      <span className="ml-1 text-slate-400 dark:text-asphalt-500">
+                                        {' '}-{' '}
+                                        {step.distance_meters >= 1000
+                                          ? `${(step.distance_meters / 1000).toFixed(1)} km`
+                                          : `${Math.round(step.distance_meters)} m`}
+                                      </span>
+                                    )}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
                         </ol>
                       )}
                     </div>
@@ -909,6 +1089,12 @@ export default function LiveMap() {
                 <span className="h-2 w-2 rounded-full bg-signal-amber" /> Accident hotspots ({hotspotCount})
               </span>
               <input type="checkbox" checked={showHotspots} onChange={() => setShowHotspots((v) => !v)} />
+            </label>
+            <label className="mb-2 flex items-center justify-between gap-2 rounded-md px-1 py-1 hover:bg-slate-50 dark:hover:bg-asphalt-800">
+              <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200">
+                <span className="h-2 w-2 rounded-full bg-purple-500" /> Traffic anomalies ({anomalyCount})
+              </span>
+              <input type="checkbox" checked={showAnomalies} onChange={() => setShowAnomalies((v) => !v)} />
             </label>
 
             <div className="mb-2 flex items-center gap-1.5 border-t border-slate-200 pt-2 dark:border-asphalt-800">
@@ -991,9 +1177,45 @@ export default function LiveMap() {
             <LegendItem color={SEVERITY_COLOR.SEVERE} label="Severe Accident" dot />
             <LegendItem color={SEVERITY_COLOR.MODERATE} label="Moderate Incident" dot />
             <LegendItem color={SEVERITY_COLOR.MINOR} label="Minor Incident" dot />
+            <LegendItem color="#A855F7" label="Traffic Anomaly" dot />
           </div>
         )}
       </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* Live navigation banner - Google-Maps-style, shown while "Start" */}
+      {/* turn-by-turn tracking is active (real GPS via watchPosition)    */}
+      {/* ------------------------------------------------------------- */}
+      {isNavigating && routeInfo?.steps?.length > 0 && (
+        <div className="absolute inset-x-3 bottom-3 z-[1100] mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-signal-blue text-xl text-white">
+              {stepGlyph(routeInfo.steps[currentStepIndex] || routeInfo.steps[0])}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-bold text-slate-900 dark:text-asphalt-100">
+                {(routeInfo.steps[currentStepIndex] || routeInfo.steps[0]).instruction}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-asphalt-400">
+                Step {currentStepIndex + 1} of {routeInfo.steps.length}
+                {(routeInfo.steps[currentStepIndex]?.distance_meters ?? 0) > 0 &&
+                  ` · ${
+                    routeInfo.steps[currentStepIndex].distance_meters >= 1000
+                      ? `${(routeInfo.steps[currentStepIndex].distance_meters / 1000).toFixed(1)} km`
+                      : `${Math.round(routeInfo.steps[currentStepIndex].distance_meters)} m`
+                  }`}
+              </p>
+            </div>
+            <button
+              onClick={stopNavigation}
+              className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-signal-red/50 hover:text-signal-red dark:border-asphalt-700 dark:text-asphalt-300"
+            >
+              End
+            </button>
+          </div>
+          {navError && <p className="mt-2 text-xs text-signal-red">{navError}</p>}
+        </div>
+      )}
     </div>
   );
 }

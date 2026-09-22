@@ -7,15 +7,17 @@ import ChatWidget from '../components/ChatWidget';
 const TITLES = {
   '/': 'Dashboard',
   '/dashboard': 'Dashboard',
-  '/live-map': 'Map',
-  '/map': 'Map',
+  '/live-map': 'Live Map',
+  '/map': 'Live Map',
   '/traffic-prediction': 'Traffic Prediction',
   '/Accident-Prediction': 'Accident Prediction',
   '/traffic-management': 'Traffic Management',
   '/hotspots': 'Accident Hotspots',
   '/alerts': 'Alerts',
   '/anomalies': 'Traffic Anomalies',
+  '/incidents': 'Incidents',
   '/road-management': 'Road Management',
+  '/reports': 'Reports',
   '/user-management': 'User Management',
 };
 

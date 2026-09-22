@@ -235,6 +235,19 @@ export async function getHotspotsLayer() {
   }
 }
 
+/**
+ * Fetch GeoJSON Traffic Anomalies from /api/map/anomalies-layer
+ */
+export async function getAnomaliesLayer() {
+  try {
+    const { data } = await apiClient.get('/api/map/anomalies-layer');
+    return data && Array.isArray(data.features) ? data : { type: 'FeatureCollection', features: [] };
+  } catch (error) {
+    console.error('Error fetching /api/map/anomalies-layer:', error);
+    return { type: 'FeatureCollection', features: [] };
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 3. AUTHENTICATION APIS
 // -----------------------------------------------------------------------------
@@ -450,18 +463,23 @@ export async function createAccident(payload) {
   return data;
 }
 
-export async function getEmergencyResponses() {
+export async function getEmergencyResponses(params = {}) {
   try {
-    const { data } = await apiClient.get('/emergency/responses');
+    const { data } = await apiClient.get('/api/emergency', { params });
     return Array.isArray(data) ? data : [];
   } catch (error) {
-    console.error('Error fetching /emergency/responses:', error);
+    console.error('Error fetching /api/emergency:', error);
     return [];
   }
 }
 
 export async function createEmergencyResponse(payload) {
-  const { data } = await apiClient.post('/emergency/responses', payload);
+  const { data } = await apiClient.post('/api/emergency', payload);
+  return data;
+}
+
+export async function updateEmergencyResponse(responseId, payload) {
+  const { data } = await apiClient.patch(`/api/emergency/${responseId}`, payload);
   return data;
 }
 
@@ -638,6 +656,57 @@ export async function getDrivingRoute(startLat, startLng, endLat, endLng) {
 export async function reverseGeocode(lat, lng) {
   const { data } = await apiClient.get('/api/geo/reverse', { params: { lat, lng } });
   return data;
+}
+
+// -----------------------------------------------------------------------------
+// 13. REPORTS & ANALYTICS EXPORT (Super Admin + Traffic Authority)
+// -----------------------------------------------------------------------------
+
+/**
+ * Fetch a report as JSON (for on-screen preview) from /api/reports.
+ * reportType: 'summary' | 'accidents' | 'traffic' | 'hotspots' | 'predictions'
+ */
+export async function getReportPreview(reportType, { startDate, endDate, limit = 200 } = {}) {
+  const { data } = await apiClient.get('/api/reports', {
+    params: {
+      report_type: reportType,
+      format: 'json',
+      start_date: startDate || undefined,
+      end_date: endDate || undefined,
+      limit,
+    },
+  });
+  return data;
+}
+
+/**
+ * Download a report as a CSV file from /api/reports and trigger a browser
+ * save-as. Returns nothing — the side effect is the download itself.
+ */
+export async function downloadReportCsv(reportType, { startDate, endDate, limit = 1000 } = {}) {
+  const response = await apiClient.get('/api/reports', {
+    params: {
+      report_type: reportType,
+      format: 'csv',
+      start_date: startDate || undefined,
+      end_date: endDate || undefined,
+      limit,
+    },
+    responseType: 'blob',
+  });
+
+  const disposition = response.headers['content-disposition'] || '';
+  const match = disposition.match(/filename=([^;]+)/);
+  const filename = match ? match[1].trim() : `roadsense_${reportType}_report.csv`;
+
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 export default {
