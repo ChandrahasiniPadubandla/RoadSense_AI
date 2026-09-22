@@ -4,26 +4,30 @@ import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../utils/constants';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard', roles: 'ALL' },
-  { to: '/live-map', label: 'Live Map', roles: 'ALL' },
-  { to: '/traffic-prediction', label: 'Traffic Prediction', roles: 'ALL' },
-  { to: '/Accident-Prediction', label: 'Accident Prediction', roles: 'ALL' },
+  { to: '/dashboard', label: 'Dashboard', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE, ROLES.USER] },
+  { to: '/live-map', label: 'Live Map', roles: [ROLES.SUPER_ADMIN, ROLES.USER] },
+  { to: '/traffic-prediction', label: 'Traffic Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.USER] },
+  { to: '/accident-prediction', label: 'Accident Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE,ROLES.USER] },
   { to: '/traffic-management', label: 'Traffic Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
-  { to: '/hotspots', label: 'Accident Hotspots', roles: 'ALL' },
-  { to: '/anomalies', label: 'Anomalies', roles: 'ALL' },
-  { to: '/alerts', label: 'Alerts', roles: 'ALL' },
+  { to: '/hotspots', label: 'Accident Hotspots', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE, ROLES.USER] },
+  { to: '/anomalies', label: 'Anomalies', roles: [ROLES.SUPER_ADMIN] },
+  { to: '/alerts', label: 'Alerts', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.USER] },
   { to: '/incidents', label: 'Incidents', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE] },
   { to: '/road-management', label: 'Road Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
   { to: '/reports', label: 'Reports', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
   { to: '/user-management', label: 'User Management', roles: [ROLES.SUPER_ADMIN] },
 ];
 
+
 export default function Sidebar() {
   const { user } = useAuth();
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => item.roles === 'ALL' || item.roles.includes(user?.role)
-  );
+ 
+    const visibleItems = NAV_ITEMS.filter(
+  (item) => item.roles.includes(user?.role)
+);
+
+
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-asphalt-700 dark:bg-asphalt-900 md:flex">
