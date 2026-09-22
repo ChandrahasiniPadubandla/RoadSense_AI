@@ -18,6 +18,8 @@ import HotspotsPage from './pages/HotspotsPage';
 import AlertsPage from './pages/AlertsPage';
 import RoadManagement from './pages/RoadManagement';
 import UserManagement from './pages/UserManagement';
+import ReportsPage from './pages/ReportsPage';
+import IncidentsPage from './pages/IncidentsPage';
 import Unauthorized from './pages/Unauthorized';
 import AnomaliesPage from './pages/AnomaliesPage';
 import NotFound from './pages/NotFound';
@@ -44,18 +46,23 @@ export default function App() {
           <Route path="/Accident-Prediction" element={<AccidentPrediction />} />
           <Route path="/hotspots" element={<HotspotsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
-          
+          <Route path="/anomalies" element={<AnomaliesPage />} />
+
           {/* Super Admin + Traffic Authority only */}
           <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY]} />}>
             <Route path="/traffic-management" element={<TrafficManagement />} />
             <Route path="/road-management" element={<RoadManagement />} />
+            <Route path="/reports" element={<ReportsPage />} />
+          </Route>
+
+          {/* Super Admin + Traffic Authority + Emergency Response */}
+          <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE]} />}>
+            <Route path="/incidents" element={<IncidentsPage />} />
           </Route>
 
           {/* Super Admin only */}
           <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN]} />}>
             <Route path="/user-management" element={<UserManagement />} />
-            <Route path="/anomalies" element={<AnomaliesPage />} />
-
           </Route>
         </Route>
       </Route>
