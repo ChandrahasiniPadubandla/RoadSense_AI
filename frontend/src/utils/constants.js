@@ -2,14 +2,14 @@ export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   TRAFFIC_AUTHORITY: 'TRAFFIC_AUTHORITY',
   EMERGENCY_RESPONSE: 'EMERGENCY_RESPONSE',
-  VIEWER: 'VIEWER',
+  USER: 'USER',
 };
 
 export const ROLE_LABELS = {
   SUPER_ADMIN: 'Super Admin',
   TRAFFIC_AUTHORITY: 'Traffic Authority',
   EMERGENCY_RESPONSE: 'Emergency Response',
-  VIEWER: 'Viewer',
+  USER: 'User',
 };
 
 export const TRAFFIC_LEVEL_COLOR = {
