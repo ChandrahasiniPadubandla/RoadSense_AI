@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import EmergencyResponse
+from app.database.models import EmergencyResponse, Accident, Road
 from app.security import require_roles
 
 
@@ -44,7 +44,26 @@ class EmergencyUpdateRequest(BaseModel):
 # SERIALIZER
 # ============================================================
 
-def _serialize_emergency(emergency: EmergencyResponse):
+def _serialize_emergency(emergency: EmergencyResponse, db: Session = None):
+    accident_summary = None
+    if db is not None and emergency.accident_id:
+        row = (
+            db.query(Accident, Road.road_name)
+            .outerjoin(Road, Accident.road_id == Road.road_id)
+            .filter(Accident.accident_id == emergency.accident_id)
+            .first()
+        )
+        if row:
+            accident, road_name = row
+            accident_summary = {
+                "road_name": road_name or "Unknown Road",
+                "severity": accident.severity,
+                "fatalities": accident.fatalities or 0,
+                "injuries": accident.injuries or 0,
+                "accident_datetime": accident.accident_datetime.isoformat() if accident.accident_datetime else None,
+                "description": accident.description,
+            }
+
     return {
         "response_id": str(emergency.response_id),
 
@@ -53,6 +72,8 @@ def _serialize_emergency(emergency: EmergencyResponse):
             if emergency.accident_id
             else None
         ),
+
+        "accident": accident_summary,
 
         "assigned_user_id": (
             str(emergency.assigned_user_id)
@@ -136,7 +157,7 @@ def create_emergency(
     db.commit()
     db.refresh(emergency)
 
-    return _serialize_emergency(emergency)
+    return _serialize_emergency(emergency, db)
 
 
 # ============================================================
@@ -181,7 +202,7 @@ def get_emergencies(
     )
 
     return [
-        _serialize_emergency(emergency)
+        _serialize_emergency(emergency, db)
         for emergency in emergencies
     ]
 
@@ -215,7 +236,7 @@ def get_emergency(
             )
         )
 
-    return _serialize_emergency(emergency)
+    return _serialize_emergency(emergency, db)
 
 
 # ============================================================
@@ -285,7 +306,7 @@ def update_emergency(
     db.commit()
     db.refresh(emergency)
 
-    return _serialize_emergency(emergency)
+    return _serialize_emergency(emergency, db)
 
 
 # ============================================================

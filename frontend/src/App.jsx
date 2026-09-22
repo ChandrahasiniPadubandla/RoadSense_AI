@@ -18,6 +18,8 @@ import HotspotsPage from './pages/HotspotsPage';
 import AlertsPage from './pages/AlertsPage';
 import RoadManagement from './pages/RoadManagement';
 import UserManagement from './pages/UserManagement';
+import ReportsPage from './pages/ReportsPage';
+import IncidentsPage from './pages/IncidentsPage';
 import Unauthorized from './pages/Unauthorized';
 import AnomaliesPage from './pages/AnomaliesPage';
 import NotFound from './pages/NotFound';
@@ -49,6 +51,12 @@ export default function App() {
             <Route path="/road-management" element={<RoadManagement />} />
             <Route path="/user-management" element={<UserManagement />} />
             <Route path="/anomalies" element={<AnomaliesPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+          </Route>
+
+          {/* Super Admin + Traffic Authority + Emergency Response */}
+          <Route element={<RoleRoute allow={[ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE]} />}>
+            <Route path="/incidents" element={<IncidentsPage />} />
           </Route>
 
           {/* Traffic Authority only */}
