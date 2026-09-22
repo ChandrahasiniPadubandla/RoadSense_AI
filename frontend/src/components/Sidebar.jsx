@@ -5,15 +5,15 @@ import { ROLES } from '../utils/constants';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', roles: 'ALL' },
-  { to: '/live-map', label: 'Map', roles: 'ALL' },
-  { to: '/traffic-prediction', label: 'Traffic Prediction', roles: 'ALL' },
-  { to: '/Accident-Prediction', label: 'Accident Prediction', roles: 'ALL' },
+  { to: '/live-map', label: 'Map', roles: [ROLES.SUPER_ADMIN, ROLES.VIEWER] },
+  { to: '/traffic-prediction', label: 'Traffic Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.VIEWER] },
+  { to: '/accident-prediction', label: 'Accident Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE, ROLES.VIEWER] },
   { to: '/traffic-management', label: 'Traffic Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
-  { to: '/hotspots', label: 'Accident Hotspots', roles: 'ALL' },
-  { to: '/alerts', label: 'Alerts', roles: 'ALL' },
+  { to: '/hotspots', label: 'Accident Hotspots', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE] },
+  { to: '/alerts', label: 'Alerts', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
   { to: '/road-management', label: 'Road Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
   { to: '/user-management', label: 'User Management', roles: [ROLES.SUPER_ADMIN] },
-  { to: '/anomalies', label: 'Anomalies', roles: 'ALL' },
+  { to: '/anomalies', label: 'Anomalies', roles: [ROLES.SUPER_ADMIN] },
 ];
 
 export default function Sidebar() {
