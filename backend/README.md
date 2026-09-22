@@ -65,7 +65,7 @@ From the backend directory:
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ## Swagger docs
@@ -73,7 +73,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
 Open:
 
 ```text
-http://127.0.0.1:8001/docs
+http://127.0.0.1:8000/docs
 ```
 
 ## Road search endpoint
