@@ -5,7 +5,7 @@ import { ROLES } from '../utils/constants';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY, ROLES.EMERGENCY_RESPONSE, ROLES.USER] },
-  { to: '/live-map', label: 'Live Map', roles: [ROLES.SUPER_ADMIN, ROLES.USER] },
+  { to: '/live-map', label: 'Live Map', roles: [ROLES.SUPER_ADMIN, ROLES.USER,ROLES.EMERGENCY_RESPONSE,ROLES.TRAFFIC_AUTHORITY] },
   { to: '/traffic-prediction', label: 'Traffic Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.USER] },
   { to: '/accident-prediction', label: 'Accident Prediction', roles: [ROLES.SUPER_ADMIN, ROLES.EMERGENCY_RESPONSE,ROLES.USER] },
   { to: '/traffic-management', label: 'Traffic Management', roles: [ROLES.SUPER_ADMIN, ROLES.TRAFFIC_AUTHORITY] },
