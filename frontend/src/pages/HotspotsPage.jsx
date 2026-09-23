@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import DataTable from '../components/DataTable';
 import LevelBadge from '../components/LevelBadge';
 import { RISK_LEVEL_COLOR } from '../utils/constants';
@@ -7,6 +7,7 @@ import { getHotspots } from '../api_services';
 export default function HotspotsPage() {
   const [hotspots, setHotspots] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState('ALL');
 
   useEffect(() => {
     (async () => {
@@ -16,6 +17,16 @@ export default function HotspotsPage() {
       setIsLoading(false);
     })();
   }, []);
+
+  const levels = useMemo(() => {
+    const set = new Set(hotspots.map((h) => (h.risk_level || 'LOW').toUpperCase()));
+    return Array.from(set);
+  }, [hotspots]);
+
+  const filteredHotspots = useMemo(() => {
+    if (activeFilter === 'ALL') return hotspots;
+    return hotspots.filter((h) => (h.risk_level || 'LOW').toUpperCase() === activeFilter);
+  }, [hotspots, activeFilter]);
 
   return (
     <div className="space-y-6">
@@ -27,6 +38,27 @@ export default function HotspotsPage() {
           the same data source the chatbot uses.
         </p>
       </div>
+
+      {!isLoading && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="risk-filter" className="text-sm font-medium text-slate-600 dark:text-asphalt-300">
+            Filter by risk level:
+          </label>
+          <select
+            id="risk-filter"
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value)}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:border-asphalt-700 dark:bg-asphalt-900 dark:text-asphalt-200"
+          >
+            <option value="ALL">All</option>
+            {levels.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-slate-500 dark:text-asphalt-400">Loading hotspots…</p>
@@ -52,8 +84,12 @@ export default function HotspotsPage() {
               render: (h) => (h.calculated_at ? new Date(h.calculated_at).toLocaleString() : '—'),
             },
           ]}
-          rows={hotspots.map((h) => ({ ...h, id: h.hotspot_id }))}
-          emptyMessage="No accident hotspots have been calculated yet. Run the hotspot detection pipeline to populate this table."
+          rows={filteredHotspots.map((h) => ({ ...h, id: h.hotspot_id }))}
+          emptyMessage={
+            activeFilter === 'ALL'
+              ? 'No accident hotspots have been calculated yet. Run the hotspot detection pipeline to populate this table.'
+              : `No ${activeFilter.toLowerCase()} risk hotspots found.`
+          }
         />
       )}
     </div>
