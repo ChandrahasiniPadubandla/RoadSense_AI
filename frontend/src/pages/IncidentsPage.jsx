@@ -20,13 +20,23 @@ export default function IncidentsPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   async function load() {
     setIsLoading(true);
+    setLoadError('');
     try {
       const params = statusFilter === 'ALL' ? {} : { response_status: statusFilter };
       const data = await getEmergencyResponses(params);
       setIncidents(data);
+    } catch (err) {
+      setIncidents([]);
+      const status = err.response?.status;
+      if (status === 401 || status === 403) {
+        setLoadError('Your session is invalid or you do not have permission to view incidents. Please log in again.');
+      } else {
+        setLoadError(err.response?.data?.detail || 'Unable to load incidents from the server. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -81,9 +91,22 @@ export default function IncidentsPage() {
         <div className="rounded-lg border border-signal-red/30 bg-signal-red/10 px-4 py-3 text-xs text-signal-red">{actionError}</div>
       )}
 
+      {loadError && (
+        <div className="rounded-lg border border-signal-red/30 bg-signal-red/10 px-4 py-3 text-xs text-signal-red">
+          {loadError}
+          <button
+            type="button"
+            onClick={load}
+            className="ml-2 font-medium underline underline-offset-2 hover:opacity-80"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {isLoading ? (
         <p className="text-sm text-slate-500 dark:text-asphalt-400">Loading incidents…</p>
-      ) : (
+      ) : loadError ? null : (
         <DataTable
           columns={[
             {

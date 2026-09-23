@@ -464,13 +464,8 @@ export async function createAccident(payload) {
 }
 
 export async function getEmergencyResponses(params = {}) {
-  try {
-    const { data } = await apiClient.get('/api/emergency', { params });
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error('Error fetching /api/emergency:', error);
-    return [];
-  }
+  const { data } = await apiClient.get('/api/emergency', { params });
+  return Array.isArray(data) ? data : [];
 }
 
 export async function createEmergencyResponse(payload) {
