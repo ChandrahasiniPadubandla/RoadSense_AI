@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import { getReportPreview, downloadReportCsv } from '../api_services';
@@ -31,38 +31,52 @@ export default function ReportsPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState('');
 
-  async function handlePreview() {
-    setIsLoading(true);
-    setError('');
-    setPreview(null);
-    try {
-      const data = await getReportPreview(reportType, { startDate, endDate });
+  // Auto-load the report whenever the type or date range changes, instead
+  // of waiting for a manual "Preview" click.
+  useEffect(() => {
+    let cancelled = false;
 
-      if (reportType === 'summary') {
-        setPreview({
-          meta: { generated_at: data.generated_at, generated_by: data.generated_by },
-          columns: [
-            { key: 'metric', header: 'Metric' },
-            { key: 'value', header: 'Value' },
-            { key: 'notes', header: 'Notes' },
-          ],
-          rows: (data.summary || []).map((r, i) => ({ ...r, id: i })),
-        });
-      } else {
-        const rows = Array.isArray(data) ? data : [];
-        const columns = rows.length > 0 ? Object.keys(rows[0]).map((k) => ({ key: k, header: humanizeKey(k) })) : [];
-        setPreview({
-          meta: { count: rows.length },
-          columns,
-          rows: rows.map((r, i) => ({ ...r, id: r.accident_id || r.traffic_id || r.hotspot_id || r.prediction_id || i })),
-        });
+    async function loadPreview() {
+      setIsLoading(true);
+      setError('');
+      try {
+        const data = await getReportPreview(reportType, { startDate, endDate });
+        if (cancelled) return;
+
+        if (reportType === 'summary') {
+          setPreview({
+            meta: { generated_at: data.generated_at, generated_by: data.generated_by },
+            columns: [
+              { key: 'metric', header: 'Metric' },
+              { key: 'value', header: 'Value' },
+              { key: 'notes', header: 'Notes' },
+            ],
+            rows: (data.summary || []).map((r, i) => ({ ...r, id: i })),
+          });
+        } else {
+          const rows = Array.isArray(data) ? data : [];
+          const columns = rows.length > 0 ? Object.keys(rows[0]).map((k) => ({ key: k, header: humanizeKey(k) })) : [];
+          setPreview({
+            meta: { count: rows.length },
+            columns,
+            rows: rows.map((r, i) => ({ ...r, id: r.accident_id || r.traffic_id || r.hotspot_id || r.prediction_id || i })),
+          });
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setPreview(null);
+        setError(err.response?.data?.detail || 'Could not generate this report. You may not have permission, or no data matches these filters.');
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Could not generate this report. You may not have permission, or no data matches these filters.');
-    } finally {
-      setIsLoading(false);
     }
-  }
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reportType, startDate, endDate]);
 
   async function handleDownload() {
     setIsDownloading(true);
@@ -104,15 +118,8 @@ export default function ReportsPage() {
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inputClass} />
         </div>
         <button
-          onClick={handlePreview}
-          disabled={isLoading}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-signal-blue/50 hover:text-signal-blue disabled:opacity-50 dark:border-asphalt-600 dark:text-asphalt-200"
-        >
-          {isLoading ? 'Loading…' : 'Preview'}
-        </button>
-        <button
           onClick={handleDownload}
-          disabled={isDownloading}
+          disabled={isDownloading || isLoading}
           className="rounded-md bg-signal-blue px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {isDownloading ? 'Preparing CSV…' : '⬇ Download CSV'}
@@ -123,7 +130,11 @@ export default function ReportsPage() {
         <div className="rounded-lg border border-signal-red/30 bg-signal-red/10 px-4 py-3 text-xs text-signal-red">{error}</div>
       )}
 
-      {preview && (
+      {isLoading && (
+        <p className="text-sm text-slate-500 dark:text-asphalt-400">Loading report…</p>
+      )}
+
+      {preview && !isLoading && (
         <div className="space-y-2">
           {preview.meta?.generated_at && (
             <p className="text-xs text-slate-500 dark:text-asphalt-400">
@@ -140,12 +151,6 @@ export default function ReportsPage() {
             emptyMessage="No records found for this report type and date range."
           />
         </div>
-      )}
-
-      {!preview && !isLoading && !error && (
-        <p className="text-sm text-slate-500 dark:text-asphalt-400">
-          Choose a report type and click Preview to see the data here, or Download CSV to save it directly.
-        </p>
       )}
     </div>
   );
