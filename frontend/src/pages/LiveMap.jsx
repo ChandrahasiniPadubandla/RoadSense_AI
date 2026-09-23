@@ -23,12 +23,25 @@ import {
   predictRouteAccident,
 } from '../api_services';
 
+// Background traffic-road layer colors (unchanged 4-tier scale, used for the
+// city-wide road overlay you toggle in "Layers").
 const CONGESTION_COLOR = {
   LOW: '#10B981',
   MEDIUM: '#F59E0B',
   HIGH: '#F97316',
   SEVERE: '#EF4444',
   UNKNOWN: '#9CA3AF',
+};
+
+// Route-specific colors: exactly the 3-tier scheme requested — blue for low
+// (matches the default "selected route" blue), yellow for medium, red for
+// high/severe. Used only for coloring the route line + its summary badge.
+const ROUTE_CONGESTION_COLOR = {
+  LOW: '#4285F4',
+  MEDIUM: '#FBBF24',
+  HIGH: '#EF4444',
+  SEVERE: '#EF4444',
+  UNKNOWN: '#4285F4',
 };
 
 const SEVERITY_COLOR = {
@@ -40,6 +53,44 @@ const SEVERITY_COLOR = {
 };
 
 const HYDERABAD_CENTER = [17.43, 78.43];
+
+// ---------------------------------------------------------------------------
+// Distance helper (module scope so both navigation tracking AND the
+// route-congestion / route-hotspot matching below can use it).
+// ---------------------------------------------------------------------------
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Finds the CLOSEST traffic-layer road vertex to a point — no distance
+// cutoff, so every point along a route always gets some congestion color,
+// the same way Google Maps colors a whole route rather than leaving gaps.
+// `closeThresholdMeters` just marks whether the match is close enough to
+// trust strongly (used to tag the tooltip as an estimate vs. a real reading).
+function nearestCongestionMatch(lat, lng, trafficFeatures, closeThresholdMeters = 300) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const f of trafficFeatures) {
+    const coords = f.geometry?.coordinates;
+    if (!coords) continue;
+    for (const [rlng, rlat] of coords) {
+      const d = haversineMeters(lat, lng, rlat, rlng);
+      if (d < bestDist) {
+        bestDist = d;
+        best = f.properties;
+      }
+    }
+  }
+  if (!best) return null;
+  return { ...best, _distanceMeters: bestDist, _isEstimate: bestDist > closeThresholdMeters };
+}
 
 // ---------------------------------------------------------------------------
 // Google-Maps-style teardrop pin, built as a Leaflet divIcon (no external
@@ -151,17 +202,6 @@ export default function LiveMap() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [navError, setNavError] = useState('');
   const watchIdRef = useRef(null);
-
-  function haversineMeters(lat1, lng1, lat2, lng2) {
-    const R = 6371000;
-    const toRad = (d) => (d * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
 
   function startNavigation() {
     if (!navigator.geolocation) {
@@ -462,6 +502,68 @@ export default function LiveMap() {
     });
   }, [accidentLayer, severityFilter]);
 
+  // ---------------------------------------------------------------------
+  // Route-aware overlays: once a route exists, color each stretch of it by
+  // the congestion of the nearest real traffic segment, and flag any
+  // accident hotspot that lies close to the path.
+  // ---------------------------------------------------------------------
+
+  // Splits the route into short chunks and colors each chunk by the
+  // congestion level of the nearest real traffic segment near it.
+  const routeCongestionSegments = useMemo(() => {
+    if (!routeGeometry || routeGeometry.length < 2 || !trafficLayer?.features?.length) {
+      return null;
+    }
+    const segments = [];
+    // More, smaller segments = smoother color transitions along the line,
+    // closer to how Google Maps renders graduated traffic color on a route.
+    const step = Math.max(1, Math.floor(routeGeometry.length / 200));
+    for (let i = 0; i < routeGeometry.length - 1; i += step) {
+      const j = Math.min(i + step, routeGeometry.length - 1);
+      const [lat1, lng1] = routeGeometry[i];
+      const [lat2, lng2] = routeGeometry[j];
+      const midLat = (lat1 + lat2) / 2;
+      const midLng = (lng1 + lng2) / 2;
+      // No distance cutoff here — always take the nearest known reading, so
+      // every stretch of the route gets colored rather than defaulting to blue.
+      const match = nearestCongestionMatch(midLat, midLng, trafficLayer.features);
+      const color = match ? ROUTE_CONGESTION_COLOR[match.congestion_level] || '#4285F4' : '#4285F4';
+      segments.push({
+        positions: [[lat1, lng1], [lat2, lng2]],
+        color,
+        congestion: match?.congestion_level || 'UNKNOWN',
+        roadName: match?.road_name,
+        isEstimate: match?._isEstimate,
+      });
+    }
+    return segments;
+  }, [routeGeometry, trafficLayer]);
+
+  // Hotspots that lie within 200m of the current route.
+  const routeHotspots = useMemo(() => {
+    if (!routeGeometry || routeGeometry.length < 2 || !hotspotsLayer?.features?.length) {
+      return [];
+    }
+    const THRESHOLD_M = 200;
+    return hotspotsLayer.features.filter((f) => {
+      const coords = f.geometry?.coordinates;
+      if (!coords) return false;
+      const [lng, lat] = coords;
+      return routeGeometry.some(([rlat, rlng]) => haversineMeters(lat, lng, rlat, rlng) < THRESHOLD_M);
+    });
+  }, [routeGeometry, hotspotsLayer]);
+
+  // Worst congestion tier actually present on the route, for a summary badge.
+  const worstRouteCongestion = useMemo(() => {
+    if (!routeCongestionSegments) return null;
+    const order = ['LOW', 'MEDIUM', 'HIGH', 'SEVERE'];
+    let worst = null;
+    for (const seg of routeCongestionSegments) {
+      if (order.indexOf(seg.congestion) > order.indexOf(worst)) worst = seg.congestion;
+    }
+    return worst;
+  }, [routeCongestionSegments]);
+
   // Center calculation (defaults to Hyderabad center)
   const mapCenter = useMemo(() => {
     const firstRoad = trafficLayer?.features?.[0];
@@ -639,7 +741,7 @@ export default function LiveMap() {
             );
           })}
 
-        {/* 3. Hotspots Layer: Hazard Rings */}
+        {/* 3. Hotspots Layer: Hazard Rings (always shown in their real places) */}
         {showHotspots &&
           hotspotsLayer?.features?.map((f) => {
             const p = f.properties || {};
@@ -671,6 +773,43 @@ export default function LiveMap() {
               </CircleMarker>
             );
           })}
+
+        {/* 3b. Hotspots that fall on the CURRENT ROUTE get a pulsing halo +
+             solid marker + permanent "on route" label, on top of the ring
+             above — sized to stay visible against the thicker route line. */}
+        {routeHotspots.map((f) => {
+          const p = f.properties || {};
+          const coords = f.geometry?.coordinates;
+          if (!coords) return null;
+          const [lng, lat] = coords;
+          return (
+            <React.Fragment key={`route-hotspot-${f.id || p.hotspot_id}`}>
+              {/* Soft outer halo so it reads at a glance, like Google Maps incident icons */}
+              <CircleMarker
+                center={[lat, lng]}
+                radius={20}
+                pathOptions={{ color: 'transparent', fillColor: '#DC2626', fillOpacity: 0.25, weight: 0 }}
+              />
+              <CircleMarker
+                center={[lat, lng]}
+                radius={13}
+                pathOptions={{ color: '#ffffff', fillColor: '#DC2626', fillOpacity: 1, weight: 3 }}
+              >
+                <Tooltip permanent direction="top" offset={[0, -14]} className="rs-route-hotspot-label">
+                  ⚠ Hotspot on route
+                </Tooltip>
+                <Popup>
+                  <div className="text-xs text-asphalt-900">
+                    <strong className="text-signal-red">Accident Hotspot — on your route</strong>
+                    <p>Risk Level: {p.risk_level}</p>
+                    <p>Accidents Recorded: {p.accident_count}</p>
+                    {p.risk_score != null && <p>Risk Score: {p.risk_score}</p>}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            </React.Fragment>
+          );
+        })}
 
         {/* 4. Anomalies Layer: unusual traffic-volume spikes/drops flagged by the ML model */}
         {showAnomalies &&
@@ -724,13 +863,50 @@ export default function LiveMap() {
             );
           })}
 
-        {/* Route: real OSRM route geometry + Google-style A/B pins */}
+        {/* Route: a dark "casing" line always underneath (so the route is
+            unmistakable against busy map tiles, exactly like Google Maps'
+            bordered route line), with congestion-colored segments drawn on
+            top of it. Falls back to plain blue-on-casing if no traffic data
+            can be matched to the route yet. */}
         {routeGeometry && routeGeometry.length > 1 && (
           <>
+            {/* Casing: wide dark outline drawn first, underneath everything */}
             <Polyline
               positions={routeGeometry}
-              pathOptions={{ color: '#4285F4', weight: 6, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }}
+              pathOptions={{
+                color: '#1F2937',
+                weight: 11,
+                opacity: 0.55,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
             />
+            {routeCongestionSegments
+              ? routeCongestionSegments.map((seg, i) => (
+                  <Polyline
+                    key={i}
+                    positions={seg.positions}
+                    pathOptions={{
+                      color: seg.color,
+                      weight: 7,
+                      opacity: 1,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  >
+                    <Tooltip sticky>
+                      {seg.roadName ? `${seg.roadName}: ` : ''}
+                      {seg.congestion} congestion
+                      {seg.isEstimate ? ' (nearest known reading)' : ''}
+                    </Tooltip>
+                  </Polyline>
+                ))
+              : (
+                <Polyline
+                  positions={routeGeometry}
+                  pathOptions={{ color: '#4285F4', weight: 7, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
+                />
+              )}
             <FitBoundsToRoute coordinates={routeGeometry} />
           </>
         )}
@@ -988,6 +1164,19 @@ export default function LiveMap() {
                           : ''}
                       </span>
                     )}
+                    {worstRouteCongestion && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
+                        style={{ backgroundColor: ROUTE_CONGESTION_COLOR[worstRouteCongestion] }}
+                      >
+                        Route congestion: {worstRouteCongestion}
+                      </span>
+                    )}
+                    {routeHotspots.length > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-signal-red/40 bg-signal-red/10 px-2 py-0.5 text-[11px] font-medium text-signal-red">
+                        ⚠ {routeHotspots.length} hotspot{routeHotspots.length > 1 ? 's' : ''} on route
+                      </span>
+                    )}
                   </div>
 
                   {!isNavigating ? (
@@ -1168,16 +1357,27 @@ export default function LiveMap() {
           <span>{legendOpen ? '▲' : '▼'}</span>
         </button>
         {legendOpen && (
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-slate-200 p-3 text-xs dark:border-asphalt-800">
-            <LegendItem color={CONGESTION_COLOR.LOW} label="Low Traffic (<40%)" line />
-            <LegendItem color={CONGESTION_COLOR.MEDIUM} label="Medium Traffic" line />
-            <LegendItem color={CONGESTION_COLOR.HIGH} label="High Congestion" line />
-            <LegendItem color={CONGESTION_COLOR.SEVERE} label="Severe (>85%)" line />
-            <LegendItem color={SEVERITY_COLOR.FATAL} label="Fatal Accident" dot />
-            <LegendItem color={SEVERITY_COLOR.SEVERE} label="Severe Accident" dot />
-            <LegendItem color={SEVERITY_COLOR.MODERATE} label="Moderate Incident" dot />
-            <LegendItem color={SEVERITY_COLOR.MINOR} label="Minor Incident" dot />
-            <LegendItem color="#A855F7" label="Traffic Anomaly" dot />
+          <div className="border-t border-slate-200 p-3 text-xs dark:border-asphalt-800">
+            <p className="mb-1.5 font-semibold text-slate-700 dark:text-asphalt-200">Route traffic</p>
+            <div className="mb-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5">
+              <LegendItem color={ROUTE_CONGESTION_COLOR.LOW} label="Low - clear" line />
+              <LegendItem color={ROUTE_CONGESTION_COLOR.MEDIUM} label="Medium" line />
+              <LegendItem color={ROUTE_CONGESTION_COLOR.HIGH} label="High / Severe" line />
+            </div>
+            <p className="mb-1.5 border-t border-slate-200 pt-2 font-semibold text-slate-700 dark:border-asphalt-800 dark:text-asphalt-200">
+              Roads &amp; incidents
+            </p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              <LegendItem color={CONGESTION_COLOR.LOW} label="Low Traffic (<40%)" line />
+              <LegendItem color={CONGESTION_COLOR.MEDIUM} label="Medium Traffic" line />
+              <LegendItem color={CONGESTION_COLOR.HIGH} label="High Congestion" line />
+              <LegendItem color={CONGESTION_COLOR.SEVERE} label="Severe (>85%)" line />
+              <LegendItem color={SEVERITY_COLOR.FATAL} label="Fatal Accident" dot />
+              <LegendItem color={SEVERITY_COLOR.SEVERE} label="Severe Accident" dot />
+              <LegendItem color={SEVERITY_COLOR.MODERATE} label="Moderate Incident" dot />
+              <LegendItem color={SEVERITY_COLOR.MINOR} label="Minor Incident" dot />
+              <LegendItem color="#A855F7" label="Traffic Anomaly" dot />
+            </div>
           </div>
         )}
       </div>
