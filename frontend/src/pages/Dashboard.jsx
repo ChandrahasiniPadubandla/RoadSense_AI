@@ -28,7 +28,32 @@ import {
 
 const DONUT_COLORS = ['#3E7CB1', '#E8A33D', '#D14343', '#3FA772', '#8B5CF6', '#7A828C'];
 
-function Donut({ data, height = 180 }) {
+/**
+ * Tracks whether the app is currently in dark mode by watching the `dark`
+ * class on <html> (the standard Tailwind `darkMode: 'class'` toggle target,
+ * matching the `dark:` classes already used throughout this file). Recharts
+ * components like <Tooltip contentStyle={...}> take plain inline styles,
+ * not Tailwind classes, so they can't pick up dark: variants on their own —
+ * this hook is what lets chart colors actually follow the theme toggle.
+ */
+function useIsDarkMode() {
+  const [isDark, setIsDark] = useState(
+    () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  );
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDark(root.classList.contains('dark'));
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  return isDark;
+}
+
+function Donut({ data, height = 180, isDark }) {
   if (!data || data.length === 0) {
     return (
       <div className="flex h-[180px] items-center justify-center text-xs text-slate-400 dark:text-asphalt-500">
@@ -48,7 +73,15 @@ function Donut({ data, height = 180 }) {
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{ background: '#1D2126', border: '1px solid #282D34', borderRadius: 6, fontSize: 12 }}
+              contentStyle={{
+                background: isDark ? '#1D2126' : '#ffffff',
+                border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`,
+                borderRadius: 6,
+                fontSize: 12,
+                color: isDark ? '#E5E7EB' : '#0F172A',
+              }}
+              itemStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
+              labelStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
               formatter={(value, name) => [`${value} (${((value / total) * 100).toFixed(0)}%)`, name]}
             />
           </PieChart>
@@ -83,6 +116,7 @@ function CardShell({ title, action, children }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const isDark = useIsDarkMode();
   const [stats, setStats] = useState(null);
   const [history, setHistory] = useState([]);
   const [roads, setRoads] = useState([]);
@@ -264,11 +298,20 @@ export default function Dashboard() {
                         <stop offset="100%" stopColor="#3E7CB1" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="#282D34" strokeOpacity={0.15} vertical={false} />
-                    <XAxis dataKey="hour" stroke="#7A828C" fontSize={12} />
-                    <YAxis stroke="#7A828C" fontSize={12} />
+                    <CartesianGrid stroke={isDark ? '#282D34' : '#E2E8F0'} strokeOpacity={isDark ? 0.4 : 0.8} vertical={false} />
+                    <XAxis dataKey="hour" stroke={isDark ? '#7A828C' : '#64748B'} fontSize={12} />
+                    <YAxis stroke={isDark ? '#7A828C' : '#64748B'} fontSize={12} />
                     <Tooltip
-                      contentStyle={{ background: '#1D2126', border: '1px solid #282D34', borderRadius: 6, fontSize: 12 }}
+                      contentStyle={{
+                        background: isDark ? '#1D2126' : '#ffffff',
+                        border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`,
+                        borderRadius: 6,
+                        fontSize: 12,
+                        color: isDark ? '#E5E7EB' : '#0F172A',
+                        boxShadow: isDark ? 'none' : '0 4px 12px rgba(15, 23, 42, 0.08)',
+                      }}
+                      itemStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
+                      labelStyle={{ color: isDark ? '#94A3B8' : '#64748B' }}
                       formatter={(value) => [`${Number(value).toLocaleString()} vehicles`, 'Volume']}
                       labelFormatter={(label) => `Time: ${label}`}
                     />
@@ -289,7 +332,7 @@ export default function Dashboard() {
         </div>
 
         <CardShell title="Accidents by Severity">
-          <Donut data={severityBreakdown} />
+          <Donut data={severityBreakdown} isDark={isDark} />
         </CardShell>
       </div>
 
@@ -319,7 +362,7 @@ export default function Dashboard() {
         </CardShell>
 
         <CardShell title="Congestion by Level">
-          <Donut data={congestionBreakdown} />
+          <Donut data={congestionBreakdown} isDark={isDark} />
         </CardShell>
 
         <CardShell title="Key Insights" action={<span className="text-lg">💡</span>}>
