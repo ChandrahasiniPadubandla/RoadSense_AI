@@ -25,3 +25,10 @@ ac/
 node_modules/
 dist/
 .vite/
+# Local SSL certificates
+certs/
+*.pem
+
+# Environment variables
+.env
+.env.local
