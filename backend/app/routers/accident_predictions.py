@@ -197,6 +197,8 @@ def predict_route_accident(
     """
     now = datetime.now()
     target_time = req.target_time or (now + timedelta(minutes=req.target_minutes_ahead or 30))
+    if target_time.tzinfo is not None:
+        target_time = target_time.astimezone().replace(tzinfo=None)
 
     # 1. Resolve all required data for the ML model
     bundle = resolve_route_bundle(

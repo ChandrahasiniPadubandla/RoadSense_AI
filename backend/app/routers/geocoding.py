@@ -33,13 +33,15 @@ router = APIRouter(
 def search_location(
     query: str = Query(..., min_length=2, description="Place name, area, road, or landmark to search"),
     city: Optional[str] = Query("Hyderabad", description="City bias for prioritizing local search results"),
-    limit: int = Query(5, ge=1, le=10, description="Maximum number of results to return")
+    limit: int = Query(5, ge=1, le=10, description="Maximum number of results to return"),
+    db: Session = Depends(get_db)
 ):
     """
-    Geocodes text queries into real GPS latitude & longitude using OpenStreetMap Nominatim.
-    Includes in-memory caching to optimize response times and prevent rate limits.
+    Geocodes text queries into real GPS latitude & longitude.
+    Integrates RoadSense AI monitored corridors, curated Hyderabad transit hubs,
+    and OpenStreetMap Nominatim with local in-memory caching.
     """
-    results = geocode_location(query=query, city_bias=city or "", limit=limit)
+    results = geocode_location(query=query, city_bias=city or "", limit=limit, db=db)
     return results
 
 

@@ -62,6 +62,8 @@ def compute_temporal_traffic_projection(
       road capacity, and weather forecast without being distorted by the present moment.
     """
     now = datetime.now()
+    if target_time and target_time.tzinfo is not None:
+        target_time = target_time.astimezone().replace(tzinfo=None)
     delta_mins = max(0.0, (target_time - now).total_seconds() / 60.0)
 
     hour_val = target_time.hour
@@ -163,6 +165,8 @@ def resolve_route_bundle(
     now = datetime.now()
     if target_time is None:
         target_time = now + timedelta(minutes=30)
+    elif target_time.tzinfo is not None:
+        target_time = target_time.astimezone().replace(tzinfo=None)
 
     # 1. If road_id is explicitly provided, query the road entity first
     road = None

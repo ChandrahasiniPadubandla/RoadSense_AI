@@ -33,15 +33,14 @@ const CONGESTION_COLOR = {
   UNKNOWN: '#9CA3AF',
 };
 
-// Route-specific colors: exactly the 3-tier scheme requested — blue for low
-// (matches the default "selected route" blue), yellow for medium, red for
-// high/severe. Used only for coloring the route line + its summary badge.
+// Route-specific colors: Google-Maps-style traffic palette — green for clear/low,
+// yellow/amber for medium/moderate, red for high, crimson for severe.
 const ROUTE_CONGESTION_COLOR = {
-  LOW: '#4285F4',
-  MEDIUM: '#FBBF24',
+  LOW: '#10B981',
+  MEDIUM: '#F59E0B',
   HIGH: '#EF4444',
-  SEVERE: '#EF4444',
-  UNKNOWN: '#4285F4',
+  SEVERE: '#991B1B',
+  UNKNOWN: '#10B981',
 };
 
 const SEVERITY_COLOR = {
@@ -53,6 +52,11 @@ const SEVERITY_COLOR = {
 };
 
 const HYDERABAD_CENTER = [17.43, 78.43];
+
+function formatClockTime(date) {
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+}
 
 // ---------------------------------------------------------------------------
 // Distance helper (module scope so both navigation tracking AND the
@@ -137,20 +141,33 @@ function stepGlyph(step) {
   return '↑';
 }
 
+function getCategoryBadge(category) {
+  if (category === 'corridor') {
+    return { icon: '🛣️', badge: 'Monitored Corridor', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' };
+  }
+  if (category === 'transit') {
+    return { icon: '🚌', badge: 'Bus Station / Transit', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' };
+  }
+  if (category === 'poi') {
+    return { icon: '🏛️', badge: 'Landmark', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' };
+  }
+  return { icon: '📍', badge: 'Location', color: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20' };
+}
+
 export default function LiveMap() {
   const [trafficLayer, setTrafficLayer] = useState({ features: [] });
   const [accidentLayer, setAccidentLayer] = useState({ features: [] });
   const [hotspotsLayer, setHotspotsLayer] = useState({ features: [] });
   const [anomalyLayer, setAnomalyLayer] = useState({ features: [] });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Layer visibility (moved into a floating "Layers" control, Google-Maps-style)
+  // Layer visibility - DB layers disabled by default to keep the map clean and responsive
   const [layersOpen, setLayersOpen] = useState(false);
-  const [showTraffic, setShowTraffic] = useState(true);
-  const [showAccidents, setShowAccidents] = useState(true);
-  const [showHotspots, setShowHotspots] = useState(true);
-  const [showAnomalies, setShowAnomalies] = useState(true);
+  const [showTraffic, setShowTraffic] = useState(false);
+  const [showAccidents, setShowAccidents] = useState(false);
+  const [showHotspots, setShowHotspots] = useState(false);
+  const [showAnomalies, setShowAnomalies] = useState(false);
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -191,6 +208,144 @@ export default function LiveMap() {
   const [routeTraffic, setRouteTraffic] = useState(null);
   const [routeAccidentRisk, setRouteAccidentRisk] = useState(null);
   const [predictionsLoading, setPredictionsLoading] = useState(false);
+
+  // ---------------------------------------------------------------------
+  // Prediction / Departure Time Controls (Active & Present by Default)
+  // ---------------------------------------------------------------------
+  const [departureOption, setDepartureOption] = useState('30m'); // 'now' | '15m' | '30m' (default) | '1h' | 'peak_evening' | 'peak_morning' | 'custom'
+  const [customTime, setCustomTime] = useState(''); // "HH:MM"
+
+  // Resolves the effective target Date object based on chosen option
+  const resolvedTargetDate = useMemo(() => {
+    const d = new Date();
+    if (departureOption === 'now') {
+      return d;
+    }
+    if (departureOption === '15m') {
+      return new Date(d.getTime() + 15 * 60 * 1000);
+    }
+    if (departureOption === '30m') {
+      return new Date(d.getTime() + 30 * 60 * 1000);
+    }
+    if (departureOption === '1h') {
+      return new Date(d.getTime() + 60 * 60 * 1000);
+    }
+    if (departureOption === 'peak_evening') {
+      const peak = new Date(d);
+      peak.setHours(18, 0, 0, 0); // 6:00 PM
+      return peak;
+    }
+    if (departureOption === 'peak_morning') {
+      const peak = new Date(d);
+      peak.setHours(9, 0, 0, 0); // 9:00 AM
+      return peak;
+    }
+    if (departureOption === 'custom' && customTime) {
+      const [hh, mm] = customTime.split(':').map(Number);
+      if (!isNaN(hh) && !isNaN(mm)) {
+        const custom = new Date(d);
+        custom.setHours(hh, mm, 0, 0);
+        return custom;
+      }
+    }
+    return new Date(d.getTime() + 30 * 60 * 1000);
+  }, [departureOption, customTime]);
+
+  // Estimated arrival time calculated from target time + route duration
+  const estimatedArrivalTime = useMemo(() => {
+    if (!resolvedTargetDate || !routeInfo?.duration_minutes) return null;
+    return new Date(resolvedTargetDate.getTime() + routeInfo.duration_minutes * 60 * 1000);
+  }, [resolvedTargetDate, routeInfo?.duration_minutes]);
+
+  // Builds the prediction request payload for a specific target date
+  function buildPredictionPayload(targetDate) {
+    if (!startPoint || !endPoint) return null;
+    const pad = (n) => String(n).padStart(2, '0');
+    const yyyy = targetDate.getFullYear();
+    const MM = pad(targetDate.getMonth() + 1);
+    const dd = pad(targetDate.getDate());
+    const hh = pad(targetDate.getHours());
+    const mm = pad(targetDate.getMinutes());
+    const ss = pad(targetDate.getSeconds());
+    const localIso = `${yyyy}-${MM}-${dd}T${hh}:${mm}:${ss}`;
+
+    const diffMins = Math.max(5, Math.round((targetDate.getTime() - Date.now()) / 60000));
+
+    return {
+      start_location: startPoint.label,
+      end_location: endPoint.label,
+      start_latitude: startPoint.lat,
+      start_longitude: startPoint.lng,
+      end_latitude: endPoint.lat,
+      end_longitude: endPoint.lng,
+      target_time: localIso,
+      target_minutes_ahead: diffMins,
+    };
+  }
+
+  // Updates predictions whenever the user switches the departure/prediction time
+  async function updatePredictionsForTime(targetDate) {
+    if (!startPoint || !endPoint) return;
+    const payload = buildPredictionPayload(targetDate);
+    if (!payload) return;
+
+    setPredictionsLoading(true);
+    try {
+      const [trafficResult, accidentResult] = await Promise.allSettled([
+        predictRouteTraffic(payload),
+        predictRouteAccident(payload),
+      ]);
+      if (trafficResult.status === 'fulfilled') setRouteTraffic(trafficResult.value);
+      if (accidentResult.status === 'fulfilled') setRouteAccidentRisk(accidentResult.value);
+    } catch (err) {
+      console.error('Failed to update route predictions for time:', err);
+    } finally {
+      setPredictionsLoading(false);
+    }
+  }
+
+  function handleDepartureOptionSelect(opt) {
+    setDepartureOption(opt);
+    if (routeGeometry && startPoint && endPoint) {
+      const d = new Date();
+      let target;
+      if (opt === 'now') target = d;
+      else if (opt === '15m') target = new Date(d.getTime() + 15 * 60 * 1000);
+      else if (opt === '30m') target = new Date(d.getTime() + 30 * 60 * 1000);
+      else if (opt === '1h') target = new Date(d.getTime() + 60 * 60 * 1000);
+      else if (opt === 'peak_evening') {
+        target = new Date(d);
+        target.setHours(18, 0, 0, 0);
+      } else if (opt === 'peak_morning') {
+        target = new Date(d);
+        target.setHours(9, 0, 0, 0);
+      } else if (opt === 'custom' && customTime) {
+        const [hh, mm] = customTime.split(':').map(Number);
+        if (!isNaN(hh) && !isNaN(mm)) {
+          target = new Date(d);
+          target.setHours(hh, mm, 0, 0);
+        } else {
+          target = new Date(d.getTime() + 30 * 60 * 1000);
+        }
+      } else {
+        target = new Date(d.getTime() + 30 * 60 * 1000);
+      }
+      updatePredictionsForTime(target);
+    }
+  }
+
+  function handleCustomTimeChange(val) {
+    setCustomTime(val);
+    setDepartureOption('custom');
+    if (routeGeometry && startPoint && endPoint && val) {
+      const [hh, mm] = val.split(':').map(Number);
+      if (!isNaN(hh) && !isNaN(mm)) {
+        const d = new Date();
+        d.setHours(hh, mm, 0, 0);
+        updatePredictionsForTime(d);
+      }
+    }
+  }
 
   // ---------------------------------------------------------------------
   // "Start" live navigation — Google-Maps-style turn-by-turn tracking using
@@ -324,19 +479,27 @@ export default function LiveMap() {
   }, [endQuery]);
 
   function selectSuggestion(field, suggestion) {
-    const point = { lat: suggestion.latitude, lng: suggestion.longitude, label: suggestion.display_name };
+    const label = suggestion.primary_name
+      ? (suggestion.secondary_name ? `${suggestion.primary_name}, ${suggestion.secondary_name}` : suggestion.primary_name)
+      : suggestion.display_name;
+    const point = {
+      lat: suggestion.latitude,
+      lng: suggestion.longitude,
+      label: label,
+      category: suggestion.category
+    };
     if (field === 'search') {
       setSearchPoint(point);
-      setSearchQuery(suggestion.display_name);
+      setSearchQuery(label);
       setSearchSuggestions([]);
       setFlyTarget([point.lat, point.lng]);
     } else if (field === 'start') {
       setStartPoint(point);
-      setStartQuery(suggestion.display_name);
+      setStartQuery(label);
       setStartSuggestions([]);
     } else {
       setEndPoint(point);
-      setEndQuery(suggestion.display_name);
+      setEndQuery(label);
       setEndSuggestions([]);
     }
     setActiveField(null);
@@ -428,13 +591,14 @@ export default function LiveMap() {
     // same start/end pair. Best-effort: if the model can't resolve the
     // locations to a known road, we just omit that card.
     setPredictionsLoading(true);
-    const payload = {
+    const payload = buildPredictionPayload(resolvedTargetDate) || {
       start_location: startPoint.label,
       end_location: endPoint.label,
       start_latitude: startPoint.lat,
       start_longitude: startPoint.lng,
       end_latitude: endPoint.lat,
       end_longitude: endPoint.lng,
+      target_minutes_ahead: 30,
     };
     const [trafficResult, accidentResult] = await Promise.allSettled([
       predictRouteTraffic(payload),
@@ -508,36 +672,27 @@ export default function LiveMap() {
   // accident hotspot that lies close to the path.
   // ---------------------------------------------------------------------
 
-  // Splits the route into short chunks and colors each chunk by the
-  // congestion level of the nearest real traffic segment near it.
+  // Route colored by the ML model's traffic prediction for the chosen time.
+  // Direct route coloring from routeTraffic prediction so changes in target time
+  // immediately update the route's traffic color (Green, Yellow, Red, Crimson)
+  // without displaying background database road data.
   const routeCongestionSegments = useMemo(() => {
-    if (!routeGeometry || routeGeometry.length < 2 || !trafficLayer?.features?.length) {
+    if (!routeGeometry || routeGeometry.length < 2) {
       return null;
     }
-    const segments = [];
-    // More, smaller segments = smoother color transitions along the line,
-    // closer to how Google Maps renders graduated traffic color on a route.
-    const step = Math.max(1, Math.floor(routeGeometry.length / 200));
-    for (let i = 0; i < routeGeometry.length - 1; i += step) {
-      const j = Math.min(i + step, routeGeometry.length - 1);
-      const [lat1, lng1] = routeGeometry[i];
-      const [lat2, lng2] = routeGeometry[j];
-      const midLat = (lat1 + lat2) / 2;
-      const midLng = (lng1 + lng2) / 2;
-      // No distance cutoff here — always take the nearest known reading, so
-      // every stretch of the route gets colored rather than defaulting to blue.
-      const match = nearestCongestionMatch(midLat, midLng, trafficLayer.features);
-      const color = match ? ROUTE_CONGESTION_COLOR[match.congestion_level] || '#4285F4' : '#4285F4';
-      segments.push({
-        positions: [[lat1, lng1], [lat2, lng2]],
-        color,
-        congestion: match?.congestion_level || 'UNKNOWN',
-        roadName: match?.road_name,
-        isEstimate: match?._isEstimate,
-      });
-    }
-    return segments;
-  }, [routeGeometry, trafficLayer]);
+    const defaultLevel = routeTraffic?.congestion_level || 'LOW';
+    const defaultColor = ROUTE_CONGESTION_COLOR[defaultLevel] || '#10B981';
+
+    return [
+      {
+        positions: routeGeometry,
+        color: defaultColor,
+        congestion: defaultLevel,
+        roadName: routeTraffic?.road_name,
+        isEstimate: false,
+      }
+    ];
+  }, [routeGeometry, routeTraffic]);
 
   // Hotspots that lie within 200m of the current route.
   const routeHotspots = useMemo(() => {
@@ -774,42 +929,6 @@ export default function LiveMap() {
             );
           })}
 
-        {/* 3b. Hotspots that fall on the CURRENT ROUTE get a pulsing halo +
-             solid marker + permanent "on route" label, on top of the ring
-             above — sized to stay visible against the thicker route line. */}
-        {routeHotspots.map((f) => {
-          const p = f.properties || {};
-          const coords = f.geometry?.coordinates;
-          if (!coords) return null;
-          const [lng, lat] = coords;
-          return (
-            <React.Fragment key={`route-hotspot-${f.id || p.hotspot_id}`}>
-              {/* Soft outer halo so it reads at a glance, like Google Maps incident icons */}
-              <CircleMarker
-                center={[lat, lng]}
-                radius={20}
-                pathOptions={{ color: 'transparent', fillColor: '#DC2626', fillOpacity: 0.25, weight: 0 }}
-              />
-              <CircleMarker
-                center={[lat, lng]}
-                radius={13}
-                pathOptions={{ color: '#ffffff', fillColor: '#DC2626', fillOpacity: 1, weight: 3 }}
-              >
-                <Tooltip permanent direction="top" offset={[0, -14]} className="rs-route-hotspot-label">
-                  ⚠ Hotspot on route
-                </Tooltip>
-                <Popup>
-                  <div className="text-xs text-asphalt-900">
-                    <strong className="text-signal-red">Accident Hotspot — on your route</strong>
-                    <p>Risk Level: {p.risk_level}</p>
-                    <p>Accidents Recorded: {p.accident_count}</p>
-                    {p.risk_score != null && <p>Risk Score: {p.risk_score}</p>}
-                  </div>
-                </Popup>
-              </CircleMarker>
-            </React.Fragment>
-          );
-        })}
 
         {/* 4. Anomalies Layer: unusual traffic-volume spikes/drops flagged by the ML model */}
         {showAnomalies &&
@@ -895,17 +1014,65 @@ export default function LiveMap() {
                     }}
                   >
                     <Tooltip sticky>
-                      {seg.roadName ? `${seg.roadName}: ` : ''}
-                      {seg.congestion} congestion
-                      {seg.isEstimate ? ' (nearest known reading)' : ''}
+                      <div className="p-0.5 text-xs leading-snug">
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <span
+                            className="h-2 w-2 rounded-full inline-block"
+                            style={{ backgroundColor: seg.color }}
+                          />
+                          {seg.congestion} Congestion
+                        </div>
+                        {seg.roadName && (
+                          <div className="mt-0.5 font-medium text-slate-700">{seg.roadName}</div>
+                        )}
+                        <div className="mt-1 text-[11px] text-slate-500">
+                          🕒 Prediction Time: {formatClockTime(resolvedTargetDate)}
+                          {routeTraffic?.estimated_time ? ` (${routeTraffic.estimated_time})` : ''}
+                        </div>
+                        {(routeTraffic?.previous_records?.average_speed || routeTraffic?.previous_traffic?.average_speed) && (
+                          <div className="text-[11px] text-slate-500">
+                            🚗 Predicted Speed: {Math.round(routeTraffic.previous_records?.average_speed || routeTraffic.previous_traffic?.average_speed)} km/h
+                          </div>
+                        )}
+                      </div>
                     </Tooltip>
                   </Polyline>
                 ))
               : (
                 <Polyline
                   positions={routeGeometry}
-                  pathOptions={{ color: '#4285F4', weight: 7, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
-                />
+                  pathOptions={{
+                    color: ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981',
+                    weight: 7,
+                    opacity: 1,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                >
+                  <Tooltip sticky>
+                    <div className="p-0.5 text-xs leading-snug">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span
+                          className="h-2 w-2 rounded-full inline-block"
+                          style={{ backgroundColor: ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981' }}
+                        />
+                        {routeTraffic?.congestion_level || 'LOW'} Congestion
+                      </div>
+                      {routeTraffic?.road_name && (
+                        <div className="mt-0.5 font-medium text-slate-700">{routeTraffic.road_name}</div>
+                      )}
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        🕒 Prediction Time: {formatClockTime(resolvedTargetDate)}
+                        {routeTraffic?.estimated_time ? ` (${routeTraffic.estimated_time})` : ''}
+                      </div>
+                      {(routeTraffic?.previous_records?.average_speed || routeTraffic?.previous_traffic?.average_speed) && (
+                        <div className="text-[11px] text-slate-500">
+                          🚗 Predicted Speed: {Math.round(routeTraffic.previous_records?.average_speed || routeTraffic.previous_traffic?.average_speed)} km/h
+                        </div>
+                      )}
+                    </div>
+                  </Tooltip>
+                </Polyline>
               )}
             <FitBoundsToRoute coordinates={routeGeometry} />
           </>
@@ -956,6 +1123,81 @@ export default function LiveMap() {
       </MapContainer>
 
       {/* ------------------------------------------------------------- */}
+      {/* Floating Route Prediction Time & Traffic Pill over the Map */}
+      {/* ------------------------------------------------------------- */}
+      {routeGeometry && (
+        <div className="absolute top-3 left-3 sm:left-[400px] z-[999] flex max-w-[calc(100vw-30px)] sm:max-w-[calc(100vw-420px)] flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200/90 bg-white/95 px-3.5 py-2 text-xs shadow-xl backdrop-blur-md dark:border-asphalt-700/90 dark:bg-asphalt-900/95">
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-1.5 font-bold">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981' }}
+              />
+              <span className="text-slate-900 dark:text-asphalt-100">
+                {routeTraffic?.congestion_level || 'LOW'} Congestion
+              </span>
+            </div>
+
+            <span className="hidden sm:inline-block h-3 w-px bg-slate-200 dark:bg-asphalt-700" />
+
+            <div className="flex items-center gap-1 text-slate-700 dark:text-asphalt-200 font-medium">
+              <span>🕒 Target:</span>
+              <span className="font-bold text-signal-blue">
+                {formatClockTime(resolvedTargetDate)}
+              </span>
+              {routeTraffic?.estimated_time && (
+                <span className="text-[11px] text-slate-400 dark:text-asphalt-400">
+                  ({routeTraffic.estimated_time})
+                </span>
+              )}
+            </div>
+
+            {routeInfo?.duration_minutes && (
+              <>
+                <span className="hidden md:inline-block h-3 w-px bg-slate-200 dark:bg-asphalt-700" />
+                <div className="text-slate-600 dark:text-asphalt-300">
+                  🏁 Arrival: <span className="font-semibold text-slate-900 dark:text-asphalt-100">~{formatClockTime(estimatedArrivalTime)}</span> ({routeInfo.duration_minutes}m)
+                </div>
+              </>
+            )}
+
+            {(routeTraffic?.previous_records?.average_speed || routeTraffic?.previous_traffic?.average_speed) && (
+              <>
+                <span className="hidden md:inline-block h-3 w-px bg-slate-200 dark:bg-asphalt-700" />
+                <div className="text-slate-600 dark:text-asphalt-300">
+                  🚗 Flow: <span className="font-semibold">{Math.round(routeTraffic.previous_records?.average_speed || routeTraffic.previous_traffic?.average_speed)} km/h</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Quick Time Switcher on Map */}
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-[10px] uppercase font-semibold text-slate-400 dark:text-asphalt-500 mr-0.5">Test:</span>
+            {[
+              { id: 'now', label: 'Now' },
+              { id: '30m', label: '+30m' },
+              { id: '1h', label: '+1h' },
+              { id: 'peak_evening', label: '6 PM' },
+            ].map((btn) => (
+              <button
+                key={btn.id}
+                type="button"
+                onClick={() => handleDepartureOptionSelect(btn.id)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                  departureOption === btn.id
+                    ? 'bg-signal-blue text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-asphalt-800 dark:hover:bg-asphalt-700 dark:text-asphalt-200'
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
       {/* Floating Search / Directions panel - top-left, Google-Maps-style */}
       {/* ------------------------------------------------------------- */}
       <div className="absolute left-3 top-3 z-[1000] w-[min(92vw,380px)]">
@@ -990,16 +1232,36 @@ export default function LiveMap() {
               </div>
 
               {activeField === 'search' && searchSuggestions.length > 0 && (
-                <ul className="mt-1 max-h-56 overflow-y-auto rounded-md border border-slate-200 dark:border-asphalt-700">
-                  {searchSuggestions.map((s, i) => (
-                    <li
-                      key={i}
-                      onMouseDown={() => selectSuggestion('search', s)}
-                      className="cursor-pointer px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 dark:text-asphalt-200 dark:hover:bg-asphalt-800"
-                    >
-                      {s.display_name}
-                    </li>
-                  ))}
+                <ul className="mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl dark:border-asphalt-700 dark:bg-asphalt-900 divide-y divide-slate-100 dark:divide-asphalt-800">
+                  {searchSuggestions.map((s, i) => {
+                    const meta = getCategoryBadge(s.category);
+                    return (
+                      <li
+                        key={i}
+                        onMouseDown={() => selectSuggestion('search', s)}
+                        className="flex items-start gap-2.5 cursor-pointer px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-asphalt-800 transition-colors"
+                      >
+                        <span className="text-base select-none mt-0.5">{meta.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-slate-900 dark:text-asphalt-100 truncate">
+                              {s.primary_name || s.display_name}
+                            </span>
+                            {s.category && s.category !== 'location' && (
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${meta.color}`}>
+                                {meta.badge}
+                              </span>
+                            )}
+                          </div>
+                          {s.secondary_name && (
+                            <p className="text-[11px] text-slate-500 dark:text-asphalt-400 truncate mt-0.5">
+                              {s.secondary_name}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
 
@@ -1056,16 +1318,36 @@ export default function LiveMap() {
                       className={panelInputClass}
                     />
                     {activeField === 'start' && startSuggestions.length > 0 && (
-                      <ul className="absolute left-0 right-0 top-full z-[1100] mt-1 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl dark:border-asphalt-700 dark:bg-asphalt-900">
-                        {startSuggestions.map((s, i) => (
-                          <li
-                            key={i}
-                            onMouseDown={() => selectSuggestion('start', s)}
-                            className="cursor-pointer px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 dark:text-asphalt-200 dark:hover:bg-asphalt-800"
-                          >
-                            {s.display_name}
-                          </li>
-                        ))}
+                      <ul className="absolute left-0 right-0 top-full z-[1100] mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl dark:border-asphalt-700 dark:bg-asphalt-900 divide-y divide-slate-100 dark:divide-asphalt-800">
+                        {startSuggestions.map((s, i) => {
+                          const meta = getCategoryBadge(s.category);
+                          return (
+                            <li
+                              key={i}
+                              onMouseDown={() => selectSuggestion('start', s)}
+                              className="flex items-start gap-2.5 cursor-pointer px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-asphalt-800 transition-colors"
+                            >
+                              <span className="text-base select-none mt-0.5">{meta.icon}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-slate-900 dark:text-asphalt-100 truncate">
+                                    {s.primary_name || s.display_name}
+                                  </span>
+                                  {s.category && s.category !== 'location' && (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${meta.color}`}>
+                                      {meta.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                {s.secondary_name && (
+                                  <p className="text-[11px] text-slate-500 dark:text-asphalt-400 truncate mt-0.5">
+                                    {s.secondary_name}
+                                  </p>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
@@ -1082,16 +1364,36 @@ export default function LiveMap() {
                       className={panelInputClass}
                     />
                     {activeField === 'end' && endSuggestions.length > 0 && (
-                      <ul className="absolute left-0 right-0 top-full z-[1100] mt-1 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl dark:border-asphalt-700 dark:bg-asphalt-900">
-                        {endSuggestions.map((s, i) => (
-                          <li
-                            key={i}
-                            onMouseDown={() => selectSuggestion('end', s)}
-                            className="cursor-pointer px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 dark:text-asphalt-200 dark:hover:bg-asphalt-800"
-                          >
-                            {s.display_name}
-                          </li>
-                        ))}
+                      <ul className="absolute left-0 right-0 top-full z-[1100] mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl dark:border-asphalt-700 dark:bg-asphalt-900 divide-y divide-slate-100 dark:divide-asphalt-800">
+                        {endSuggestions.map((s, i) => {
+                          const meta = getCategoryBadge(s.category);
+                          return (
+                            <li
+                              key={i}
+                              onMouseDown={() => selectSuggestion('end', s)}
+                              className="flex items-start gap-2.5 cursor-pointer px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-asphalt-800 transition-colors"
+                            >
+                              <span className="text-base select-none mt-0.5">{meta.icon}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-slate-900 dark:text-asphalt-100 truncate">
+                                    {s.primary_name || s.display_name}
+                                  </span>
+                                  {s.category && s.category !== 'location' && (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${meta.color}`}>
+                                      {meta.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                {s.secondary_name && (
+                                  <p className="text-[11px] text-slate-500 dark:text-asphalt-400 truncate mt-0.5">
+                                    {s.secondary_name}
+                                  </p>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
@@ -1106,7 +1408,77 @@ export default function LiveMap() {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between px-1 pt-1.5">
+              {/* ----------------------------------------------------------- */}
+              {/* Prediction & Departure Time Controls (Present by default)    */}
+              {/* ----------------------------------------------------------- */}
+              <div className="mt-2.5 rounded-lg border border-slate-200/90 bg-slate-50/80 p-2.5 dark:border-asphalt-700 dark:bg-asphalt-800/60">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-asphalt-100">
+                    <span>🕒</span> Departure / Prediction Time
+                  </span>
+                  <span className="text-[11px] font-bold text-signal-blue">
+                    {departureOption === 'now'
+                      ? `Now (${formatClockTime(resolvedTargetDate)})`
+                      : departureOption === '30m'
+                      ? `+30m (${formatClockTime(resolvedTargetDate)})`
+                      : departureOption === '15m'
+                      ? `+15m (${formatClockTime(resolvedTargetDate)})`
+                      : departureOption === '1h'
+                      ? `+1h (${formatClockTime(resolvedTargetDate)})`
+                      : departureOption === 'peak_evening'
+                      ? '6:00 PM (Peak)'
+                      : departureOption === 'peak_morning'
+                      ? '9:00 AM (Peak)'
+                      : `Custom (${formatClockTime(resolvedTargetDate)})`}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {[
+                    { id: 'now', label: '⚡ Now' },
+                    { id: '15m', label: '+15m' },
+                    { id: '30m', label: '+30m' },
+                    { id: '1h', label: '+1h' },
+                    { id: 'peak_evening', label: '🌆 6 PM' },
+                    { id: 'peak_morning', label: '🌅 9 AM' },
+                    { id: 'custom', label: '🕒 Custom' },
+                  ].map((chip) => {
+                    const isActive = departureOption === chip.id;
+                    return (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => handleDepartureOptionSelect(chip.id)}
+                        className={`rounded-md px-2 py-1 text-[11px] font-medium transition-all ${
+                          isActive
+                            ? 'bg-signal-blue text-white shadow-xs font-semibold'
+                            : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-asphalt-700 dark:bg-asphalt-800 dark:text-asphalt-200 dark:hover:bg-asphalt-700'
+                        }`}
+                      >
+                        {chip.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {departureOption === 'custom' && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <label className="text-[11px] font-medium text-slate-500 dark:text-asphalt-400">Select target time:</label>
+                    <input
+                      type="time"
+                      value={customTime}
+                      onChange={(e) => handleCustomTimeChange(e.target.value)}
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-800 outline-none focus:border-signal-blue dark:border-asphalt-700 dark:bg-asphalt-900 dark:text-asphalt-100"
+                    />
+                  </div>
+                )}
+
+                <p className="mt-1.5 text-[10px] text-slate-500 dark:text-asphalt-400">
+                  By default active (+30m). Select any time to check if predicted traffic & congestion are accurate for that hour.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between px-1 pt-2">
                 <button
                   onClick={() => locateMe(true)}
                   disabled={locating}
@@ -1145,15 +1517,52 @@ export default function LiveMap() {
                     </span>
                   </div>
 
-                  <div className="mt-1.5 flex flex-wrap gap-1.5 px-1">
+                  {/* Time & Traffic Prediction Summary Breakdown */}
+                  <div className="mt-2 rounded-lg border border-slate-200/90 bg-slate-50 p-2.5 text-xs dark:border-asphalt-700 dark:bg-asphalt-800/70">
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="block text-[10px] font-semibold uppercase text-slate-400 dark:text-asphalt-400">
+                          Departure Time
+                        </span>
+                        <span className="font-semibold text-slate-800 dark:text-asphalt-100 flex items-center gap-1">
+                          🕒 {formatClockTime(resolvedTargetDate)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-semibold uppercase text-slate-400 dark:text-asphalt-400">
+                          Estimated Arrival
+                        </span>
+                        <span className="font-semibold text-slate-800 dark:text-asphalt-100 flex items-center gap-1">
+                          🏁 {formatClockTime(estimatedArrivalTime)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {routeTraffic?.estimated_time && (
+                      <div className="mt-1.5 pt-1.5 border-t border-slate-200/70 dark:border-asphalt-700 text-[11px] flex items-center justify-between text-slate-600 dark:text-asphalt-300">
+                        <span>Traffic Window:</span>
+                        <span className="font-semibold text-slate-900 dark:text-asphalt-100">
+                          {routeTraffic.estimated_time}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-1.5 px-1">
                     {predictionsLoading && (
-                      <span className="text-[11px] text-slate-400 dark:text-asphalt-500">
-                        Running live traffic/accident-risk models...
+                      <span className="inline-flex items-center gap-1 text-[11px] text-signal-blue animate-pulse">
+                        <span className="h-1.5 w-1.5 rounded-full bg-signal-blue animate-ping" />
+                        Predicting traffic for {formatClockTime(resolvedTargetDate)}...
                       </span>
                     )}
-                    {routeTraffic && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-signal-amber/40 bg-signal-amber/10 px-2 py-0.5 text-[11px] font-medium text-signal-amber">
-                        Congestion: {routeTraffic.congestion_level}
+                    {(worstRouteCongestion || routeTraffic?.congestion_level) && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm"
+                        style={{ backgroundColor: ROUTE_CONGESTION_COLOR[worstRouteCongestion || routeTraffic?.congestion_level] || '#10B981' }}
+                      >
+                        ● Traffic: {worstRouteCongestion || routeTraffic?.congestion_level}
+                        {(routeTraffic?.previous_records?.average_speed || routeTraffic?.previous_traffic?.average_speed) &&
+                          ` (${Math.round(routeTraffic.previous_records?.average_speed || routeTraffic.previous_traffic?.average_speed)} km/h)`}
                       </span>
                     )}
                     {routeAccidentRisk && (
@@ -1162,19 +1571,6 @@ export default function LiveMap() {
                         {routeAccidentRisk.risk_percentage != null
                           ? ` (${Number(routeAccidentRisk.risk_percentage).toFixed(0)}%)`
                           : ''}
-                      </span>
-                    )}
-                    {worstRouteCongestion && (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
-                        style={{ backgroundColor: ROUTE_CONGESTION_COLOR[worstRouteCongestion] }}
-                      >
-                        Route congestion: {worstRouteCongestion}
-                      </span>
-                    )}
-                    {routeHotspots.length > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-signal-red/40 bg-signal-red/10 px-2 py-0.5 text-[11px] font-medium text-signal-red">
-                        ⚠ {routeHotspots.length} hotspot{routeHotspots.length > 1 ? 's' : ''} on route
                       </span>
                     )}
                   </div>

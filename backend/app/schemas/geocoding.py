@@ -4,12 +4,15 @@ from pydantic import BaseModel, Field
 
 
 class GeocodeSearchResult(BaseModel):
-    display_name: str = Field(..., description="Full formatted address/name from OpenStreetMap")
+    display_name: str = Field(..., description="Full formatted address/name from OpenStreetMap or RoadSense database")
     latitude: float = Field(..., description="Latitude in decimal degrees")
     longitude: float = Field(..., description="Longitude in decimal degrees")
     type: Optional[str] = Field(default="location", description="Type of place (e.g. suburb, road, amenity)")
     importance: Optional[float] = Field(default=0.0, description="Relevance score")
     address: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Address breakdown")
+    primary_name: Optional[str] = Field(default=None, description="Concise primary landmark or road name")
+    secondary_name: Optional[str] = Field(default=None, description="Clean area, locality, or category description")
+    category: Optional[str] = Field(default="location", description="Category: 'corridor' | 'transit' | 'poi' | 'location'")
 
 
 class ReverseGeocodeResult(BaseModel):
