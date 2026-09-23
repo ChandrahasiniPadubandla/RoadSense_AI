@@ -162,12 +162,11 @@ export default function LiveMap() {
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Layer visibility - DB layers disabled by default to keep the map clean and responsive
+  // Route layer visibility - controls overlays along the selected direction
   const [layersOpen, setLayersOpen] = useState(false);
-  const [showTraffic, setShowTraffic] = useState(false);
-  const [showAccidents, setShowAccidents] = useState(false);
-  const [showHotspots, setShowHotspots] = useState(false);
-  const [showAnomalies, setShowAnomalies] = useState(false);
+  const [showRouteTraffic, setShowRouteTraffic] = useState(true);
+  const [showRouteHotspots, setShowRouteHotspots] = useState(true);
+  const [showRouteAccidents, setShowRouteAccidents] = useState(true);
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -650,21 +649,7 @@ export default function LiveMap() {
     loadMapData();
   }, []);
 
-  // Filtered accidents based on UI selection
-  const filteredAccidents = useMemo(() => {
-    if (!accidentLayer?.features) return [];
-    if (severityFilter === 'ALL') return accidentLayer.features;
-    return accidentLayer.features.filter((f) => {
-      const sev = (f.properties?.severity || '').toUpperCase();
-      if (severityFilter === 'SEVERE_FATAL') {
-        return sev === 'SEVERE' || sev === 'FATAL';
-      }
-      if (severityFilter === 'MODERATE_MINOR') {
-        return sev === 'MODERATE' || sev === 'MEDIUM' || sev === 'MINOR';
-      }
-      return true;
-    });
-  }, [accidentLayer, severityFilter]);
+  // Route overlays and ML predictions are scoped specifically to the active selected route
 
   // ---------------------------------------------------------------------
   // Route-aware overlays: once a route exists, color each stretch of it by
@@ -694,12 +679,15 @@ export default function LiveMap() {
     ];
   }, [routeGeometry, routeTraffic]);
 
-  // Hotspots that lie within 200m of the current route.
+  // ---------------------------------------------------------------------
+  // Hotspots that lie along the current selected route/direction
+  // (Visible ONLY when a direction/route is selected)
+  // ---------------------------------------------------------------------
   const routeHotspots = useMemo(() => {
     if (!routeGeometry || routeGeometry.length < 2 || !hotspotsLayer?.features?.length) {
       return [];
     }
-    const THRESHOLD_M = 200;
+    const THRESHOLD_M = 300;
     return hotspotsLayer.features.filter((f) => {
       const coords = f.geometry?.coordinates;
       if (!coords) return false;
@@ -707,6 +695,102 @@ export default function LiveMap() {
       return routeGeometry.some(([rlat, rlng]) => haversineMeters(lat, lng, rlat, rlng) < THRESHOLD_M);
     });
   }, [routeGeometry, hotspotsLayer]);
+
+  // ---------------------------------------------------------------------
+  // Accident Predictions & Incident Points along the current selected route/direction
+  // (Visible ONLY when a direction/route is selected)
+  // ---------------------------------------------------------------------
+  const routeAccidents = useMemo(() => {
+    if (!routeGeometry || routeGeometry.length < 2) {
+      return [];
+    }
+    const points = [];
+    const seen = new Set();
+
+    // 1. From ML accident/traffic model responses for this specific route
+    const mlPoints = routeAccidentRisk?.accident_points || routeTraffic?.accident_points || [];
+    for (const pt of mlPoints) {
+      const lat = pt.latitude || pt.lat;
+      const lng = pt.longitude || pt.lng;
+      if (lat && lng) {
+        const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          points.push({
+            id: pt.id || key,
+            lat: Number(lat),
+            lng: Number(lng),
+            type: pt.type || 'predicted_risk_zone',
+            severity: pt.severity || routeAccidentRisk?.risk_level || 'HIGH',
+            risk_percentage: pt.risk_percentage ?? routeAccidentRisk?.risk_percentage,
+            title: pt.title || `Predicted Accident Risk: ${pt.severity || 'HIGH'}`,
+            description: pt.description || 'AI model identified this sector as an accident hazard on your route.',
+            road_name: routeAccidentRisk?.road_name || routeTraffic?.road_name || 'Route corridor',
+            datetime: pt.datetime,
+          });
+        }
+      }
+    }
+
+    // 2. Also match historical accidents from accidentLayer that lie within 300m of this route
+    if (accidentLayer?.features?.length) {
+      const THRESHOLD_M = 300;
+      for (const f of accidentLayer.features) {
+        const coords = f.geometry?.coordinates;
+        if (!coords) continue;
+        const [lng, lat] = coords;
+        const p = f.properties || {};
+
+        if (severityFilter === 'SEVERE_FATAL' && !['FATAL', 'SEVERE', 'CRITICAL', 'HIGH'].includes((p.severity || '').toUpperCase())) {
+          continue;
+        }
+        if (severityFilter === 'MODERATE_MINOR' && !['MODERATE', 'MEDIUM', 'MINOR'].includes((p.severity || '').toUpperCase())) {
+          continue;
+        }
+
+        const isNear = routeGeometry.some(([rlat, rlng]) => haversineMeters(lat, lng, rlat, rlng) < THRESHOLD_M);
+        if (isNear) {
+          const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            points.push({
+              id: f.id || p.accident_id || key,
+              lat,
+              lng,
+              type: 'historical',
+              severity: p.severity || 'MODERATE',
+              title: `${p.road_name || 'Route segment'}: ${p.severity || 'Incident'}`,
+              description: p.description || 'Historical accident incident recorded along this route.',
+              road_name: p.road_name,
+              fatalities: p.fatalities,
+              injuries: p.injuries,
+              datetime: p.accident_time,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Fallback: If model predicts elevated accident risk (MEDIUM/HIGH/SEVERE/CRITICAL)
+    // but no specific point was returned, plot a predicted risk zone pin at the route's midpoint
+    if (points.length === 0 && routeAccidentRisk && routeGeometry.length >= 2) {
+      const midIdx = Math.floor(routeGeometry.length / 2);
+      const [midLat, midLng] = routeGeometry[midIdx];
+      points.push({
+        id: `route-midpoint-risk-${midLat.toFixed(4)}-${midLng.toFixed(4)}`,
+        lat: midLat,
+        lng: midLng,
+        type: 'predicted_risk_zone',
+        severity: routeAccidentRisk.risk_level || 'LOW',
+        risk_percentage: routeAccidentRisk.risk_percentage,
+        title: `AI Predicted Accident Risk: ${routeAccidentRisk.risk_level}`,
+        description: `Predicted accident risk (${routeAccidentRisk.risk_percentage || 0}%) for this corridor under current road and weather conditions.`,
+        road_name: routeAccidentRisk.road_name || routeTraffic?.road_name || 'Selected Route',
+      });
+    }
+
+    return points;
+  }, [routeGeometry, routeAccidentRisk, routeTraffic, accidentLayer, severityFilter]);
 
   // Worst congestion tier actually present on the route, for a summary badge.
   const worstRouteCongestion = useMemo(() => {
@@ -742,12 +826,7 @@ export default function LiveMap() {
     );
   }
 
-  const roadCount = trafficLayer?.features?.length || 0;
-  const accidentCount = accidentLayer?.features?.length || 0;
-  const hotspotCount = hotspotsLayer?.features?.length || 0;
-  const anomalyCount = anomalyLayer?.features?.length || 0;
-  const anyDataMissing =
-    roadCount === 0 || accidentCount === 0 || hotspotCount === 0 || (accidentCount > 0 && filteredAccidents.length === 0);
+
 
   const panelInputClass =
     'w-full rounded-md border-0 bg-transparent px-1 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-asphalt-100 dark:placeholder:text-asphalt-500';
@@ -765,222 +844,154 @@ export default function LiveMap() {
         <ZoomControl position="bottomright" />
         {flyTarget && <FlyToPoint coordinate={flyTarget} />}
 
-        {/* 1. Traffic Layer: Road LineString Polylines */}
-        {showTraffic &&
-          trafficLayer?.features?.map((f) => {
-            const p = f.properties || {};
-            const coords = f.geometry?.coordinates;
-            if (!coords || coords.length < 2) return null;
-
-            // GeoJSON is [lng, lat] -> Leaflet requires [lat, lng]
-            const positions = coords.map(([lng, lat]) => [lat, lng]);
-            const color = p.color || CONGESTION_COLOR[p.congestion_level] || '#F97316';
-            const midIndex = Math.floor(positions.length / 2);
-            const midLat = positions[midIndex][0];
-            const midLng = positions[midIndex][1];
-
-            return (
-              <React.Fragment key={f.id || p.road_id}>
-                <Polyline
-                  positions={positions}
-                  pathOptions={{
-                    color: color,
-                    weight: 7,
-                    opacity: 0.85,
-                    lineCap: 'round',
-                    lineJoin: 'round',
-                  }}
-                >
-                  <Tooltip sticky>{p.road_name}: {p.congestion_level} congestion</Tooltip>
-                  <Popup>
-                    <div className="space-y-1 text-xs text-asphalt-900">
-                      <p className="font-bold text-sm text-asphalt-950">{p.road_name}</p>
-                      <p className="text-asphalt-600">{p.road_type} - Speed Limit: {p.speed_limit} km/h</p>
-                      <div className="my-1.5 flex items-center gap-2">
-                        <span
-                          className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white uppercase"
-                          style={{ backgroundColor: color }}
-                        >
-                          {p.congestion_level} Congestion
-                        </span>
-                        {p.capacity_utilization != null && (
-                          <span className="font-medium text-asphalt-700">
-                            {p.capacity_utilization}% capacity
-                          </span>
-                        )}
-                      </div>
-                      <div className="border-t border-asphalt-200 pt-1 text-asphalt-800">
-                        <p><strong>Live Volume:</strong> {p.vehicle_count ?? 'N/A'} vehicles</p>
-                        <p><strong>Avg Speed:</strong> {p.average_speed ? `${Math.round(p.average_speed)} km/h` : 'N/A'}</p>
-                        <p><strong>Weather:</strong> {p.weather_condition || 'Clear'}</p>
-                      </div>
-                    </div>
-                  </Popup>
-                </Polyline>
-
-                {/* Midpoint marker for clickable popup focus */}
-                <CircleMarker
-                  center={[midLat, midLng]}
-                  radius={5}
-                  pathOptions={{
-                    color: '#ffffff',
-                    fillColor: color,
-                    fillOpacity: 1,
-                    weight: 2,
-                  }}
-                >
-                  <Popup>
-                    <div className="text-xs text-asphalt-900">
-                      <strong>{p.road_name}</strong>
-                      <p>Congestion: {p.congestion_level}</p>
-                      <p>Avg Speed: {p.average_speed ? `${Math.round(p.average_speed)} km/h` : 'N/A'}</p>
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              </React.Fragment>
-            );
-          })}
-
-        {/* 2. Accident Layer: Incident Points */}
-        {showAccidents &&
-          filteredAccidents.map((f) => {
-            const p = f.properties || {};
-            const coords = f.geometry?.coordinates;
-            if (!coords) return null;
-            const [lng, lat] = coords;
-            const color = p.marker_color || SEVERITY_COLOR[p.severity?.toUpperCase()] || '#DC2626';
-
-            return (
-              <CircleMarker
-                key={f.id || p.accident_id}
-                center={[lat, lng]}
-                radius={7}
-                pathOptions={{
-                  color: '#ffffff',
-                  fillColor: color,
-                  fillOpacity: 0.9,
-                  weight: 1.5,
-                }}
-              >
-                <Tooltip>{p.road_name}: {p.severity} incident</Tooltip>
-                <Popup>
-                  <div className="space-y-1 text-xs text-asphalt-900">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-sm text-asphalt-950">Accident Incident</span>
-                      <span
-                        className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white uppercase"
-                        style={{ backgroundColor: color }}
-                      >
-                        {p.severity}
-                      </span>
-                    </div>
-                    <p className="font-medium text-asphalt-700">{p.road_name}</p>
-                    <div className="border-t border-asphalt-200 pt-1 text-asphalt-800">
-                      <p><strong>Casualties:</strong> {p.fatalities || 0} fatal - {p.injuries || 0} injured</p>
-                      <p><strong>Vehicles Involved:</strong> {p.vehicle_count ?? 1}</p>
-                      <p><strong>Conditions:</strong> {p.weather_condition || 'Clear'} / {p.road_condition || 'Dry'}</p>
-                      {p.accident_time && (
-                        <p className="text-[10px] text-asphalt-500 mt-1">
-                          Recorded: {new Date(p.accident_time).toLocaleString()}
-                        </p>
-                      )}
-                      {p.description && (
-                        <p className="mt-1 rounded bg-asphalt-100 p-1 text-asphalt-600 italic">
-                          "{p.description}"
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            );
-          })}
-
-        {/* 3. Hotspots Layer: Hazard Rings (always shown in their real places) */}
-        {showHotspots &&
-          hotspotsLayer?.features?.map((f) => {
-            const p = f.properties || {};
-            const coords = f.geometry?.coordinates;
-            if (!coords) return null;
-            const [lng, lat] = coords;
-            const color = p.color || '#DC2626';
-
-            return (
-              <CircleMarker
-                key={f.id || p.hotspot_id}
-                center={[lat, lng]}
-                radius={16}
-                pathOptions={{
-                  color: color,
-                  fillColor: 'transparent',
-                  weight: 3,
-                  dashArray: '4, 4',
-                }}
-              >
-                <Popup>
-                  <div className="text-xs text-asphalt-900">
-                    <strong className="text-signal-red">Accident Hotspot</strong>
-                    <p>Risk Level: {p.risk_level}</p>
-                    <p>Accidents Recorded: {p.accident_count}</p>
-                    {p.risk_score != null && <p>Risk Score: {p.risk_score}</p>}
-                  </div>
-                </Popup>
-              </CircleMarker>
-            );
-          })}
 
 
-        {/* 4. Anomalies Layer: unusual traffic-volume spikes/drops flagged by the ML model */}
-        {showAnomalies &&
-          anomalyLayer?.features?.map((f) => {
-            const p = f.properties || {};
-            const coords = f.geometry?.coordinates;
-            if (!coords) return null;
-            const [lng, lat] = coords;
-            const color = p.color || '#A855F7';
+        {/* ========================================================= */}
+        {/* Hotspots & Accident Predictions: Visible ONLY on selected direction */}
+        {/* ========================================================= */}
+        {routeGeometry && (
+          <>
+            {/* 1. Accident Hotspots on the Selected Direction */}
+            {showRouteHotspots &&
+              routeHotspots.map((f) => {
+                const p = f.properties || {};
+                const coords = f.geometry?.coordinates;
+                if (!coords) return null;
+                const [lng, lat] = coords;
+                const color = p.color || '#EF4444';
 
-            return (
-              <CircleMarker
-                key={f.id || p.anomaly_id}
-                center={[lat, lng]}
-                radius={9}
-                pathOptions={{
-                  color: '#ffffff',
-                  fillColor: color,
-                  fillOpacity: 0.9,
-                  weight: 2,
-                  dashArray: '2, 3',
-                }}
-              >
-                <Tooltip>{p.road_name}: traffic anomaly ({p.severity})</Tooltip>
-                <Popup>
-                  <div className="space-y-1 text-xs text-asphalt-900">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-sm text-asphalt-950">Traffic Anomaly</span>
-                      <span
-                        className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white uppercase"
-                        style={{ backgroundColor: color }}
-                      >
-                        {p.severity}
-                      </span>
-                    </div>
-                    <p className="font-medium text-asphalt-700">{p.road_name}</p>
-                    <div className="border-t border-asphalt-200 pt-1 text-asphalt-800">
-                      <p><strong>Type:</strong> {p.anomaly_type || 'Unusual volume'}</p>
-                      <p><strong>Expected:</strong> {p.normal_vehicle_count ?? 'N/A'} vehicles</p>
-                      <p><strong>Actual:</strong> {p.actual_vehicle_count ?? 'N/A'} vehicles</p>
-                      {p.anomaly_score != null && <p><strong>Anomaly Score:</strong> {p.anomaly_score}</p>}
-                      {p.detected_at && (
-                        <p className="text-[10px] text-asphalt-500 mt-1">
-                          Detected: {new Date(p.detected_at).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            );
-          })}
+                return (
+                  <React.Fragment key={`route-hotspot-${f.id || p.hotspot_id || `${lat}-${lng}`}`}>
+                    {/* Outer pulsating dashed hazard ring */}
+                    <CircleMarker
+                      center={[lat, lng]}
+                      radius={20}
+                      pathOptions={{
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.18,
+                        weight: 2.5,
+                        dashArray: '5, 5',
+                      }}
+                    />
+                    {/* Inner hazard marker */}
+                    <CircleMarker
+                      center={[lat, lng]}
+                      radius={8}
+                      pathOptions={{
+                        color: '#ffffff',
+                        fillColor: color,
+                        fillOpacity: 0.95,
+                        weight: 2,
+                      }}
+                    >
+                      <Tooltip sticky>
+                        ⚠️ Accident Hotspot on Route: {p.road_name || 'Corridor'} ({p.risk_level || 'HIGH'} Risk)
+                      </Tooltip>
+                      <Popup>
+                        <div className="space-y-1 text-xs text-asphalt-900 min-w-[210px]">
+                          <div className="flex items-center justify-between gap-1.5 font-bold text-signal-red">
+                            <span className="flex items-center gap-1">⚠️ Route Hotspot</span>
+                            <span className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white bg-signal-red uppercase">
+                              {p.risk_level || 'HIGH'}
+                            </span>
+                          </div>
+                          <p className="font-semibold text-slate-800">{p.road_name || 'Hazard Zone'}</p>
+                          <div className="border-t border-slate-200 pt-1 text-[11px] text-slate-600 space-y-0.5">
+                            <p><strong>Past Accidents Recorded:</strong> {p.accident_count || 1}</p>
+                            {p.risk_score != null && <p><strong>Risk Score:</strong> {p.risk_score}</p>}
+                            <p className="text-[10px] text-slate-400 mt-1">Identified hazard zone on your selected direction</p>
+                          </div>
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  </React.Fragment>
+                );
+              })}
+
+            {/* 2. Traffic Accident Predictions & Incident Points on Selected Direction */}
+            {showRouteAccidents &&
+              routeAccidents.map((pt) => {
+                const isPredicted = pt.type === 'predicted_risk_zone';
+                const markerColor = isPredicted
+                  ? (pt.severity === 'CRITICAL' || pt.severity === 'SEVERE' ? '#DC2626' : (pt.severity === 'HIGH' ? '#EA580C' : '#F59E0B'))
+                  : (SEVERITY_COLOR[pt.severity?.toUpperCase()] || '#DC2626');
+
+                return (
+                  <React.Fragment key={`route-acc-${pt.id}`}>
+                    {isPredicted && (
+                      <CircleMarker
+                        center={[pt.lat, pt.lng]}
+                        radius={18}
+                        pathOptions={{
+                          color: markerColor,
+                          fillColor: markerColor,
+                          fillOpacity: 0.22,
+                          weight: 2,
+                          dashArray: '3, 4',
+                        }}
+                      />
+                    )}
+                    <CircleMarker
+                      center={[pt.lat, pt.lng]}
+                      radius={isPredicted ? 8 : 6.5}
+                      pathOptions={{
+                        color: '#ffffff',
+                        fillColor: markerColor,
+                        fillOpacity: 1,
+                        weight: 2,
+                      }}
+                    >
+                      <Tooltip sticky>
+                        {isPredicted
+                          ? `🛡️ AI Accident Risk: ${pt.risk_percentage != null ? `${Math.round(pt.risk_percentage)}% ` : ''}(${pt.severity})`
+                          : `⚠️ Incident: ${pt.severity} (${pt.road_name || 'Route'})`}
+                      </Tooltip>
+                      <Popup>
+                        <div className="space-y-1 text-xs text-asphalt-900 min-w-[220px]">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="font-bold text-sm text-slate-900 flex items-center gap-1">
+                              {isPredicted ? '🛡️ Accident Prediction' : '⚠️ Route Incident'}
+                            </span>
+                            <span
+                              className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white uppercase"
+                              style={{ backgroundColor: markerColor }}
+                            >
+                              {pt.severity}
+                            </span>
+                          </div>
+                          <p className="font-semibold text-slate-800">{pt.road_name || 'Route Point'}</p>
+                          <div className="border-t border-slate-200 pt-1 text-[11px] text-slate-700 space-y-0.5">
+                            {isPredicted ? (
+                              <>
+                                {pt.risk_percentage != null && (
+                                  <p><strong>Predicted Incident Probability:</strong> <span className="font-bold text-signal-red">{Math.round(pt.risk_percentage)}%</span></p>
+                                )}
+                                <p className="text-slate-500 italic mt-1">{pt.description}</p>
+                              </>
+                            ) : (
+                              <>
+                                {(pt.fatalities != null || pt.injuries != null) && (
+                                  <p><strong>Casualties:</strong> {pt.fatalities || 0} fatal - {pt.injuries || 0} injured</p>
+                                )}
+                                {pt.datetime && (
+                                  <p className="text-slate-500"><strong>Recorded:</strong> {new Date(pt.datetime).toLocaleDateString()}</p>
+                                )}
+                                {pt.description && <p className="text-slate-500 italic mt-0.5">"{pt.description}"</p>}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  </React.Fragment>
+                );
+              })}
+          </>
+        )}
+
+
+
 
         {/* Route: a dark "casing" line always underneath (so the route is
             unmistakable against busy map tiles, exactly like Google Maps'
@@ -1000,7 +1011,7 @@ export default function LiveMap() {
                 lineJoin: 'round',
               }}
             />
-            {routeCongestionSegments
+            {showRouteTraffic && routeCongestionSegments
               ? routeCongestionSegments.map((seg, i) => (
                   <Polyline
                     key={i}
@@ -1042,7 +1053,9 @@ export default function LiveMap() {
                 <Polyline
                   positions={routeGeometry}
                   pathOptions={{
-                    color: ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981',
+                    color: showRouteTraffic
+                      ? (ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981')
+                      : '#3B82F6',
                     weight: 7,
                     opacity: 1,
                     lineCap: 'round',
@@ -1054,9 +1067,13 @@ export default function LiveMap() {
                       <div className="flex items-center gap-1.5 font-bold">
                         <span
                           className="h-2 w-2 rounded-full inline-block"
-                          style={{ backgroundColor: ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981' }}
+                          style={{
+                            backgroundColor: showRouteTraffic
+                              ? (ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981')
+                              : '#3B82F6',
+                          }}
                         />
-                        {routeTraffic?.congestion_level || 'LOW'} Congestion
+                        {showRouteTraffic ? `${routeTraffic?.congestion_level || 'LOW'} Congestion` : 'Selected Route'}
                       </div>
                       {routeTraffic?.road_name && (
                         <div className="mt-0.5 font-medium text-slate-700">{routeTraffic.road_name}</div>
@@ -1166,6 +1183,28 @@ export default function LiveMap() {
                 <span className="hidden md:inline-block h-3 w-px bg-slate-200 dark:bg-asphalt-700" />
                 <div className="text-slate-600 dark:text-asphalt-300">
                   🚗 Flow: <span className="font-semibold">{Math.round(routeTraffic.previous_records?.average_speed || routeTraffic.previous_traffic?.average_speed)} km/h</span>
+                </div>
+              </>
+            )}
+
+            {routeAccidentRisk && (
+              <>
+                <span className="hidden lg:inline-block h-3 w-px bg-slate-200 dark:bg-asphalt-700" />
+                <div className="flex items-center gap-1 text-slate-700 dark:text-asphalt-300">
+                  <span>🛡️ Risk:</span>
+                  <span className="font-semibold text-signal-red">
+                    {routeAccidentRisk.risk_level}
+                    {routeAccidentRisk.risk_percentage != null && ` (${Math.round(routeAccidentRisk.risk_percentage)}%)`}
+                  </span>
+                </div>
+              </>
+            )}
+
+            {routeHotspots.length > 0 && (
+              <>
+                <span className="hidden xl:inline-block h-3 w-px bg-slate-200 dark:bg-asphalt-700" />
+                <div className="inline-flex items-center gap-1 rounded-full bg-signal-red/10 px-2 py-0.5 text-[11px] font-semibold text-signal-red">
+                  ⚠️ {routeHotspots.length} Hotspot{routeHotspots.length > 1 ? 's' : ''} on direction
                 </div>
               </>
             )}
@@ -1566,11 +1605,16 @@ export default function LiveMap() {
                       </span>
                     )}
                     {routeAccidentRisk && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-signal-red/40 bg-signal-red/10 px-2 py-0.5 text-[11px] font-medium text-signal-red">
-                        Accident risk: {routeAccidentRisk.risk_level}
+                      <span className="inline-flex items-center gap-1 rounded-full border border-signal-red/40 bg-signal-red/10 px-2.5 py-0.5 text-[11px] font-medium text-signal-red">
+                        🛡️ Accident risk: {routeAccidentRisk.risk_level}
                         {routeAccidentRisk.risk_percentage != null
                           ? ` (${Number(routeAccidentRisk.risk_percentage).toFixed(0)}%)`
                           : ''}
+                      </span>
+                    )}
+                    {routeHotspots.length > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-signal-amber/40 bg-signal-amber/10 px-2.5 py-0.5 text-[11px] font-semibold text-signal-amber">
+                        ⚠️ {routeHotspots.length} Hotspot{routeHotspots.length > 1 ? 's' : ''} on direction
                       </span>
                     )}
                   </div>
@@ -1654,50 +1698,92 @@ export default function LiveMap() {
       {/* ------------------------------------------------------------- */}
       <div className="absolute bottom-3 left-3 z-[1000]">
         {layersOpen && (
-          <div className="mb-2 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
-            <p className="mb-2 font-semibold text-slate-900 dark:text-asphalt-100">Map layers</p>
-
-            <label className="mb-1.5 flex items-center justify-between gap-2 rounded-md px-1 py-1 hover:bg-slate-50 dark:hover:bg-asphalt-800">
-              <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200">
-                <span className="h-2 w-2 rounded-full bg-signal-blue" /> Traffic roads ({roadCount})
-              </span>
-              <input type="checkbox" checked={showTraffic} onChange={() => setShowTraffic((v) => !v)} />
-            </label>
-            <label className="mb-1.5 flex items-center justify-between gap-2 rounded-md px-1 py-1 hover:bg-slate-50 dark:hover:bg-asphalt-800">
-              <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200">
-                <span className="h-2 w-2 rounded-full bg-signal-red" /> Accident markers ({accidentCount})
-              </span>
-              <input type="checkbox" checked={showAccidents} onChange={() => setShowAccidents((v) => !v)} />
-            </label>
-            <label className="mb-2 flex items-center justify-between gap-2 rounded-md px-1 py-1 hover:bg-slate-50 dark:hover:bg-asphalt-800">
-              <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200">
-                <span className="h-2 w-2 rounded-full bg-signal-amber" /> Accident hotspots ({hotspotCount})
-              </span>
-              <input type="checkbox" checked={showHotspots} onChange={() => setShowHotspots((v) => !v)} />
-            </label>
-            <label className="mb-2 flex items-center justify-between gap-2 rounded-md px-1 py-1 hover:bg-slate-50 dark:hover:bg-asphalt-800">
-              <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200">
-                <span className="h-2 w-2 rounded-full bg-purple-500" /> Traffic anomalies ({anomalyCount})
-              </span>
-              <input type="checkbox" checked={showAnomalies} onChange={() => setShowAnomalies((v) => !v)} />
-            </label>
-
-            <div className="mb-2 flex items-center gap-1.5 border-t border-slate-200 pt-2 dark:border-asphalt-800">
-              <span className="text-slate-500 dark:text-asphalt-400">Severity:</span>
-              <select
-                value={severityFilter}
-                onChange={(e) => setSeverityFilter(e.target.value)}
-                className="flex-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1 text-slate-800 outline-none focus:border-signal-blue dark:border-asphalt-700 dark:bg-asphalt-800 dark:text-asphalt-200"
+          <div className="mb-2 w-72 rounded-xl border border-slate-200 bg-white p-3.5 text-xs shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
+            <div className="mb-2.5 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-slate-900 dark:text-asphalt-100">
+                  {routeGeometry ? 'Route-Specific Layers' : 'Map Layers'}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-asphalt-400">
+                  {routeGeometry ? 'Overlays along selected direction' : 'Clean map view'}
+                </p>
+              </div>
+              <button
+                onClick={() => setLayersOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-asphalt-200 text-sm font-bold"
               >
-                <option value="ALL">All severities</option>
-                <option value="SEVERE_FATAL">Severe & fatal only</option>
-                <option value="MODERATE_MINOR">Moderate & minor</option>
-              </select>
+                ✕
+              </button>
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-200 pt-2 dark:border-asphalt-800">
+            {routeGeometry ? (
+              <div className="space-y-1.5">
+                <label className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-asphalt-800 cursor-pointer transition-colors">
+                  <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200 font-medium">
+                    <span className="h-2.5 w-2.5 rounded-full bg-signal-amber" />
+                    <span>Route Traffic Flow</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded accent-signal-blue cursor-pointer"
+                    checked={showRouteTraffic}
+                    onChange={() => setShowRouteTraffic((v) => !v)}
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-asphalt-800 cursor-pointer transition-colors">
+                  <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200 font-medium">
+                    <span className="h-2.5 w-2.5 rounded-full bg-signal-red" />
+                    <span>Accident Predictions ({routeAccidents.length})</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded accent-signal-blue cursor-pointer"
+                    checked={showRouteAccidents}
+                    onChange={() => setShowRouteAccidents((v) => !v)}
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-asphalt-800 cursor-pointer transition-colors">
+                  <span className="flex items-center gap-2 text-slate-700 dark:text-asphalt-200 font-medium">
+                    <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                    <span>Route Hotspots ({routeHotspots.length})</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded accent-signal-blue cursor-pointer"
+                    checked={showRouteHotspots}
+                    onChange={() => setShowRouteHotspots((v) => !v)}
+                  />
+                </label>
+
+                <div className="mt-2 flex items-center gap-1.5 border-t border-slate-200 pt-2 dark:border-asphalt-800">
+                  <span className="text-slate-500 dark:text-asphalt-400">Severity:</span>
+                  <select
+                    value={severityFilter}
+                    onChange={(e) => setSeverityFilter(e.target.value)}
+                    className="flex-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1 text-slate-800 outline-none focus:border-signal-blue dark:border-asphalt-700 dark:bg-asphalt-800 dark:text-asphalt-200"
+                  >
+                    <option value="ALL">All severities</option>
+                    <option value="SEVERE_FATAL">Severe & fatal only</option>
+                    <option value="MODERATE_MINOR">Moderate & minor</option>
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="py-2 text-[11px] text-slate-500 dark:text-asphalt-400 space-y-1.5">
+                <p>
+                  To keep the map clean and responsive, traffic flow, accident predictions, and hazard hotspots appear <strong>only along your selected route</strong>.
+                </p>
+                <p className="font-semibold text-signal-blue">
+                  👉 Search a destination or click "Get Directions" to activate route overlays.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-2.5 flex items-center justify-between border-t border-slate-200 pt-2 dark:border-asphalt-800 text-[11px]">
               <span className="text-slate-400 dark:text-asphalt-500">
-                {lastUpdated ? `Synced ${lastUpdated}` : 'Not yet synced'}
+                {lastUpdated ? `Synced ${lastUpdated}` : 'Live'}
               </span>
               <button
                 onClick={loadMapData}
@@ -1706,19 +1792,6 @@ export default function LiveMap() {
                 Refresh
               </button>
             </div>
-
-            {anyDataMissing && (
-              <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 dark:border-asphalt-800">
-                {roadCount === 0 && <p className="text-slate-500 dark:text-asphalt-400">No traffic segments available.</p>}
-                {accidentCount === 0 && <p className="text-slate-500 dark:text-asphalt-400">No accidents recorded.</p>}
-                {hotspotCount === 0 && showHotspots && (
-                  <p className="text-slate-500 dark:text-asphalt-400">No hotspots registered yet.</p>
-                )}
-                {accidentCount > 0 && filteredAccidents.length === 0 && (
-                  <p className="text-signal-amber">No accidents match this severity filter.</p>
-                )}
-              </div>
-            )}
           </div>
         )}
         <button

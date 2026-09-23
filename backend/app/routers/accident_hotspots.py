@@ -9,7 +9,7 @@ from app.database.connection import get_db
 from app.database.models import AccidentHotspot, TrafficZone
 from app.schemas.ml import HotspotRequest, HotspotResponse, HotspotItem
 from app.services.ml_service import ml_service
-from app.services.hotspot_service import sync_empirical_hotspots
+from app.services.hotspot_service import sync_empirical_hotspots, resolve_risk_level
 
 
 router = APIRouter(
@@ -56,13 +56,15 @@ def list_accident_hotspots(
     results = []
     for hotspot, zone in rows:
         lat, lon = _read_point(hotspot.location if hotspot.location is not None else (zone.location if zone else None))
+        score = float(hotspot.risk_score) if hotspot.risk_score is not None else None
+        level = resolve_risk_level(score) if score is not None else (hotspot.risk_level or "LOW")
         results.append({
             "hotspot_id": str(hotspot.hotspot_id),
             "zone_id": str(hotspot.zone_id) if hotspot.zone_id else None,
             "zone_name": zone.zone_name if zone else None,
             "accident_count": hotspot.accident_count,
-            "risk_score": float(hotspot.risk_score) if hotspot.risk_score is not None else None,
-            "risk_level": hotspot.risk_level,
+            "risk_score": score,
+            "risk_level": level,
             "latitude": lat,
             "longitude": lon,
             "calculated_at": hotspot.calculated_at.isoformat() if hotspot.calculated_at else None,

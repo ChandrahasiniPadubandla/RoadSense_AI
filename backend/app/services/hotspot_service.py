@@ -16,11 +16,30 @@ from app.services.ml_service import ml_service
 logger = logging.getLogger("roadsense")
 
 
+def resolve_risk_level(risk_score: float) -> str:
+    """
+    Determines categorical risk level strictly and consistently from risk score,
+    matching project standards:
+      - score >= 75.0: SEVERE
+      - score >= 55.0: HIGH
+      - score >= 30.0: MEDIUM
+      - score < 30.0:  LOW
+    """
+    score = float(risk_score or 0.0)
+    if score >= 75.0:
+        return "SEVERE"
+    elif score >= 55.0:
+        return "HIGH"
+    elif score >= 30.0:
+        return "MEDIUM"
+    return "LOW"
+
+
 def upsert_accident_hotspot(
     db: Session,
     latitude: Optional[float],
     longitude: Optional[float],
-    risk_level: str,
+    risk_level: Optional[str],
     risk_score: float,
     accident_count: int = 0,
     zone_id: Optional[UUID] = None,
@@ -32,7 +51,8 @@ def upsert_accident_hotspot(
     is strictly derived from database records and ML inference — zero dummy data.
     """
     now = calculated_at or datetime.utcnow()
-    safe_risk_level = (risk_level or "MEDIUM").upper()
+    # Always resolve risk_level mathematically from risk_score so score and tier never contradict
+    safe_risk_level = resolve_risk_level(risk_score)
 
     # If coordinates are not provided, resolve strictly from the associated TrafficZone in DB
     if (latitude is None or longitude is None) and zone_id:
@@ -73,12 +93,8 @@ def upsert_accident_hotspot(
     if existing:
         existing.accident_count = max(existing.accident_count or 0, accident_count)
         existing.risk_score = round(max(float(existing.risk_score or 0.0), float(risk_score)), 2)
-
-        sev_rank = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "SEVERE": 4, "CRITICAL": 5}
-        current_rank = sev_rank.get(str(existing.risk_level or "").upper(), 0)
-        new_rank = sev_rank.get(safe_risk_level, 0)
-        if new_rank >= current_rank:
-            existing.risk_level = safe_risk_level
+        # Risk level is strictly determined by the final risk score
+        existing.risk_level = resolve_risk_level(existing.risk_score)
 
         if loc_point is not None:
             existing.location = loc_point
@@ -183,14 +199,7 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
             calc_risk_score = min(90.0, 35.0 + db_acc_count * 5.0)
 
         # Standardized risk level threshold matching prediction_engine.py
-        if calc_risk_score >= 75.0 or db_acc_count >= 10:
-            calc_risk_level = "SEVERE"
-        elif calc_risk_score >= 55.0 or db_acc_count >= 5:
-            calc_risk_level = "HIGH"
-        elif calc_risk_score >= 30.0 or db_acc_count >= 2:
-            calc_risk_level = "MEDIUM"
-        else:
-            calc_risk_level = "LOW"
+        calc_risk_level = resolve_risk_level(calc_risk_score)
 
         total_accidents = max(db_acc_count, emp_info["accidents"] if emp_info else 0)
 

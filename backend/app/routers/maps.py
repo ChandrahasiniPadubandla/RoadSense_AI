@@ -14,6 +14,7 @@ from app.database.models import (
     AccidentHotspot,
     TrafficAnomaly
 )
+from app.services.hotspot_service import resolve_risk_level
 
 router = APIRouter(
     prefix="/map",
@@ -271,7 +272,8 @@ def get_hotspots_layer(
         except Exception:
             continue
 
-        risk_level = h.risk_level or "HIGH"
+        score = float(h.risk_score) if h.risk_score is not None else None
+        risk_level = resolve_risk_level(score) if score is not None else (h.risk_level or "HIGH")
         feature = {
             "type": "Feature",
             "id": str(h.hotspot_id),
@@ -283,9 +285,9 @@ def get_hotspots_layer(
                 "hotspot_id": str(h.hotspot_id),
                 "zone_id": str(h.zone_id) if h.zone_id else None,
                 "accident_count": h.accident_count,
-                "risk_score": float(h.risk_score) if h.risk_score is not None else None,
+                "risk_score": score,
                 "risk_level": risk_level,
-                "color": "#DC2626" if risk_level.upper() in ["HIGH", "CRITICAL"] else "#F59E0B"
+                "color": "#DC2626" if risk_level.upper() in ["HIGH", "SEVERE", "CRITICAL"] else "#F59E0B"
             }
         }
         features.append(feature)
