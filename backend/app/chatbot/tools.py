@@ -17,7 +17,6 @@ data is unavailable, matching the project's no-mock-data requirement.
 Each tool opens its own short-lived DB session (SessionLocal) since
 LangChain tool functions run outside FastAPI's request/Depends lifecycle.
 """
-from datetime import datetime
 from typing import Optional
 
 from langchain_core.tools import tool
@@ -28,7 +27,6 @@ from app.ml.prediction_engine import (
     resolve_route_bundle,
     trigger_ml_traffic_model,
     trigger_ml_accident_model,
-    format_estimated_time,
 )
 from app.routers.dashboard import get_dashboard_stats
 

@@ -9,7 +9,6 @@ from sqlalchemy import func, and_
 from app.database.connection import get_db
 from app.database.models import (
     Road,
-    TrafficRecord,
     TrafficPrediction,
     Alert,
     AccidentPrediction

@@ -1,9 +1,8 @@
-from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import TrafficAnomaly, Road
+from app.database.models import TrafficAnomaly
 from app.schemas.ml import AnomalyPredictionRequest, AnomalyPredictionResponse
 from app.services.ml_service import ml_service
 

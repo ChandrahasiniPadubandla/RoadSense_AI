@@ -100,24 +100,6 @@ def get_current_user(
         )
 
 
-def create_password_reset_token(user_id: UUID | str | int) -> str:
-    secret_key, algorithm = get_jwt_settings()
-
-    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-
-    payload = {
-        "user_id": str(user_id),
-        "purpose": "password_reset",
-        "exp": expire
-    }
-
-    return jwt.encode(
-        payload,
-        secret_key,
-        algorithm=algorithm
-    )
-
-
 def create_otp() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 

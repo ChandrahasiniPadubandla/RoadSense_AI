@@ -5,7 +5,7 @@ import urllib.request
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from geoalchemy2.functions import ST_Distance, ST_SetSRID, ST_MakePoint
+from geoalchemy2.functions import ST_SetSRID, ST_MakePoint
 from geoalchemy2.shape import to_shape
 
 from app.database.models import Road

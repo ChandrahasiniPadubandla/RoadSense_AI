@@ -1,10 +1,9 @@
 import json
 import logging
 import time
-import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from fastapi import HTTPException
 
 logger = logging.getLogger("roadsense.weather_service")

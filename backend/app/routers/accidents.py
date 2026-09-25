@@ -11,7 +11,7 @@ from app.schemas.accident import (
     AccidentUpdate,
     AccidentResponse
 )
-from app.security import get_current_user, require_roles
+from app.security import require_roles
 
 
 router = APIRouter(

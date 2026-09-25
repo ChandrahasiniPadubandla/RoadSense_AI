@@ -1,4 +1,3 @@
-from uuid import UUID
 from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from sqlalchemy.orm import Session

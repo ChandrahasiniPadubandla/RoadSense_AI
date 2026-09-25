@@ -1,14 +1,10 @@
-from typing import Optional
-
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from geoalchemy2.shape import to_shape
 from sqlalchemy.orm import Session
-from fastapi import Depends
 
 from app.database.connection import get_db
 from app.database.models import AccidentHotspot, TrafficZone
 from app.schemas.ml import HotspotRequest, HotspotResponse, HotspotItem
-from app.services.ml_service import ml_service
 from app.services.hotspot_service import sync_empirical_hotspots, resolve_risk_level
 
 

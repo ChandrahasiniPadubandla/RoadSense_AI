@@ -12,8 +12,7 @@ from app.database.models import (
     Road,
     Accident,
     AccidentPrediction,
-    Alert,
-    TrafficRecord
+    Alert
 )
 from app.schemas.prediction import (
     AccidentPredictionRunRequest,

@@ -10,8 +10,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database.models import AccidentHotspot, TrafficZone, Road, Accident, AccidentPrediction
-from app.schemas.ml import HotspotRequest, HotspotResponse, HotspotItem
-from app.services.ml_service import ml_service
 
 logger = logging.getLogger("roadsense")
 

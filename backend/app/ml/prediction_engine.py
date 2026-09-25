@@ -1,9 +1,7 @@
 import os
 import math
-import json
-import urllib.request
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
 
@@ -463,55 +461,12 @@ def normalize_model_weather(w: str, rainfall: float = 0.0) -> str:
 def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes the trained ML traffic congestion model directly from RoadSense_AI/traffic_congestion.
-    If external ML endpoint (ML_TRAFFIC_SERVICE_URL) is set, routes via HTTP POST.
-    Otherwise, directly invokes predict_traffic and predict_expected_congestion_time.
+    Invokes predict_traffic and predict_expected_congestion_time.
     """
-    ml_url = os.getenv("ML_TRAFFIC_SERVICE_URL", "").strip()
     target_time = bundle["target_time"]
     est_time = format_estimated_time(target_time)
 
-    # 1. External Microservice (if configured)
-    if ml_url:
-        try:
-            req_data = json.dumps(bundle["ml_features"]).encode("utf-8")
-            req = urllib.request.Request(
-                ml_url,
-                data=req_data,
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                cong = result.get("congestion_level") or result.get("predicted_congestion")
-                if not cong:
-                    raise HTTPException(
-                        status_code=502,
-                        detail={
-                            "error": "ML_MODEL_INVALID_RESPONSE",
-                            "issue": f"ML model at {ml_url} did not return 'congestion_level'.",
-                            "received_response": result
-                        }
-                    )
-                return {
-                    "congestion_level": str(cong).upper(),
-                    "estimated_time": result.get("estimated_time") or est_time,
-                    "confidence_score": float(result.get("confidence_score")) if result.get("confidence_score") is not None else None,
-                    "ml_source": "external-ml-model"
-                }
-        except HTTPException:
-            raise
-        except Exception as err:
-            raise HTTPException(
-                status_code=502,
-                detail={
-                    "error": "ML_TRAFFIC_MODEL_UNAVAILABLE",
-                    "issue": f"Failed to connect to ML Traffic Model at '{ml_url}'.",
-                    "technical_details": str(err),
-                    "message": "Could not reach external ML Traffic Model. Ensure the ML service is running.",
-                    "prepared_features": bundle["ml_features"]
-                }
-            )
-
-    # 2. Directly Execute the Updated Trained Model from RoadSense_AI/traffic_congestion
+    # Directly Execute the Trained Model from RoadSense_AI/traffic_congestion
     traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
     model_file = os.path.join(traffic_dir, "traffic_congestion_classifier.json")
     time_model_file = os.path.join(traffic_dir, "expected_congestion_time_regressor.json")
@@ -522,7 +477,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             detail={
                 "error": "ML_TRAFFIC_MODEL_NOT_FOUND",
                 "issue": f"Trained traffic model file not found in: {traffic_dir}",
-                "message": "Ensure the updated trained model files exist in RoadSense_AI/traffic_congestion or set ML_TRAFFIC_SERVICE_URL.",
+                "message": "Ensure the updated trained model files exist in RoadSense_AI/traffic_congestion.",
                 "prepared_features": bundle["ml_features"]
             }
         )
@@ -649,54 +604,9 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
 def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes the trained ML accident risk model directly from RoadSense_AI/predict_accident_risk.
-    If external ML endpoint (ML_ACCIDENT_SERVICE_URL) is set, routes via HTTP POST.
-    Otherwise, directly invokes predict_accident_risk() from RoadSense_AI/predict_accident_risk/predict_accident_risk.py.
+    Directly invokes predict_accident_risk() from RoadSense_AI/predict_accident_risk/predict_accident_risk.py.
     """
-    ml_url = os.getenv("ML_ACCIDENT_SERVICE_URL", "").strip()
-
-    # 1. External Microservice (if configured)
-    if ml_url:
-        try:
-            req_data = json.dumps(bundle["ml_features"]).encode("utf-8")
-            req = urllib.request.Request(
-                ml_url,
-                data=req_data,
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                risk_pct = result.get("risk_percentage")
-                risk_lvl = result.get("risk_level")
-                if risk_pct is None or not risk_lvl:
-                    raise HTTPException(
-                        status_code=502,
-                        detail={
-                            "error": "ML_MODEL_INVALID_RESPONSE",
-                            "issue": f"ML model at {ml_url} did not return 'risk_percentage' and 'risk_level'.",
-                            "received_response": result
-                        }
-                    )
-                return {
-                    "risk_percentage": round(float(risk_pct), 1),
-                    "risk_level": str(risk_lvl).upper(),
-                    "confidence_score": float(result.get("confidence_score")) if result.get("confidence_score") is not None else None,
-                    "ml_source": "external-ml-model"
-                }
-        except HTTPException:
-            raise
-        except Exception as err:
-            raise HTTPException(
-                status_code=502,
-                detail={
-                    "error": "ML_ACCIDENT_MODEL_UNAVAILABLE",
-                    "issue": f"Failed to connect to ML Accident Model at '{ml_url}'.",
-                    "technical_details": str(err),
-                    "message": "Could not reach external ML Accident Model. Ensure the ML service is running.",
-                    "prepared_features": bundle["ml_features"]
-                }
-            )
-
-    # 2. Directly Execute the Trained Model from RoadSense_AI/predict_accident_risk
+    # Directly Execute the Trained Model from RoadSense_AI/predict_accident_risk
     accident_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "predict_accident_risk"))
     model_file = os.path.join(accident_dir, "accident_risk_classifier.json")
 
@@ -706,7 +616,7 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             detail={
                 "error": "ML_ACCIDENT_MODEL_NOT_FOUND",
                 "issue": f"Trained accident model file not found at: {model_file}",
-                "message": "Ensure the trained model exists in RoadSense_AI/predict_accident_risk/accident_risk_classifier.json or set ML_ACCIDENT_SERVICE_URL.",
+                "message": "Ensure the trained model exists in RoadSense_AI/predict_accident_risk/accident_risk_classifier.json.",
                 "prepared_features": bundle["ml_features"]
             }
         )
