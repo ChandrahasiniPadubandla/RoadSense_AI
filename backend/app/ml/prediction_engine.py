@@ -502,7 +502,6 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
 
             road_data = bundle["road_conditions"]
             weather_data = bundle["weather_conditions"]
-            prev_data = bundle["previous_records"]
             temporal = bundle["temporal_data"]
 
             rf = float(weather_data.get("rainfall", 0.0))
@@ -599,6 +598,58 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 "prepared_features": bundle["ml_features"]
             }
         )
+
+
+def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Executes the trained ML traffic anomaly detection model (Isolation Forest) directly
+    from RoadSense_AI/traffic_congestion/predict_anomaly.py.
+    """
+    traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
+    model_file = os.path.join(traffic_dir, "final_traffic_anomaly_model.pkl")
+    if not os.path.exists(model_file):
+        model_file = os.path.join(traffic_dir, "model", "final_traffic_anomaly_model.pkl")
+
+    if not os.path.exists(model_file):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "ML_ANOMALY_MODEL_NOT_FOUND",
+                "issue": f"Trained anomaly model file not found in: {traffic_dir}",
+                "message": "Ensure final_traffic_anomaly_model.pkl exists in RoadSense_AI/traffic_congestion.",
+                "features": features
+            }
+        )
+
+    try:
+        import sys
+        if traffic_dir not in sys.path:
+            sys.path.insert(0, traffic_dir)
+
+        import sklearn.compose._column_transformer as ct
+        if not hasattr(ct, '_RemainderColsList'):
+            class _RemainderColsList(list):
+                pass
+            ct._RemainderColsList = _RemainderColsList
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from predict_anomaly import predict_anomaly_detailed
+
+            result = predict_anomaly_detailed(features)
+            result["ml_source"] = "trained-isolation-forest (RoadSense_AI/traffic_congestion)"
+            return result
+    except Exception as err:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "ANOMALY_MODEL_EXECUTION_ERROR",
+                "issue": f"Error executing trained ML anomaly model: {err}",
+                "features": features
+            }
+        )
+
 
 
 def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
@@ -812,57 +863,6 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 "error": "ACCIDENT_MODEL_EXECUTION_ERROR",
                 "issue": f"Error executing trained ML accident model: {err}",
                 "prepared_features": bundle["ml_features"]
-            }
-        )
-
-
-def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Executes the trained ML traffic anomaly detection model (Isolation Forest) directly
-    from RoadSense_AI/traffic_congestion/predict_anomaly.py.
-    """
-    traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
-    model_file = os.path.join(traffic_dir, "final_traffic_anomaly_model.pkl")
-    if not os.path.exists(model_file):
-        model_file = os.path.join(traffic_dir, "model", "final_traffic_anomaly_model.pkl")
-
-    if not os.path.exists(model_file):
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": "ML_ANOMALY_MODEL_NOT_FOUND",
-                "issue": f"Trained anomaly model file not found in: {traffic_dir}",
-                "message": "Ensure final_traffic_anomaly_model.pkl exists in RoadSense_AI/traffic_congestion.",
-                "features": features
-            }
-        )
-
-    try:
-        import sys
-        if traffic_dir not in sys.path:
-            sys.path.insert(0, traffic_dir)
-
-        import sklearn.compose._column_transformer as ct
-        if not hasattr(ct, '_RemainderColsList'):
-            class _RemainderColsList(list):
-                pass
-            ct._RemainderColsList = _RemainderColsList
-
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            from predict_anomaly import predict_anomaly_detailed
-
-            result = predict_anomaly_detailed(features)
-            result["ml_source"] = "trained-isolation-forest (RoadSense_AI/traffic_congestion)"
-            return result
-    except Exception as err:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "ANOMALY_MODEL_EXECUTION_ERROR",
-                "issue": f"Error executing trained ML anomaly model: {err}",
-                "features": features
             }
         )
 

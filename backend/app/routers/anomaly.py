@@ -34,16 +34,6 @@ def predict_anomaly(
     return ml_service.predict_anomaly(request)
 
 
-@router.post(
-    "/detect",
-    response_model=AnomalyPredictionResponse,
-    summary="Detect traffic anomalies (alias for /predict)",
-)
-def detect_anomaly_alias(
-    request: AnomalyPredictionRequest,
-) -> AnomalyPredictionResponse:
-    return ml_service.predict_anomaly(request)
-
 
 @router.get(
     "",
