@@ -17,22 +17,11 @@ if not hasattr(ct, '_RemainderColsList'):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --------------------------------------------------
-# Resolve Model & Artifact Paths
+# Model & Artifact Paths
 # --------------------------------------------------
-def _find_path(filename: str) -> str:
-    # Check root directory first
-    p1 = os.path.join(BASE_DIR, filename)
-    if os.path.exists(p1):
-        return p1
-    # Check model/ subdirectory
-    p2 = os.path.join(BASE_DIR, "model", filename)
-    if os.path.exists(p2):
-        return p2
-    return p1
-
-MODEL_PATH = _find_path("final_traffic_anomaly_model.pkl")
-SCALER_PATH = _find_path("traffic_anomaly_scaler.pkl")
-FEATURES_PATH = _find_path("traffic_anomaly_features.pkl")
+MODEL_PATH = os.path.join(BASE_DIR, "final_traffic_anomaly_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "traffic_anomaly_scaler.pkl")
+FEATURES_PATH = os.path.join(BASE_DIR, "traffic_anomaly_features.pkl")
 
 # Load artifacts
 anomaly_model = joblib.load(MODEL_PATH)

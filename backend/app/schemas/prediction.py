@@ -125,7 +125,11 @@ class AccidentPredictionRunRequest(BaseModel):
     Request model to run accident risk prediction on-demand.
     ML teams can pass pre-computed risk metrics or telemetry features.
     """
-    road_id: UUID
+    road_id: Optional[UUID] = None
+    road_name: Optional[str] = Field(
+        default=None,
+        description="Searched road name to resolve via geocoding and create if not in DB"
+    )
 
     # Direct ML Output overrides
     risk_percentage: Optional[float] = Field(
@@ -170,6 +174,7 @@ class AccidentPredictionRunResponse(BaseModel):
     risk_percentage: float = Field(..., description="Estimated accident risk percentage (0.0 - 100.0%)")
     risk_level: str = Field(..., description="Categorical risk level: LOW, MEDIUM, HIGH, CRITICAL")
     confidence_score: Optional[float] = None
+    created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
     prediction_time: datetime
     created_at: Optional[datetime] = None
 
@@ -322,6 +327,7 @@ class RouteTrafficPredictionResponse(BaseModel):
         default=None,
         description="Real-time live traffic telemetry: current speed, free-flow speed, delay, congestion percentage"
     )
+    created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 
@@ -361,6 +367,7 @@ class RouteAccidentPredictionResponse(BaseModel):
         default_factory=dict,
         description="Complete feature bundle prepared by the API and passed to the ML model"
     )
+    created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 

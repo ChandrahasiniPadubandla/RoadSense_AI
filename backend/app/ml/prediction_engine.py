@@ -12,7 +12,8 @@ from app.services.geocoding import (
     reverse_geocode,
     find_nearest_road_by_coordinates,
     get_driving_route,
-    get_accidents_along_route
+    get_accidents_along_route,
+    get_or_create_road_from_geocoding
 )
 from app.services.weather import get_live_weather
 from app.services.live_traffic import get_live_traffic_flow
@@ -232,24 +233,25 @@ def resolve_route_bundle(
                 e_lat = geo_results[0]["latitude"]
                 e_lng = geo_results[0]["longitude"]
 
-    # Strict check: Start and destination coordinates must be provided and resolvable
-    if s_lat is None or s_lng is None:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error_code": "MISSING_START_COORDINATES",
-                "message": f"Start coordinates could not be resolved for '{start_name or 'unspecified'}'. Please specify a valid origin location or exact latitude/longitude.",
-                "field": "start_location"
-            }
-        )
+    # If start is resolved but end is not, create a realistic corridor offset
+    if (s_lat is not None and s_lng is not None) and (e_lat is None or e_lng is None):
+        e_lat = round(s_lat + 0.0050, 6)
+        e_lng = round(s_lng + 0.0050, 6)
 
-    if e_lat is None or e_lng is None:
+    # If end is resolved but start is not, create a realistic corridor offset
+    if (e_lat is not None and e_lng is not None) and (s_lat is None or s_lng is None):
+        s_lat = round(e_lat - 0.0050, 6)
+        s_lng = round(e_lng - 0.0050, 6)
+
+    # Strict check: Coordinates must be resolvable
+    if s_lat is None or s_lng is None or e_lat is None or e_lng is None:
+        missing_term = start_name or end_name or "unspecified location"
         raise HTTPException(
             status_code=400,
             detail={
-                "error_code": "MISSING_END_COORDINATES",
-                "message": f"Destination coordinates could not be resolved for '{end_name or 'unspecified'}'. Please specify a valid destination location or exact latitude/longitude.",
-                "field": "end_location"
+                "error_code": "GEOCODING_FAILED",
+                "message": f"Coordinates could not be resolved for '{missing_term}'. Please specify a valid road, landmark, or exact latitude/longitude.",
+                "field": "start_location" if s_lat is None else "end_location"
             }
         )
 
@@ -270,22 +272,47 @@ def resolve_route_bundle(
     if not end_label:
         end_label = f"Location [{e_lat:.4f}, {e_lng:.4f}]"
 
-    # 3. Match or locate Road entity strictly from the database if not yet resolved
+    # 3. Match or locate Road entity from database or auto-create using Geocoding API
+    created_new_road = False
+
+    # Check if user searched for a specific road name
+    searched_term = start_name or end_name
+    if not road and searched_term:
+        clean_term = searched_term.strip()
+        road = db.query(Road).filter(Road.road_name.ilike(f"%{clean_term}%")).first()
+        if not road and "road" in clean_term.lower():
+            short_term = clean_term.lower().replace("road", "").strip()
+            if len(short_term) >= 3:
+                road = db.query(Road).filter(Road.road_name.ilike(f"%{short_term}%")).first()
+
+    # If the searched road is not in the road table db, use geocoding API to create it in DB
+    if not road and searched_term:
+        road, created_new_road = get_or_create_road_from_geocoding(
+            db=db,
+            road_name=searched_term,
+            start_lat=s_lat,
+            start_lng=s_lng,
+            end_lat=e_lat,
+            end_lng=e_lng,
+            start_name=start_name or start_label,
+            end_name=end_name or end_label
+        )
+
+    # If still not resolved (e.g. coordinates passed without searched name), check close proximity (within 200m)
     if not road and s_lat is not None and s_lng is not None:
-        road = find_nearest_road_by_coordinates(db, s_lat, s_lng)
+        road = find_nearest_road_by_coordinates(db, s_lat, s_lng, max_distance_meters=200.0)
 
-    if not road and (start_label or end_label):
-        search_term = start_label or end_label
-        road = db.query(Road).filter(Road.road_name.ilike(f"%{search_term}%")).first()
-
+    # If still not in DB, create road from geocoding
     if not road:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error_code": "ROAD_NOT_FOUND",
-                "message": f"No registered road found in the database near route from '{start_label}' to '{end_label}' (Coordinates: [{s_lat}, {s_lng}] -> [{e_lat}, {e_lng}]). Defaults are disabled; please register this road corridor in the database first.",
-                "coordinates": {"start": [s_lat, s_lng], "end": [e_lat, e_lng]}
-            }
+        road, created_new_road = get_or_create_road_from_geocoding(
+            db=db,
+            road_name=start_label or end_label,
+            start_lat=s_lat,
+            start_lng=s_lng,
+            end_lat=e_lat,
+            end_lng=e_lng,
+            start_name=start_label,
+            end_name=end_label
         )
 
     # Validate that all required road specifications are present in the database
@@ -398,6 +425,7 @@ def resolve_route_bundle(
 
     return {
         "road": road,
+        "created_new_road": created_new_road,
         "start_label": start_label,
         "end_label": end_label,
         "start_latitude": s_lat,
@@ -607,8 +635,6 @@ def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
     """
     traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
     model_file = os.path.join(traffic_dir, "final_traffic_anomaly_model.pkl")
-    if not os.path.exists(model_file):
-        model_file = os.path.join(traffic_dir, "model", "final_traffic_anomaly_model.pkl")
 
     if not os.path.exists(model_file):
         raise HTTPException(

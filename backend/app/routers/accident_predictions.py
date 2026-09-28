@@ -35,6 +35,7 @@ from app.ml.prediction_engine import (
 )
 from app.security import require_roles
 from app.services.hotspot_service import upsert_accident_hotspot
+from app.services.geocoding import get_or_create_road_from_geocoding
 
 router = APIRouter(
     tags=["AI Accident Predictions"]
@@ -50,23 +51,30 @@ def predict_accident_risk_route(
     req: AccidentRiskPredictionRequest,
     db: Session = Depends(get_db),
 ):
-    road = db.query(Road).filter(Road.road_id == req.road_id).first()
+    created_new_road = False
+    road = None
+    if req.road_id is not None:
+        road = db.query(Road).filter(Road.road_id == req.road_id).first()
+    if road is None and req.road_name:
+        road, created_new_road = get_or_create_road_from_geocoding(db=db, road_name=req.road_name)
+
     if road is None:
+        identifier = str(req.road_id) if req.road_id else req.road_name
         raise HTTPException(
             status_code=404,
             detail={
                 "error_code": "ROAD_NOT_FOUND",
-                "message": f"Road with ID '{req.road_id}' does not exist in the database.",
-                "field": "road_id",
+                "message": f"Road '{identifier}' does not exist in the database and could not be geocoded.",
+                "field": "road_id" if req.road_id else "road_name",
             },
         )
 
     try:
-        feature_payload = accident_risk_feature_service.build_feature_payload(db, req.road_id)
+        feature_payload = accident_risk_feature_service.build_feature_payload(db, road.road_id)
         result = accident_risk_service.predict(feature_payload)
     except ValueError as exc:
         logger = logging.getLogger("roadsense")
-        logger.exception("Accident-risk feature preparation failed for road_id=%s", req.road_id)
+        logger.exception("Accident-risk feature preparation failed for road_id=%s", road.road_id)
         raise HTTPException(
             status_code=422,
             detail={
@@ -77,7 +85,7 @@ def predict_accident_risk_route(
         ) from exc
     except RuntimeError as exc:
         logger = logging.getLogger("roadsense")
-        logger.exception("Accident-risk prediction failed for road_id=%s", req.road_id)
+        logger.exception("Accident-risk prediction failed for road_id=%s", road.road_id)
         raise HTTPException(
             status_code=500,
             detail={
@@ -125,6 +133,7 @@ def predict_accident_risk_route(
         road_name=road.road_name,
         accident_risk=result["accident_risk"],
         accident_risk_level=result["accident_risk_level"],
+        created_new_road=created_new_road,
         model_status="loaded",
     )
 
@@ -243,6 +252,7 @@ def predict_route_accident(
         prediction_id=pred_record.prediction_id if pred_record else None,
         road_id=bundle["road"].road_id if bundle["road"] else None,
         road_name=bundle["road_conditions"]["road_name"],
+        created_new_road=bundle.get("created_new_road", False),
         start_location=bundle["start_label"],
         end_location=bundle["end_label"],
         start_latitude=bundle["start_latitude"],
@@ -285,11 +295,18 @@ def run_accident_prediction(
       - risk_percentage (e.g. 45.8%)
       - categorical risk_level (LOW, MEDIUM, HIGH, CRITICAL)
     """
-    road = db.query(Road).filter(Road.road_id == req.road_id).first()
+    road = None
+    created_new_road = False
+    if req.road_id is not None:
+        road = db.query(Road).filter(Road.road_id == req.road_id).first()
+    if road is None and req.road_name:
+        road, created_new_road = get_or_create_road_from_geocoding(db=db, road_name=req.road_name)
+
     if not road:
+        identifier = str(req.road_id) if req.road_id else req.road_name
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot predict accident risk: Road with ID '{req.road_id}' does not exist."
+            detail=f"Cannot predict accident risk: Road '{identifier}' does not exist and could not be geocoded."
         )
 
     now = datetime.now()
@@ -370,6 +387,7 @@ def run_accident_prediction(
         risk_level=ml_result["risk_level"],
         confidence_score=ml_result.get("confidence_score"),
         prediction_time=now,
+        created_new_road=created_new_road,
         created_at=now
     )
 

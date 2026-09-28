@@ -2,10 +2,12 @@ import json
 import logging
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from geoalchemy2.functions import ST_SetSRID, ST_MakePoint
+from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
 
 from app.database.models import Road
@@ -432,6 +434,15 @@ def geocode_location(
     except Exception as err:
         logger.warning("Geocoding failed for '%s': %s", clean_query, err)
 
+    if not results:
+        # Retry with simplified query (stripping junction, chowk, circle, crossroads)
+        simplified = norm_query
+        for suffix in ["junction", "crossroads", "cross roads", "x roads", "x-roads", "circle", "square", "chowk", "bus stop", "stop", "station"]:
+            if suffix in simplified:
+                simplified = simplified.replace(suffix, "").strip()
+        if simplified and simplified != norm_query and len(simplified) >= 3:
+            return geocode_location(query=simplified, city_bias=city_bias, limit=limit, db=db)
+
     final_results = results[:limit]
     _GEOCODE_CACHE[cache_key] = final_results
     return final_results
@@ -643,6 +654,174 @@ def get_driving_route(
         "steps": [],
     }
     return fallback_res
+
+
+def get_or_create_road_from_geocoding(
+    db: Session,
+    road_name: Optional[str] = None,
+    start_lat: Optional[float] = None,
+    start_lng: Optional[float] = None,
+    end_lat: Optional[float] = None,
+    end_lng: Optional[float] = None,
+    start_name: Optional[str] = None,
+    end_name: Optional[str] = None
+) -> Tuple[Road, bool]:
+    """
+    Finds a road in the database, or uses the Geocoding API to resolve its real
+    spatial coordinates, route geometry via OSRM, and properties, and creates the road in the DB.
+    Returns: (Road, created: bool)
+    """
+    from fastapi import HTTPException
+
+    # 1. Search candidate names in existing database
+    candidate_names = [n.strip() for n in [road_name, start_name, end_name] if n and n.strip()]
+    for cand in candidate_names:
+        existing = db.query(Road).filter(Road.road_name.ilike(cand)).first()
+        if not existing and len(cand) >= 3:
+            existing = db.query(Road).filter(Road.road_name.ilike(f"%{cand}%")).first()
+        if not existing and "road" in cand.lower():
+            short_cand = cand.lower().replace("road", "").strip()
+            if len(short_cand) >= 3:
+                existing = db.query(Road).filter(Road.road_name.ilike(f"%{short_cand}%")).first()
+        if existing:
+            return existing, False
+
+    # 2. Check if a registered road starts near the coordinates
+    if start_lat is not None and start_lng is not None:
+        nearby = find_nearest_road_by_coordinates(db, start_lat, start_lng, max_distance_meters=250.0)
+        if nearby:
+            if not candidate_names or any(c.lower() in nearby.road_name.lower() or nearby.road_name.lower() in c.lower() for c in candidate_names):
+                return nearby, False
+
+    # 3. Road was searched but is NOT in the database table -> Resolve via Geocoding API
+    logger.info("Road searched not found in database. Geocoding and auto-creating road: road_name=%s, start=%s, end=%s", road_name, start_name, end_name)
+
+    # 3a. Resolve start coordinates if missing
+    if start_lat is None or start_lng is None:
+        query_start = start_name or road_name
+        if query_start:
+            geo_start = geocode_location(query_start, db=db, limit=1)
+            if geo_start:
+                start_lat = geo_start[0]["latitude"]
+                start_lng = geo_start[0]["longitude"]
+                if not start_name:
+                    start_name = geo_start[0].get("primary_name") or query_start
+
+    # 3b. Resolve end coordinates if missing
+    if end_lat is None or end_lng is None:
+        if end_name:
+            geo_end = geocode_location(end_name, db=db, limit=1)
+            if geo_end:
+                end_lat = geo_end[0]["latitude"]
+                end_lng = geo_end[0]["longitude"]
+
+    # If start coordinates could still not be geocoded, raise 400
+    if start_lat is None or start_lng is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "GEOCODING_FAILED",
+                "message": f"Could not geocode location for '{start_name or road_name or 'unspecified'}'. Please provide a recognizable road or landmark.",
+                "field": "road_name"
+            }
+        )
+
+    # If end coordinates are not set or identical to start, create a realistic 500m corridor offset
+    if end_lat is None or end_lng is None or (abs(end_lat - start_lat) < 0.0001 and abs(end_lng - start_lng) < 0.0001):
+        end_lat = round(start_lat + 0.0050, 6)
+        end_lng = round(start_lng + 0.0050, 6)
+
+    # 3c. Clean up road name
+    clean_name = None
+    if road_name and len(road_name.strip()) >= 2:
+        clean_name = road_name.strip()
+    elif start_name and end_name and start_name.strip().lower() != end_name.strip().lower():
+        clean_name = f"{start_name.strip()} - {end_name.strip()}"
+    elif start_name:
+        clean_name = start_name.strip()
+    elif end_name:
+        clean_name = end_name.strip()
+    else:
+        rev = reverse_geocode(start_lat, start_lng)
+        clean_name = (rev.get("road") if rev else None) or (rev.get("display_name") if rev else None) or f"Road Corridor [{start_lat:.4f}, {start_lng:.4f}]"
+
+    # Append 'Road' only if the name was auto-generated from coordinate reverse-lookup without road keywords
+    if not (road_name or start_name or end_name):
+        if not any(w in clean_name.lower() for w in ["road", "street", "highway", "expressway", "arterial", "avenue", "lane", "junction", "corridor", "track"]):
+            clean_name = f"{clean_name} Road"
+
+    # 3d. Check if clean_name already exists in DB (to prevent duplicates)
+    dup_road = db.query(Road).filter(Road.road_name.ilike(clean_name)).first()
+    if dup_road:
+        return dup_road, False
+
+    # 3e. Infer realistic road parameters
+    name_lower = clean_name.lower()
+    if any(w in name_lower for w in ["highway", "expressway", "ring road", "flyover", "nh", "bypass"]):
+        road_type = "Major Arterial"
+        speed_limit = 60.0
+        road_capacity = 3200
+        number_of_lanes = 6
+    elif any(w in name_lower for w in ["lane", "street", "colony", "gali", "galli", "bazaar"]):
+        road_type = "Sub-Arterial"
+        speed_limit = 40.0
+        road_capacity = 1800
+        number_of_lanes = 2
+    else:
+        road_type = "Urban Arterial"
+        speed_limit = 50.0
+        road_capacity = 2400
+        number_of_lanes = 4
+
+    # 3f. Generate OSRM route geometry
+    driving_route = get_driving_route(start_lat, start_lng, end_lat, end_lng)
+    route_coords = driving_route.get("coordinates") or [[start_lat, start_lng], [end_lat, end_lng]]
+    linestring_wkt = ", ".join(f"{pt[1]} {pt[0]}" for pt in route_coords)
+
+    start_point = WKTElement(f"POINT({start_lng} {start_lat})", srid=4326)
+    end_point = WKTElement(f"POINT({end_lng} {end_lat})", srid=4326)
+    route_geom = WKTElement(f"LINESTRING({linestring_wkt})", srid=4326)
+
+    # 3g. Associate with nearest TrafficZone
+    zone_id = None
+    try:
+        from app.database.models import TrafficZone
+        pt_geom = ST_SetSRID(ST_MakePoint(start_lng, start_lat), 4326)
+        closest_zone = (
+            db.query(TrafficZone)
+            .filter(TrafficZone.location.isnot(None))
+            .order_by(func.ST_Distance(func.geography(TrafficZone.location), func.geography(pt_geom)))
+            .first()
+        )
+        if closest_zone:
+            zone_id = closest_zone.zone_id
+        else:
+            first_z = db.query(TrafficZone).first()
+            if first_z:
+                zone_id = first_z.zone_id
+    except Exception as z_err:
+        logger.debug("Zone lookup fallback: %s", z_err)
+
+    # 3h. Create and commit the new Road in DB
+    new_road = Road(
+        road_name=clean_name[:200],
+        zone_id=zone_id,
+        start_location=start_point,
+        end_location=end_point,
+        route_geometry=route_geom,
+        road_type=road_type,
+        road_capacity=road_capacity,
+        speed_limit=speed_limit,
+        road_condition="GOOD",
+        number_of_lanes=number_of_lanes,
+        is_active=True,
+        created_at=datetime.utcnow()
+    )
+    db.add(new_road)
+    db.commit()
+    db.refresh(new_road)
+    logger.info("Successfully created searched road in DB via geocoding API: '%s' (ID: %s)", new_road.road_name, new_road.road_id)
+    return new_road, True
 
 
 _MANEUVER_VERBS = {

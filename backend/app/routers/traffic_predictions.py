@@ -153,6 +153,7 @@ def predict_route_traffic(
         prediction_id=pred_record.prediction_id if pred_record else None,
         road_id=bundle["road"].road_id if bundle["road"] else None,
         road_name=bundle["road_conditions"]["road_name"],
+        created_new_road=bundle.get("created_new_road", False),
         start_location=bundle["start_label"],
         end_location=bundle["end_label"],
         start_latitude=bundle["start_latitude"],
