@@ -272,39 +272,70 @@ def resolve_route_bundle(
     if not end_label:
         end_label = f"Location [{e_lat:.4f}, {e_lng:.4f}]"
 
-    # 3. Match or locate Road entity from database or auto-create using Geocoding API
+    # 3. Match or locate Road entity from database for BOTH start and end locations,
+    # auto-creating any missing road using the Geocoding API (OpenStreetMap Nominatim + OSRM)
+    newly_created_roads = []
     created_new_road = False
 
-    # Check if user searched for a specific road name
-    searched_term = start_name or end_name
-    if not road and searched_term:
-        clean_term = searched_term.strip()
-        road = db.query(Road).filter(Road.road_name.ilike(f"%{clean_term}%")).first()
-        if not road and "road" in clean_term.lower():
-            short_term = clean_term.lower().replace("road", "").strip()
-            if len(short_term) >= 3:
-                road = db.query(Road).filter(Road.road_name.ilike(f"%{short_term}%")).first()
+    def find_road_in_db(name: Optional[str]) -> Optional[Road]:
+        if not name or len(name.strip()) < 2:
+            return None
+        clean = name.strip()
+        r = db.query(Road).filter(Road.road_name.ilike(f"%{clean}%")).first()
+        if not r and "road" in clean.lower():
+            short = clean.lower().replace("road", "").strip()
+            if len(short) >= 3:
+                r = db.query(Road).filter(Road.road_name.ilike(f"%{short}%")).first()
+        return r
 
-    # If the searched road is not in the road table db, use geocoding API to create it in DB
-    if not road and searched_term:
-        road, created_new_road = get_or_create_road_from_geocoding(
-            db=db,
-            road_name=searched_term,
-            start_lat=s_lat,
-            start_lng=s_lng,
-            end_lat=e_lat,
-            end_lng=e_lng,
-            start_name=start_name or start_label,
-            end_name=end_name or end_label
-        )
+    start_road = None
+    end_road = None
 
-    # If still not resolved (e.g. coordinates passed without searched name), check close proximity (within 200m)
+    # Check start road in database
+    if start_name and start_name.strip():
+        start_road = find_road_in_db(start_name)
+        if not start_road:
+            created_road, was_created = get_or_create_road_from_geocoding(
+                db=db,
+                road_name=start_name.strip(),
+                start_lat=s_lat,
+                start_lng=s_lng,
+                start_name=start_name.strip()
+            )
+            start_road = created_road
+            if was_created:
+                created_new_road = True
+                if start_road.road_name not in newly_created_roads:
+                    newly_created_roads.append(start_road.road_name)
+
+    # Check end road in database
+    if end_name and end_name.strip():
+        end_road = find_road_in_db(end_name)
+        if not end_road:
+            created_road, was_created = get_or_create_road_from_geocoding(
+                db=db,
+                road_name=end_name.strip(),
+                start_lat=e_lat,
+                start_lng=e_lng,
+                start_name=end_name.strip()
+            )
+            end_road = created_road
+            if was_created:
+                created_new_road = True
+                if end_road.road_name not in newly_created_roads:
+                    newly_created_roads.append(end_road.road_name)
+
+    # Select the primary road for telemetry and feature conditioning
+    if not road:
+        road = start_road or end_road
+
+    # If still not resolved (e.g. coordinates passed without searched names), check close proximity (within 200m)
     if not road and s_lat is not None and s_lng is not None:
         road = find_nearest_road_by_coordinates(db, s_lat, s_lng, max_distance_meters=200.0)
 
     # If still not in DB, create road from geocoding
     if not road:
-        road, created_new_road = get_or_create_road_from_geocoding(
+        road, was_created = get_or_create_road_from_geocoding(
             db=db,
             road_name=start_label or end_label,
             start_lat=s_lat,
@@ -314,6 +345,10 @@ def resolve_route_bundle(
             start_name=start_label,
             end_name=end_label
         )
+        if was_created:
+            created_new_road = True
+            if road.road_name not in newly_created_roads:
+                newly_created_roads.append(road.road_name)
 
     # Validate that all required road specifications are present in the database
     missing_road_fields = []
@@ -426,6 +461,7 @@ def resolve_route_bundle(
     return {
         "road": road,
         "created_new_road": created_new_road,
+        "newly_created_roads": newly_created_roads,
         "start_label": start_label,
         "end_label": end_label,
         "start_latitude": s_lat,

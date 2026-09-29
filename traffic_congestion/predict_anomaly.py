@@ -116,29 +116,3 @@ def predict_anomaly_detailed(
         "confidence_score": float(confidence),
         "features_used": {feat: float(raw_dict.get(feat, 0.0)) for feat in anomaly_features}
     }
-
-
-if __name__ == "__main__":
-    # Test normal traffic scenario
-    normal_sample = {
-        "vehicle_count": 850,
-        "average_speed": 35.5,
-        "traffic_density": 50.0,
-        "road_capacity": 1500,
-        "previous_traffic": 820,
-        "hour": 14
-    }
-    print("Normal Sample Test:")
-    print(predict_anomaly_detailed(normal_sample))
-
-    # Test extreme anomaly scenario (huge vehicle surge, stalled speed)
-    anomaly_sample = {
-        "vehicle_count": 4800,
-        "average_speed": 2.1,
-        "traffic_density": 98.5,
-        "road_capacity": 1000,
-        "previous_traffic": 600,
-        "hour": 3
-    }
-    print("\nAnomaly Sample Test:")
-    print(predict_anomaly_detailed(anomaly_sample))

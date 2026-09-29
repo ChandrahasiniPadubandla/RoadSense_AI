@@ -328,6 +328,7 @@ class RouteTrafficPredictionResponse(BaseModel):
         description="Real-time live traffic telemetry: current speed, free-flow speed, delay, congestion percentage"
     )
     created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
+    newly_created_roads: List[str] = Field(default_factory=list, description="Names of roads newly geocoded and saved to the database")
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 
@@ -368,6 +369,7 @@ class RouteAccidentPredictionResponse(BaseModel):
         description="Complete feature bundle prepared by the API and passed to the ML model"
     )
     created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
+    newly_created_roads: List[str] = Field(default_factory=list, description="Names of roads newly geocoded and saved to the database")
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 
