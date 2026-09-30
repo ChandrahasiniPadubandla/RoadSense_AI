@@ -1,91 +1,213 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, ArrowRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
+  RefreshCw, ArrowRight, TrendingUp, TrendingDown, Minus,
+  Route, Flame, Gauge, Siren, ShieldAlert, CalendarClock, Skull, Database,
+} from 'lucide-react';
+import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import DataTable from '../components/DataTable';
 import LevelBadge from '../components/LevelBadge';
 import { TRAFFIC_LEVEL_COLOR } from '../utils/constants';
 import {
-  getDashboardStats,
-  getDashboardTrend,
-  getRoads,
-  getAccidentLayer,
-  getTrafficLayer,
-  getHotspots,
-  getAnomalies,
+  getDashboardStats, getDashboardTrend, getRoads, getAccidentLayer, getTrafficLayer, getHotspots, getAnomalies,
 } from '../api_services';
 
 const LEVEL_BAR_COLOR = { LOW: '#3FA772', MEDIUM: '#E8A33D', HIGH: '#D14343', SEVERE: '#8F1D1D', UNKNOWN: '#7A828C' };
 const LEVEL_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'SEVERE', 'UNKNOWN'];
-
 const DONUT_COLORS = ['#3E7CB1', '#E8A33D', '#D14343', '#3FA772', '#8B5CF6', '#7A828C'];
+const TOWER_SPOTS = [[143, 110], [46, 60], [240, 60], [46, 200], [240, 200], [143, 250]];
+const TOWER_COLORS = ['#D14343', '#E8A33D', '#3E7CB1', '#3E7CB1', '#3E7CB1', '#3E7CB1'];
 
-/**
- * Tracks whether the app is currently in dark mode by watching the `dark`
- * class on <html> (the standard Tailwind `darkMode: 'class'` toggle target,
- * matching the `dark:` classes already used throughout this file). Recharts
- * components like <Tooltip contentStyle={...}> take plain inline styles,
- * not Tailwind classes, so they can't pick up dark: variants on their own —
- * this hook is what lets chart colors actually follow the theme toggle.
- */
+const glass =
+  'rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-md shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)] ' +
+  'dark:border-asphalt-700/70 dark:bg-asphalt-900/60 dark:shadow-[0_18px_40px_-20px_rgba(0,0,0,0.7)]';
+
 function useIsDarkMode() {
   const [isDark, setIsDark] = useState(
     () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
   );
-
   useEffect(() => {
     const root = document.documentElement;
-    const observer = new MutationObserver(() => {
-      setIsDark(root.classList.contains('dark'));
-    });
+    const observer = new MutationObserver(() => setIsDark(root.classList.contains('dark')));
     observer.observe(root, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
-
   return isDark;
 }
 
-function Donut({ data, height = 180, isDark }) {
-  if (!data || data.length === 0) {
-    return (
-      <div className="flex h-[180px] items-center justify-center text-xs text-slate-400 dark:text-asphalt-500">
-        No data yet
+/** Card that tilts toward the pointer and lifts its content off the surface. */
+function Tilt({ children, className = '', max = 9, index = 0 }) {
+  const reduce = useReducedMotion();
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const sx = useSpring(x, { stiffness: 220, damping: 22 });
+  const sy = useSpring(y, { stiffness: 220, damping: 22 });
+  const rotateX = useTransform(sy, [-0.5, 0.5], [max, -max]);
+  const rotateY = useTransform(sx, [-0.5, 0.5], [-max, max]);
+  const sheen = useTransform(
+    [sx, sy],
+    ([a, b]) => `radial-gradient(circle at ${(a + 0.5) * 100}% ${(b + 0.5) * 100}%, rgba(110,180,240,0.22), transparent 60%)`
+  );
+  const move = (e) => {
+    if (reduce) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    x.set((e.clientX - r.left) / r.width - 0.5);
+    y.set((e.clientY - r.top) / r.height - 0.5);
+  };
+  const leave = () => { x.set(0); y.set(0); };
+
+  return (
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 28, rotateX: -22 }}
+      animate={{ opacity: 1, y: 0, rotateX: 0 }}
+      transition={{ delay: index * 0.06, type: 'spring', stiffness: 120, damping: 16 }}
+      style={{ perspective: 900 }}
+      className={className}
+      onMouseMove={move}
+      onMouseLeave={leave}
+    >
+      <motion.div style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }} className={`relative h-full ${glass}`}>
+        <motion.div style={{ background: sheen }} className="pointer-events-none absolute inset-0 rounded-xl" />
+        {children}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+const TONES = {
+  neutral: { text: 'text-slate-900 dark:text-asphalt-100', chip: 'bg-slate-100 text-slate-500 dark:bg-asphalt-800 dark:text-asphalt-300', glow: '' },
+  info: { text: 'text-signal-blue', chip: 'bg-signal-blue/15 text-signal-blue', glow: 'shadow-[0_0_24px_-6px_#3E7CB1]' },
+  warn: { text: 'text-signal-amber', chip: 'bg-signal-amber/15 text-signal-amber', glow: 'shadow-[0_0_24px_-6px_#E8A33D]' },
+  danger: { text: 'text-signal-red', chip: 'bg-signal-red/15 text-signal-red', glow: 'shadow-[0_0_24px_-6px_#D14343]' },
+};
+
+function Kpi({ icon: Icon, label, value, unit, hint, tone = 'neutral', index }) {
+  const t = TONES[tone];
+  return (
+    <Tilt index={index}>
+      <div className="p-4" style={{ transform: 'translateZ(34px)' }}>
+        <div className="flex items-center justify-between">
+          <p className="truncate text-xs font-medium text-slate-500 dark:text-asphalt-400">{label}</p>
+          <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${t.chip} ${t.glow}`}>
+            <Icon size={16} />
+          </span>
+        </div>
+        <p className={`data-num mt-3 text-3xl font-bold tracking-tight ${t.text}`}>
+          {value}
+          {unit && <span className="ml-1 text-sm font-medium text-slate-400 dark:text-asphalt-500">{unit}</span>}
+        </p>
+        {hint && <p className="mt-1 truncate text-xs text-slate-400 dark:text-asphalt-500">{hint}</p>}
       </div>
-    );
+    </Tilt>
+  );
+}
+
+/** One 3D block: footprint sits on the floor plane, sides rise along +Z. */
+function Tower({ x, y, h, color, w = 54 }) {
+  const side = (style, dir) => ({
+    position: 'absolute',
+    background: `linear-gradient(${dir}, ${color}2e, ${color}d9)`,
+    border: `1px solid ${color}`,
+    ...style,
+  });
+  return (
+    <div style={{ position: 'absolute', left: x, top: y, width: w, height: w, transformStyle: 'preserve-3d' }}>
+      <div style={{ position: 'absolute', inset: -10, background: `${color}40`, filter: 'blur(12px)' }} />
+      <div style={side({ left: 0, top: w, width: w, height: h, transformOrigin: 'top', transform: 'rotateX(90deg)' }, 'to bottom')} />
+      <div style={side({ left: 0, top: 0, width: w, height: h, transformOrigin: 'top', transform: 'rotateX(90deg)', opacity: 0.6 }, 'to bottom')} />
+      <div style={side({ left: 0, top: 0, width: h, height: w, transformOrigin: 'left', transform: 'rotateY(-90deg)', opacity: 0.75 }, 'to right')} />
+      <div style={side({ left: w, top: 0, width: h, height: w, transformOrigin: 'left', transform: 'rotateY(-90deg)' }, 'to right')} />
+      <div style={{ position: 'absolute', inset: 0, background: color, border: '1px solid #fff5', boxShadow: `0 0 22px ${color}`, transform: `translateZ(${h}px)` }} />
+    </div>
+  );
+}
+
+/** Drag-to-rotate 3D city of accident hotspots: taller tower = more accidents. */
+function HotspotScene({ hotspots }) {
+  const reduce = useReducedMotion();
+  const rz = useMotionValue(-35);
+  const dragX = useRef(null);
+  useEffect(() => {
+    if (reduce) return undefined;
+    let raf;
+    let last = performance.now();
+    const tick = (t) => {
+      if (dragX.current == null) rz.set(rz.get() + (t - last) * 0.006);
+      last = t;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [reduce, rz]);
+
+  const max = Math.max(1, ...hotspots.map((h) => h.accident_count || 0));
+  const items = hotspots.slice(0, TOWER_SPOTS.length);
+
+  return (
+    <div className="relative h-full min-h-[340px] overflow-hidden rounded-xl border border-asphalt-700 bg-[radial-gradient(ellipse_at_50%_35%,#1b2a3b_0%,#0E1013_70%)] shadow-[0_24px_60px_-20px_rgba(62,124,177,0.45)]">
+      <div
+        className="absolute inset-0 cursor-grab touch-pan-y active:cursor-grabbing"
+        style={{ perspective: 1100 }}
+        onPointerDown={(e) => { dragX.current = e.clientX; e.currentTarget.setPointerCapture(e.pointerId); }}
+        onPointerMove={(e) => { if (dragX.current != null) { rz.set(rz.get() + (e.clientX - dragX.current) * 0.4); dragX.current = e.clientX; } }}
+        onPointerUp={() => { dragX.current = null; }}
+        onPointerCancel={() => { dragX.current = null; }}
+      >
+        <motion.div
+          style={{ rotateX: 58, rotateZ: rz, y: 30, transformStyle: 'preserve-3d', width: 340, height: 340, marginLeft: -170, marginTop: -170 }}
+          className="absolute left-1/2 top-1/2"
+        >
+          <div
+            style={{
+              position: 'absolute', inset: 0, borderRadius: 8,
+              background: 'rgba(62,124,177,0.08)', border: '1px solid rgba(110,180,240,0.5)',
+              backgroundImage: 'linear-gradient(rgba(110,180,240,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(110,180,240,0.3) 1px, transparent 1px)',
+              backgroundSize: '34px 34px', boxShadow: '0 0 60px rgba(62,124,177,0.35)',
+            }}
+          />
+          {items.map((h, i) => (
+            <Tower key={h.hotspot_id ?? i} x={TOWER_SPOTS[i][0]} y={TOWER_SPOTS[i][1]} color={TOWER_COLORS[i]} h={28 + ((h.accident_count || 0) / max) * 130} />
+          ))}
+        </motion.div>
+      </div>
+
+      {items.length === 0 && (
+        <p className="absolute inset-0 flex items-center justify-center text-sm text-asphalt-400">No hotspots calculated yet.</p>
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-4 gap-y-1 bg-gradient-to-t from-asphalt-950 to-transparent px-4 pb-3 pt-8 text-xs text-asphalt-300">
+        {items.map((h, i) => (
+          <span key={h.hotspot_id ?? i} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-sm" style={{ background: TOWER_COLORS[i], boxShadow: `0 0 8px ${TOWER_COLORS[i]}` }} />
+            {h.zone_name || 'Unnamed zone'}
+            <span className="data-num font-semibold text-asphalt-100">{h.accident_count}</span>
+          </span>
+        ))}
+        <span className="ml-auto text-asphalt-500">Drag to rotate · taller = more accidents</span>
+      </div>
+    </div>
+  );
+}
+
+function Donut({ data, height = 150, isDark }) {
+  if (!data || data.length === 0) {
+    return <div className="flex h-[150px] items-center justify-center text-xs text-slate-400 dark:text-asphalt-500">No data yet</div>;
   }
-  const total = data.reduce((sum, d) => sum + d.value, 0);
+  const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <div className="flex items-center gap-4">
-      <div style={{ width: height, height }}>
+      <div style={{ width: height, height, transform: 'perspective(520px) rotateX(24deg)', filter: 'drop-shadow(0 16px 10px rgba(0,0,0,0.35))' }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" innerRadius="62%" outerRadius="95%" paddingAngle={2}>
-              {data.map((entry, i) => (
-                <Cell key={entry.name} fill={DONUT_COLORS[i % DONUT_COLORS.length]} stroke="none" />
-              ))}
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius="60%" outerRadius="96%" paddingAngle={3}>
+              {data.map((d, i) => <Cell key={d.name} fill={DONUT_COLORS[i % DONUT_COLORS.length]} stroke="none" />)}
             </Pie>
             <Tooltip
-              contentStyle={{
-                background: isDark ? '#1D2126' : '#ffffff',
-                border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`,
-                borderRadius: 6,
-                fontSize: 12,
-                color: isDark ? '#E5E7EB' : '#0F172A',
-              }}
+              contentStyle={{ background: isDark ? '#1D2126' : '#fff', border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`, borderRadius: 8, fontSize: 12 }}
               itemStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
-              labelStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
-              formatter={(value, name) => [`${value} (${((value / total) * 100).toFixed(0)}%)`, name]}
+              formatter={(v, n) => [`${v} (${((v / total) * 100).toFixed(0)}%)`, n]}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -105,19 +227,13 @@ function Donut({ data, height = 180, isDark }) {
   );
 }
 
-/** Flat section container: one quiet border, no shadow. */
-function Panel({ title, subtitle, action, children, className = '' }) {
+function Panel({ title, subtitle, children, className = '' }) {
   return (
-    <section
-      className={`rounded-lg border border-slate-200 bg-white dark:border-asphalt-700 dark:bg-asphalt-900 ${className}`}
-    >
-      {(title || action) && (
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3 dark:border-asphalt-800">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-asphalt-100">{title}</h3>
-            {subtitle && <p className="mt-0.5 text-xs text-slate-500 dark:text-asphalt-400">{subtitle}</p>}
-          </div>
-          {action}
+    <section className={`${glass} ${className}`}>
+      {title && (
+        <header className="border-b border-slate-100 px-5 py-3 dark:border-asphalt-800">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-asphalt-100">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs text-slate-500 dark:text-asphalt-400">{subtitle}</p>}
         </header>
       )}
       {children}
@@ -125,62 +241,16 @@ function Panel({ title, subtitle, action, children, className = '' }) {
   );
 }
 
-/** Small uppercase label used to title a block inside a panel. */
-function BlockLabel({ children }) {
-  return (
-    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-asphalt-400">
-      {children}
-    </p>
-  );
-}
-
-/**
- * One metric inside the overview strip. `tone` colours only the status dot
- * and (for primary metrics) the value, so colour always carries meaning.
- */
-function Metric({ label, value, unit, hint, tone = 'neutral', size = 'md' }) {
-  const toneText = {
-    neutral: 'text-slate-900 dark:text-asphalt-100',
-    info: 'text-signal-blue',
-    warn: 'text-signal-amber',
-    danger: 'text-signal-red',
-  }[tone];
-  const dot = {
-    neutral: 'bg-slate-300 dark:bg-asphalt-600',
-    info: 'bg-signal-blue',
-    warn: 'bg-signal-amber',
-    danger: 'bg-signal-red',
-  }[tone];
-
-  return (
-    <div className="min-w-0 px-5 py-4">
-      <div className="flex items-center gap-2">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
-        <p className="truncate text-xs font-medium text-slate-500 dark:text-asphalt-400">{label}</p>
-      </div>
-      <p
-        className={`data-num mt-1.5 font-bold tracking-tight ${toneText} ${
-          size === 'lg' ? 'text-3xl' : 'text-2xl'
-        }`}
-      >
-        {value}
-        {unit && <span className="ml-1 text-sm font-medium text-slate-400 dark:text-asphalt-500">{unit}</span>}
-      </p>
-      {hint && <p className="mt-0.5 truncate text-xs text-slate-400 dark:text-asphalt-500">{hint}</p>}
-    </div>
-  );
-}
+const BlockLabel = ({ children }) => (
+  <p className="mb-3 text-xs font-semibold text-slate-500 dark:text-asphalt-400">{children}</p>
+);
 
 function TrendChip({ delta }) {
   if (delta == null || !Number.isFinite(delta)) return null;
   const flat = Math.abs(delta) < 0.5;
   const up = delta > 0;
   const Icon = flat ? Minus : up ? TrendingUp : TrendingDown;
-  const tone = flat
-    ? 'text-slate-500 bg-slate-100 dark:text-asphalt-300 dark:bg-asphalt-800'
-    : up
-    ? 'text-signal-amber bg-signal-amber/10'
-    : 'text-signal-green bg-signal-green/10';
+  const tone = flat ? 'text-slate-500 bg-slate-100 dark:text-asphalt-300 dark:bg-asphalt-800' : up ? 'text-signal-amber bg-signal-amber/10' : 'text-signal-green bg-signal-green/10';
   return (
     <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${tone}`}>
       <Icon size={12} />
@@ -207,12 +277,7 @@ export default function Dashboard() {
     setIsLoading(true);
     try {
       const [statsRes, historyRes, roadsRes, accidentRes, trafficRes, hotspotsRes, anomaliesRes] = await Promise.all([
-        getDashboardStats(),
-        getDashboardTrend(),
-        getRoads(),
-        getAccidentLayer(),
-        getTrafficLayer(),
-        getHotspots(6),
+        getDashboardStats(), getDashboardTrend(), getRoads(), getAccidentLayer(), getTrafficLayer(), getHotspots(6),
         getAnomalies(5).catch(() => []),
       ]);
       setStats(statsRes);
@@ -230,29 +295,19 @@ export default function Dashboard() {
     }
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
-  const severityBreakdown = useMemo(() => {
+  const countBy = (features, key, fallback = 'UNKNOWN') => {
     const counts = {};
-    for (const f of accidentFeatures) {
-      const sev = (f.properties?.severity || 'UNKNOWN').toUpperCase();
-      counts[sev] = (counts[sev] || 0) + 1;
+    for (const f of features) {
+      const k = (f.properties?.[key] || fallback).toUpperCase();
+      counts[k] = (counts[k] || 0) + 1;
     }
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [accidentFeatures]);
+  };
+  const severityBreakdown = useMemo(() => countBy(accidentFeatures, 'severity'), [accidentFeatures]);
+  const congestionBreakdown = useMemo(() => countBy(trafficFeatures, 'congestion_level'), [trafficFeatures]);
 
-  const congestionBreakdown = useMemo(() => {
-    const counts = {};
-    for (const f of trafficFeatures) {
-      const lvl = (f.properties?.congestion_level || 'UNKNOWN').toUpperCase();
-      counts[lvl] = (counts[lvl] || 0) + 1;
-    }
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [trafficFeatures]);
-
-  // Network status bar: how many monitored road segments sit at each level (from the live road list).
   const networkStatus = useMemo(() => {
     const counts = {};
     for (const r of roads) {
@@ -260,52 +315,27 @@ export default function Dashboard() {
       counts[lvl] = (counts[lvl] || 0) + 1;
     }
     const total = roads.length;
-    return {
-      total,
-      segments: LEVEL_ORDER.filter((l) => counts[l]).map((l) => ({ level: l, count: counts[l], pct: (counts[l] / total) * 100 })),
-    };
+    return { total, segments: LEVEL_ORDER.filter((l) => counts[l]).map((l) => ({ level: l, count: counts[l], pct: (counts[l] / total) * 100 })) };
   }, [roads]);
 
-  // Real trend indicator: change between the two most recent volume observations.
   const volumeDelta = useMemo(() => {
     if (!history || history.length < 2) return null;
     const last = history[history.length - 1].vehicles;
     const prev = history[history.length - 2].vehicles;
-    if (!prev) return null;
-    return ((last - prev) / prev) * 100;
+    return prev ? ((last - prev) / prev) * 100 : null;
   }, [history]);
 
   const topHotspot = hotspots?.[0];
-  const maxHotspotCount = Math.max(1, ...(hotspots || []).map((h) => h.accident_count || 0));
 
   const insights = useMemo(() => {
     const list = [];
-    const highCongestion = congestionBreakdown.find((c) => c.name === 'HIGH' || c.name === 'SEVERE');
-    const totalCongestionSamples = congestionBreakdown.reduce((s, c) => s + c.value, 0);
-    if (highCongestion && totalCongestionSamples > 0) {
-      list.push({
-        tone: 'warn',
-        text: `${Math.round((highCongestion.value / totalCongestionSamples) * 100)}% of monitored roads are at HIGH or SEVERE congestion right now.`,
-      });
-    }
-    if (topHotspot) {
-      list.push({
-        tone: 'danger',
-        text: `${topHotspot.zone_name || 'Top zone'} is the highest accident hotspot with ${topHotspot.accident_count} recorded accidents.`,
-      });
-    }
-    if (anomalies.length > 0) {
-      list.push({
-        tone: 'warn',
-        text: `${anomalies.length} traffic anomal${anomalies.length === 1 ? 'y has' : 'ies have'} been detected recently — review the Anomalies page.`,
-      });
-    }
-    if (stats?.accidentAlerts) {
-      list.push({ tone: 'danger', text: `${stats.accidentAlerts} severe/fatal accident alert(s) currently require attention.` });
-    }
-    if (list.length === 0) {
-      list.push({ tone: 'ok', text: 'No significant risk signals detected — system operating within normal parameters.' });
-    }
+    const high = congestionBreakdown.filter((c) => c.name === 'HIGH' || c.name === 'SEVERE').reduce((s, c) => s + c.value, 0);
+    const total = congestionBreakdown.reduce((s, c) => s + c.value, 0);
+    if (high > 0 && total > 0) list.push({ tone: 'warn', text: `${Math.round((high / total) * 100)}% of monitored roads are at HIGH or SEVERE congestion right now.` });
+    if (topHotspot) list.push({ tone: 'danger', text: `${topHotspot.zone_name || 'Top zone'} is the highest accident hotspot with ${topHotspot.accident_count} recorded accidents.` });
+    if (anomalies.length > 0) list.push({ tone: 'warn', text: `${anomalies.length} traffic anomal${anomalies.length === 1 ? 'y has' : 'ies have'} been detected recently. Review the Anomalies page.` });
+    if (stats?.accidentAlerts) list.push({ tone: 'danger', text: `${stats.accidentAlerts} severe/fatal accident alert(s) currently require attention.` });
+    if (list.length === 0) list.push({ tone: 'ok', text: 'No significant risk signals detected. The system is operating within normal parameters.' });
     return list;
   }, [congestionBreakdown, topHotspot, anomalies, stats]);
 
@@ -316,190 +346,154 @@ export default function Dashboard() {
   const dash = '–';
   const fmt = (v) => (v == null ? dash : typeof v === 'number' ? v.toLocaleString() : v);
   const insightDot = { ok: 'bg-signal-green', warn: 'bg-signal-amber', danger: 'bg-signal-red' };
+  const axis = isDark ? '#7A828C' : '#64748B';
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="font-mono text-[11px] font-bold uppercase tracking-widest text-signal-blue">Executive Overview</p>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">
+    <div className="relative space-y-6">
+      <div aria-hidden className="pointer-events-none absolute -top-6 left-1/2 h-[460px] w-[120%] -translate-x-1/2 bg-[radial-gradient(ellipse_at_30%_0%,rgba(62,124,177,0.22),transparent_60%),radial-gradient(ellipse_at_85%_10%,rgba(209,67,67,0.12),transparent_55%)]" />
+
+      {/* Hero: headline + 3D hotspot scene */}
+      <div className="relative grid grid-cols-1 items-stretch gap-6 lg:grid-cols-5">
+        <div className="flex flex-col justify-center lg:col-span-2">
+          <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-slate-900 dark:text-asphalt-100">
             Smart Traffic Dashboard
           </h1>
-          <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500 dark:text-asphalt-400">
+          <p className="mt-2 max-w-md text-sm text-slate-600 dark:text-asphalt-300">
+            Live congestion, accident risk and road health across every monitored road.
+          </p>
+          <div className="mt-3 flex items-center gap-2 text-xs text-slate-500 dark:text-asphalt-400">
             <span className="relative flex h-2 w-2">
               <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${stats ? 'animate-ping bg-emerald-400' : 'bg-signal-amber'}`} />
               <span className={`relative inline-flex h-2 w-2 rounded-full ${stats ? 'bg-emerald-500' : 'bg-signal-amber'}`} />
             </span>
             <span className="font-medium">{stats ? 'Live data connected' : 'Backend unavailable'}</span>
-            {lastUpdated && <span>· Synced {lastUpdated}</span>}
+            {lastUpdated && <span>Synced {lastUpdated}</span>}
           </div>
+          <div className="mt-5 flex items-center gap-2">
+            <button
+              onClick={() => navigate('/live-map')}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-signal-blue px-4 py-2 text-sm font-medium text-white shadow-[0_8px_24px_-8px_#3E7CB1] transition-transform hover:-translate-y-0.5"
+            >
+              Open live map <ArrowRight size={15} />
+            </button>
+            <button
+              onClick={loadData}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 backdrop-blur transition-colors hover:border-signal-blue/50 disabled:opacity-50 dark:border-asphalt-700 dark:bg-asphalt-900/60 dark:text-asphalt-200"
+            >
+              <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+              {isLoading ? 'Syncing…' : 'Refresh'}
+            </button>
+          </div>
+          {topHotspot && (
+            <div className={`${glass} mt-6 flex items-center gap-3 px-4 py-3`}>
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-signal-red/15 text-signal-red shadow-[0_0_24px_-6px_#D14343]"><Flame size={18} /></span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900 dark:text-asphalt-100">{topHotspot.zone_name || 'Top zone'}</p>
+                <p className="text-xs text-slate-500 dark:text-asphalt-400">Highest hotspot · {topHotspot.accident_count} accidents</p>
+              </div>
+            </div>
+          )}
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate('/live-map')}
-            className="inline-flex items-center gap-1.5 rounded-md bg-signal-blue px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-          >
-            Open Live Map <ArrowRight size={14} />
-          </button>
-          <button
-            onClick={loadData}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-signal-blue/50 disabled:opacity-50 dark:border-asphalt-700 dark:bg-asphalt-900 dark:text-asphalt-200"
-          >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-            {isLoading ? 'Syncing…' : 'Refresh'}
-          </button>
+        <div className="lg:col-span-3">
+          <HotspotScene hotspots={hotspots} />
         </div>
       </div>
 
       {!stats && (
         <div className="rounded-lg border border-signal-amber/30 bg-signal-amber/10 px-4 py-3 text-xs text-signal-amber">
-          No live statistics available from the backend API. Please verify backend connection.
+          No live statistics available from the backend API. Please verify the backend connection.
         </div>
       )}
 
-      {/* Overview strip: ONE panel, grouped metrics separated by dividers */}
-      <Panel>
-        <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-5 lg:divide-x lg:divide-y-0">
-          <div className="lg:col-span-2">
-            <p className="px-5 pt-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-asphalt-400">
-              Traffic network
-            </p>
-            <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-asphalt-800">
-              <Metric size="lg" label="Active roads" value={fmt(stats?.activeRoads)} hint={stats?.totalRoads ? `of ${stats.totalRoads} registered` : undefined} />
-              <Metric size="lg" label="High traffic" value={fmt(stats?.highTraffic)} tone="warn" hint="roads congested" />
-              <Metric size="lg" label="Avg speed" value={stats?.averageSpeed ? stats.averageSpeed : dash} unit={stats?.averageSpeed ? 'km/h' : undefined} tone="info" hint="network-wide" />
-            </div>
-          </div>
-          <div className="lg:col-span-3">
-            <p className="px-5 pt-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-asphalt-400">
-              Safety
-            </p>
-            <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-asphalt-800 sm:grid-cols-4">
-              <Metric size="lg" label="Accident alerts" value={fmt(stats?.accidentAlerts)} tone={stats?.accidentAlerts ? 'danger' : 'neutral'} hint="need attention" />
-              <Metric size="lg" label="High-risk zones" value={fmt(stats?.highRiskZones)} tone={stats?.highRiskZones ? 'danger' : 'neutral'} />
-              <Metric size="lg" label="Accidents today" value={fmt(stats?.accidentsToday)} />
-              <Metric size="lg" label="Total accidents" value={fmt(stats?.totalAccidents)} hint="all time" />
-            </div>
-          </div>
-        </div>
+      {/* KPI cards */}
+      <div className="relative grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Kpi index={0} icon={Route} label="Active roads" value={fmt(stats?.activeRoads)} hint={stats?.totalRoads ? `of ${stats.totalRoads} registered` : undefined} />
+        <Kpi index={1} icon={Flame} tone="warn" label="High traffic" value={fmt(stats?.highTraffic)} hint="roads congested" />
+        <Kpi index={2} icon={Gauge} tone="info" label="Avg speed" value={stats?.averageSpeed ? stats.averageSpeed : dash} unit={stats?.averageSpeed ? 'km/h' : undefined} hint="network-wide" />
+        <Kpi index={3} icon={Database} label="Traffic records" value={fmt(stats?.totalTrafficRecords)} hint="ingested observations" />
+        <Kpi index={4} icon={Siren} tone={stats?.accidentAlerts ? 'danger' : 'neutral'} label="Accident alerts" value={fmt(stats?.accidentAlerts)} hint="need attention" />
+        <Kpi index={5} icon={ShieldAlert} tone={stats?.highRiskZones ? 'danger' : 'neutral'} label="High-risk zones" value={fmt(stats?.highRiskZones)} />
+        <Kpi index={6} icon={CalendarClock} label="Accidents today" value={fmt(stats?.accidentsToday)} />
+        <Kpi index={7} icon={Skull} label="Total accidents" value={fmt(stats?.totalAccidents)} hint="all time" />
+      </div>
 
-        {/* Network status bar */}
-        {networkStatus.total > 0 && (
-          <div className="border-t border-slate-100 px-5 py-3 dark:border-asphalt-800">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="font-medium text-slate-600 dark:text-asphalt-300">
-                Road network status · {networkStatus.total} segments
-              </span>
-              <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-500 dark:text-asphalt-400">
-                {networkStatus.segments.map((seg) => (
-                  <li key={seg.level} className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: LEVEL_BAR_COLOR[seg.level] }} />
-                    {seg.level.charAt(0) + seg.level.slice(1).toLowerCase()}
-                    <span className="data-num font-semibold text-slate-700 dark:text-asphalt-200">{seg.count}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-asphalt-800">
+      {/* Network status bar */}
+      {networkStatus.total > 0 && (
+        <Panel className="px-5 py-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="font-medium text-slate-600 dark:text-asphalt-300">Road network status across {networkStatus.total} segments</span>
+            <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-500 dark:text-asphalt-400">
               {networkStatus.segments.map((seg) => (
-                <div key={seg.level} title={`${seg.level}: ${seg.count}`} style={{ width: `${seg.pct}%`, backgroundColor: LEVEL_BAR_COLOR[seg.level] }} />
+                <li key={seg.level} className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: LEVEL_BAR_COLOR[seg.level] }} />
+                  {seg.level.charAt(0) + seg.level.slice(1).toLowerCase()}
+                  <span className="data-num font-semibold text-slate-700 dark:text-asphalt-200">{seg.count}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
-        )}
-      </Panel>
+          <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-slate-100 dark:bg-asphalt-800">
+            {networkStatus.segments.map((seg) => (
+              <div key={seg.level} title={`${seg.level}: ${seg.count}`} className="h-full" style={{ width: `${seg.pct}%`, backgroundColor: LEVEL_BAR_COLOR[seg.level], boxShadow: `0 0 12px ${LEVEL_BAR_COLOR[seg.level]}99` }} />
+            ))}
+          </div>
+        </Panel>
+      )}
 
-      {/* Analytics: volume trend + severity split share one panel */}
-      <Panel
-        title="Traffic & safety analytics"
-        subtitle="Live vehicle volume and accident severity from recorded observations"
-        action={stats?.totalTrafficRecords ? <span className="text-xs text-slate-500 dark:text-asphalt-400">{stats.totalTrafficRecords.toLocaleString()} traffic records</span> : null}
-      >
+      {/* Analytics */}
+      <Panel title="Traffic and safety analytics" subtitle="Live vehicle volume and accident severity from recorded observations">
         <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
           <div className="p-5 lg:col-span-2">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <BlockLabel>Vehicle volume — observation trend</BlockLabel>
+              <BlockLabel>Vehicle volume trend</BlockLabel>
               <TrendChip delta={volumeDelta} />
             </div>
             {history && history.length > 0 ? (
-              <div className="h-56">
+              <div className="h-56 [&_.recharts-area-curve]:[filter:drop-shadow(0_6px_8px_rgba(62,124,177,0.7))]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={history}>
                     <defs>
                       <linearGradient id="volumeFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3E7CB1" stopOpacity={0.3} />
+                        <stop offset="0%" stopColor="#5BA3DE" stopOpacity={0.55} />
                         <stop offset="100%" stopColor="#3E7CB1" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke={isDark ? '#282D34' : '#E2E8F0'} strokeOpacity={isDark ? 0.4 : 0.8} vertical={false} />
-                    <XAxis dataKey="hour" stroke={isDark ? '#7A828C' : '#64748B'} fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke={isDark ? '#7A828C' : '#64748B'} fontSize={12} tickLine={false} axisLine={false} />
+                    <CartesianGrid stroke={isDark ? '#282D34' : '#E2E8F0'} strokeOpacity={isDark ? 0.5 : 0.8} vertical={false} />
+                    <XAxis dataKey="hour" stroke={axis} fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke={axis} fontSize={12} tickLine={false} axisLine={false} />
                     <Tooltip
-                      contentStyle={{
-                        background: isDark ? '#1D2126' : '#ffffff',
-                        border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`,
-                        borderRadius: 6,
-                        fontSize: 12,
-                        color: isDark ? '#E5E7EB' : '#0F172A',
-                      }}
+                      contentStyle={{ background: isDark ? '#1D2126' : '#fff', border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`, borderRadius: 8, fontSize: 12 }}
                       itemStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
-                      labelStyle={{ color: isDark ? '#94A3B8' : '#64748B' }}
-                      formatter={(value) => [`${Number(value).toLocaleString()} vehicles`, 'Volume']}
-                      labelFormatter={(label) => `Time: ${label}`}
+                      labelStyle={{ color: axis }}
+                      formatter={(v) => [`${Number(v).toLocaleString()} vehicles`, 'Volume']}
+                      labelFormatter={(l) => `Time: ${l}`}
                     />
-                    <Area type="monotone" dataKey="vehicles" stroke="#3E7CB1" strokeWidth={2} fill="url(#volumeFill)" />
+                    <Area type="monotone" dataKey="vehicles" stroke="#5BA3DE" strokeWidth={2.5} fill="url(#volumeFill)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             ) : (
               <div className="flex h-44 flex-col items-center justify-center rounded-md bg-slate-50 p-6 text-center dark:bg-asphalt-950/40">
-                <p className="text-sm font-medium text-slate-600 dark:text-asphalt-300">No traffic trend data available</p>
-                <p className="mt-1 max-w-sm text-xs text-slate-400 dark:text-asphalt-500">
-                  No traffic volume observations were found in the database. The chart populates automatically as sensor data is ingested.
-                </p>
+                <p className="text-sm font-medium text-slate-600 dark:text-asphalt-300">No traffic trend data yet</p>
+                <p className="mt-1 max-w-sm text-xs text-slate-400 dark:text-asphalt-500">The chart fills in automatically once sensor observations are ingested.</p>
               </div>
             )}
           </div>
-
           <div className="p-5">
             <BlockLabel>Accidents by severity</BlockLabel>
-            <Donut data={severityBreakdown} isDark={isDark} height={150} />
+            <Donut data={severityBreakdown} isDark={isDark} />
           </div>
         </div>
       </Panel>
 
-      {/* Risk: hotspots, congestion split and insights share one panel */}
-      <Panel title="Risk & congestion" subtitle="Where problems concentrate and what needs attention">
-        <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-          <div className="p-5">
-            <BlockLabel>Top accident hotspots</BlockLabel>
-            {hotspots.length === 0 ? (
-              <p className="text-xs text-slate-400 dark:text-asphalt-500">No hotspots calculated yet.</p>
-            ) : (
-              <ul className="space-y-3">
-                {hotspots.map((h) => (
-                  <li key={h.hotspot_id}>
-                    <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                      <span className="truncate font-medium text-slate-700 dark:text-asphalt-200">{h.zone_name || 'Unnamed zone'}</span>
-                      <span className="data-num font-semibold text-slate-900 dark:text-asphalt-100">{h.accident_count}</span>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-asphalt-800">
-                      <div className="h-full rounded-full bg-signal-red" style={{ width: `${Math.max(6, (h.accident_count / maxHotspotCount) * 100)}%` }} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
+      {/* Risk */}
+      <Panel title="Risk and congestion" subtitle="Where problems concentrate and what needs attention">
+        <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
           <div className="p-5">
             <BlockLabel>Congestion by level</BlockLabel>
-            <Donut data={congestionBreakdown} isDark={isDark} height={150} />
+            <Donut data={congestionBreakdown} isDark={isDark} />
           </div>
-
           <div className="p-5">
             <BlockLabel>Key insights</BlockLabel>
             <ul className="space-y-3">
@@ -514,7 +508,7 @@ export default function Dashboard() {
         </div>
       </Panel>
 
-      {/* Road status (paginated) */}
+      {/* Road status */}
       <section>
         <div className="mb-3 flex items-baseline justify-between">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-asphalt-100">Road status</h3>
@@ -527,11 +521,7 @@ export default function Dashboard() {
             { key: 'vehicleCount', header: 'Vehicles' },
             { key: 'avgSpeed', header: 'Avg speed' },
             { key: 'weather', header: 'Weather' },
-            {
-              key: 'trafficLevel',
-              header: 'Level',
-              render: (row) => <LevelBadge level={row.trafficLevel} colorMap={TRAFFIC_LEVEL_COLOR} />,
-            },
+            { key: 'trafficLevel', header: 'Level', render: (row) => <LevelBadge level={row.trafficLevel} colorMap={TRAFFIC_LEVEL_COLOR} /> },
           ]}
           rows={roads}
           emptyMessage="No road segments found in the database. Add roads or connect live traffic sensors to view records."
