@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
@@ -23,13 +23,15 @@ const TITLES = {
 
 export default function DashboardLayout() {
   const { pathname } = useLocation();
-  const title = TITLES[pathname] || 'Smart Traffic System';
+  const title = TITLES[pathname] || TITLES[pathname.toLowerCase()] || 'Smart Traffic System';
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-asphalt-950">
-      <Sidebar />
+      <Sidebar open={sidebarOpen} onClose={closeSidebar} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar title={title} />
+        <Topbar title={title} onMenuClick={() => setSidebarOpen((v) => !v)} />
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>

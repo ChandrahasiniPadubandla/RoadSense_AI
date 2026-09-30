@@ -584,7 +584,7 @@ export default function TrafficPrediction() {
 
       <div>
 
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">
+        <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">
           Traffic Prediction
         </h1>
 

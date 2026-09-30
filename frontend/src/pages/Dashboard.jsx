@@ -21,6 +21,12 @@ const DONUT_COLORS = ['#3E7CB1', '#E8A33D', '#D14343', '#3FA772', '#8B5CF6', '#7
 const TOWER_SPOTS = [[143, 110], [46, 60], [240, 60], [46, 200], [240, 200], [143, 250]];
 const TOWER_COLORS = ['#D14343', '#E8A33D', '#3E7CB1', '#3E7CB1', '#3E7CB1', '#3E7CB1'];
 
+const TABS = [
+  { id: 'analytics', label: 'Traffic and safety analysis' },
+  { id: 'risk', label: 'Risk and congestion' },
+  { id: 'roads', label: 'Road status' },
+];
+
 const glass =
   'rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-md shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)] ' +
   'dark:border-asphalt-700/70 dark:bg-asphalt-900/60 dark:shadow-[0_18px_40px_-20px_rgba(0,0,0,0.7)]';
@@ -126,7 +132,7 @@ function Tower({ x, y, h, color, w = 54 }) {
 }
 
 /** Drag-to-rotate 3D city of accident hotspots: taller tower = more accidents. */
-function HotspotScene({ hotspots }) {
+function HotspotScene({ hotspots, isDark }) {
   const reduce = useReducedMotion();
   const rz = useMotionValue(-35);
   const dragX = useRef(null);
@@ -147,7 +153,7 @@ function HotspotScene({ hotspots }) {
   const items = hotspots.slice(0, TOWER_SPOTS.length);
 
   return (
-    <div className="relative h-full min-h-[340px] overflow-hidden rounded-xl border border-asphalt-700 bg-[radial-gradient(ellipse_at_50%_35%,#1b2a3b_0%,#0E1013_70%)] shadow-[0_24px_60px_-20px_rgba(62,124,177,0.45)]">
+    <div className="relative h-full min-h-[380px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.25)] dark:border-asphalt-700 dark:bg-[radial-gradient(ellipse_at_50%_35%,#1b2a3b_0%,#0E1013_70%)] dark:shadow-[0_24px_60px_-20px_rgba(62,124,177,0.45)]">
       <div
         className="absolute inset-0 cursor-grab touch-pan-y active:cursor-grabbing"
         style={{ perspective: 1100 }}
@@ -157,15 +163,19 @@ function HotspotScene({ hotspots }) {
         onPointerCancel={() => { dragX.current = null; }}
       >
         <motion.div
-          style={{ rotateX: 58, rotateZ: rz, y: 30, transformStyle: 'preserve-3d', width: 340, height: 340, marginLeft: -170, marginTop: -170 }}
+          style={{ rotateX: 58, rotateZ: rz, scale: 0.7, y: 25, transformStyle: 'preserve-3d', width: 340, height: 340, marginLeft: -170, marginTop: -170 }}
           className="absolute left-1/2 top-1/2"
         >
           <div
             style={{
               position: 'absolute', inset: 0, borderRadius: 8,
-              background: 'rgba(62,124,177,0.08)', border: '1px solid rgba(110,180,240,0.5)',
-              backgroundImage: 'linear-gradient(rgba(110,180,240,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(110,180,240,0.3) 1px, transparent 1px)',
-              backgroundSize: '34px 34px', boxShadow: '0 0 60px rgba(62,124,177,0.35)',
+              background: isDark ? 'rgba(62,124,177,0.08)' : 'rgba(62,124,177,0.05)',
+              border: isDark ? '1px solid rgba(110,180,240,0.5)' : '1px solid rgba(62,124,177,0.35)',
+              backgroundImage: isDark
+                ? 'linear-gradient(rgba(110,180,240,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(110,180,240,0.3) 1px, transparent 1px)'
+                : 'linear-gradient(rgba(62,124,177,0.22) 1px, transparent 1px), linear-gradient(90deg, rgba(62,124,177,0.22) 1px, transparent 1px)',
+              backgroundSize: '34px 34px',
+              boxShadow: isDark ? '0 0 60px rgba(62,124,177,0.35)' : '0 10px 30px rgba(15,23,42,0.08)',
             }}
           />
           {items.map((h, i) => (
@@ -175,17 +185,17 @@ function HotspotScene({ hotspots }) {
       </div>
 
       {items.length === 0 && (
-        <p className="absolute inset-0 flex items-center justify-center text-sm text-asphalt-400">No hotspots calculated yet.</p>
+        <p className="absolute inset-0 flex items-center justify-center text-sm text-slate-400 dark:text-asphalt-400">No hotspots calculated yet.</p>
       )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-4 gap-y-1 bg-gradient-to-t from-asphalt-950 to-transparent px-4 pb-3 pt-8 text-xs text-asphalt-300">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-4 gap-y-1 bg-gradient-to-t from-white via-white/90 to-transparent px-4 pb-3 pt-8 text-xs text-slate-600 dark:from-asphalt-950 dark:via-asphalt-950/90 dark:text-asphalt-300">
         {items.map((h, i) => (
           <span key={h.hotspot_id ?? i} className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-sm" style={{ background: TOWER_COLORS[i], boxShadow: `0 0 8px ${TOWER_COLORS[i]}` }} />
             {h.zone_name || 'Unnamed zone'}
-            <span className="data-num font-semibold text-asphalt-100">{h.accident_count}</span>
+            <span className="data-num font-semibold text-slate-900 dark:text-asphalt-100">{h.accident_count}</span>
           </span>
         ))}
-        <span className="ml-auto text-asphalt-500">Drag to rotate · taller = more accidents</span>
+        <span className="ml-auto text-slate-400 dark:text-asphalt-500">Drag to rotate · taller = more accidents</span>
       </div>
     </div>
   );
@@ -272,6 +282,7 @@ export default function Dashboard() {
   const [anomalies, setAnomalies] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [activeTab, setActiveTab] = useState('analytics');
 
   async function loadData() {
     setIsLoading(true);
@@ -355,7 +366,7 @@ export default function Dashboard() {
       {/* Hero: headline + 3D hotspot scene */}
       <div className="relative grid grid-cols-1 items-stretch gap-6 lg:grid-cols-5">
         <div className="flex flex-col justify-center lg:col-span-2">
-          <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-slate-900 dark:text-asphalt-100">
+          <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">
             Smart Traffic Dashboard
           </h1>
           <p className="mt-2 max-w-md text-sm text-slate-600 dark:text-asphalt-300">
@@ -396,7 +407,7 @@ export default function Dashboard() {
           )}
         </div>
         <div className="lg:col-span-3">
-          <HotspotScene hotspots={hotspots} />
+          <HotspotScene hotspots={hotspots} isDark={isDark} />
         </div>
       </div>
 
@@ -441,92 +452,124 @@ export default function Dashboard() {
         </Panel>
       )}
 
-      {/* Analytics */}
-      <Panel title="Traffic and safety analytics" subtitle="Live vehicle volume and accident severity from recorded observations">
-        <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-          <div className="p-5 lg:col-span-2">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <BlockLabel>Vehicle volume trend</BlockLabel>
-              <TrendChip delta={volumeDelta} />
+      {/* Tabs */}
+      <div className="relative">
+        <div role="tablist" aria-label="Dashboard sections" className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-asphalt-800">
+          {TABS.map((t) => {
+            const active = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(t.id)}
+                className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  active
+                    ? 'border-signal-blue text-signal-blue'
+                    : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-asphalt-400 dark:hover:text-asphalt-100'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div role="tabpanel" className="mt-5">
+          {activeTab === 'analytics' && (
+            <>
+          <Panel title="Traffic and safety analytics" subtitle="Live vehicle volume and accident severity from recorded observations">
+            <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+              <div className="p-5 lg:col-span-2">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <BlockLabel>Vehicle volume trend</BlockLabel>
+                  <TrendChip delta={volumeDelta} />
+                </div>
+                {history && history.length > 0 ? (
+                  <div className="h-56 [&_.recharts-area-curve]:[filter:drop-shadow(0_6px_8px_rgba(62,124,177,0.7))]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={history}>
+                        <defs>
+                          <linearGradient id="volumeFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#5BA3DE" stopOpacity={0.55} />
+                            <stop offset="100%" stopColor="#3E7CB1" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke={isDark ? '#282D34' : '#E2E8F0'} strokeOpacity={isDark ? 0.5 : 0.8} vertical={false} />
+                        <XAxis dataKey="hour" stroke={axis} fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke={axis} fontSize={12} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{ background: isDark ? '#1D2126' : '#fff', border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`, borderRadius: 8, fontSize: 12 }}
+                          itemStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
+                          labelStyle={{ color: axis }}
+                          formatter={(v) => [`${Number(v).toLocaleString()} vehicles`, 'Volume']}
+                          labelFormatter={(l) => `Time: ${l}`}
+                        />
+                        <Area type="monotone" dataKey="vehicles" stroke="#5BA3DE" strokeWidth={2.5} fill="url(#volumeFill)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="flex h-44 flex-col items-center justify-center rounded-md bg-slate-50 p-6 text-center dark:bg-asphalt-950/40">
+                    <p className="text-sm font-medium text-slate-600 dark:text-asphalt-300">No traffic trend data yet</p>
+                    <p className="mt-1 max-w-sm text-xs text-slate-400 dark:text-asphalt-500">The chart fills in automatically once sensor observations are ingested.</p>
+                  </div>
+                )}
+              </div>
+              <div className="p-5">
+                <BlockLabel>Accidents by severity</BlockLabel>
+                <Donut data={severityBreakdown} isDark={isDark} />
+              </div>
             </div>
-            {history && history.length > 0 ? (
-              <div className="h-56 [&_.recharts-area-curve]:[filter:drop-shadow(0_6px_8px_rgba(62,124,177,0.7))]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={history}>
-                    <defs>
-                      <linearGradient id="volumeFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#5BA3DE" stopOpacity={0.55} />
-                        <stop offset="100%" stopColor="#3E7CB1" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke={isDark ? '#282D34' : '#E2E8F0'} strokeOpacity={isDark ? 0.5 : 0.8} vertical={false} />
-                    <XAxis dataKey="hour" stroke={axis} fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke={axis} fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: isDark ? '#1D2126' : '#fff', border: `1px solid ${isDark ? '#282D34' : '#E2E8F0'}`, borderRadius: 8, fontSize: 12 }}
-                      itemStyle={{ color: isDark ? '#E5E7EB' : '#0F172A' }}
-                      labelStyle={{ color: axis }}
-                      formatter={(v) => [`${Number(v).toLocaleString()} vehicles`, 'Volume']}
-                      labelFormatter={(l) => `Time: ${l}`}
-                    />
-                    <Area type="monotone" dataKey="vehicles" stroke="#5BA3DE" strokeWidth={2.5} fill="url(#volumeFill)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="flex h-44 flex-col items-center justify-center rounded-md bg-slate-50 p-6 text-center dark:bg-asphalt-950/40">
-                <p className="text-sm font-medium text-slate-600 dark:text-asphalt-300">No traffic trend data yet</p>
-                <p className="mt-1 max-w-sm text-xs text-slate-400 dark:text-asphalt-500">The chart fills in automatically once sensor observations are ingested.</p>
-              </div>
-            )}
-          </div>
-          <div className="p-5">
-            <BlockLabel>Accidents by severity</BlockLabel>
-            <Donut data={severityBreakdown} isDark={isDark} />
-          </div>
-        </div>
-      </Panel>
+          </Panel>
 
-      {/* Risk */}
-      <Panel title="Risk and congestion" subtitle="Where problems concentrate and what needs attention">
-        <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-          <div className="p-5">
-            <BlockLabel>Congestion by level</BlockLabel>
-            <Donut data={congestionBreakdown} isDark={isDark} />
-          </div>
-          <div className="p-5">
-            <BlockLabel>Key insights</BlockLabel>
-            <ul className="space-y-3">
-              {insights.map((item, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-xs leading-relaxed text-slate-600 dark:text-asphalt-300">
-                  <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${insightDot[item.tone]}`} />
-                  <span>{item.text}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </Panel>
+            </>
+          )}
+          {activeTab === 'risk' && (
+            <>
+          <Panel title="Risk and congestion" subtitle="Where problems concentrate and what needs attention">
+            <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-asphalt-800 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+              <div className="p-5">
+                <BlockLabel>Congestion by level</BlockLabel>
+                <Donut data={congestionBreakdown} isDark={isDark} />
+              </div>
+              <div className="p-5">
+                <BlockLabel>Key insights</BlockLabel>
+                <ul className="space-y-3">
+                  {insights.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-xs leading-relaxed text-slate-600 dark:text-asphalt-300">
+                      <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${insightDot[item.tone]}`} />
+                      <span>{item.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </Panel>
 
-      {/* Road status */}
-      <section>
-        <div className="mb-3 flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-asphalt-100">Road status</h3>
-          <span className="text-xs text-slate-500 dark:text-asphalt-400">Latest reading per monitored road</span>
+            </>
+          )}
+          {activeTab === 'roads' && (
+            <>
+          <section>
+            <p className="mb-3 text-xs text-slate-500 dark:text-asphalt-400">Latest reading per monitored road</p>
+            <DataTable
+              label="roads"
+              columns={[
+                { key: 'name', header: 'Road' },
+                { key: 'vehicleCount', header: 'Vehicles' },
+                { key: 'avgSpeed', header: 'Avg speed' },
+                { key: 'weather', header: 'Weather' },
+                { key: 'trafficLevel', header: 'Level', render: (row) => <LevelBadge level={row.trafficLevel} colorMap={TRAFFIC_LEVEL_COLOR} /> },
+              ]}
+              rows={roads}
+              emptyMessage="No road segments found in the database. Add roads or connect live traffic sensors to view records."
+            />
+          </section>
+            </>
+          )}
         </div>
-        <DataTable
-          label="roads"
-          columns={[
-            { key: 'name', header: 'Road' },
-            { key: 'vehicleCount', header: 'Vehicles' },
-            { key: 'avgSpeed', header: 'Avg speed' },
-            { key: 'weather', header: 'Weather' },
-            { key: 'trafficLevel', header: 'Level', render: (row) => <LevelBadge level={row.trafficLevel} colorMap={TRAFFIC_LEVEL_COLOR} /> },
-          ]}
-          rows={roads}
-          emptyMessage="No road segments found in the database. Add roads or connect live traffic sensors to view records."
-        />
-      </section>
+      </div>
     </div>
   );
 }
