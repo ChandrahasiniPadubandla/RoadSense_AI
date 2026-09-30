@@ -27,6 +27,8 @@ CREATE TABLE users (
 
     role_id UUID NOT NULL,
 
+    username VARCHAR(50) NOT NULL,
+
     name VARCHAR(100) NOT NULL,
 
     email VARCHAR(150) UNIQUE NOT NULL,
@@ -47,6 +49,23 @@ CREATE TABLE users (
         FOREIGN KEY (role_id)
         REFERENCES roles(role_id)
 );
+
+-- Username upgrade block: this also backfills existing databases without
+-- changing any existing account IDs, names, emails, roles, or other fields.
+-- For an existing database, run this block by itself; the full schema file
+-- creates all tables and is intended for a new database.
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS username VARCHAR(50);
+
+UPDATE users
+SET username = 'user_' || replace(user_id::text, '-', '')
+WHERE username IS NULL;
+
+ALTER TABLE users
+    ALTER COLUMN username SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_username
+    ON users (username);
 
 
 -- =========================================================

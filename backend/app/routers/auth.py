@@ -1,6 +1,7 @@
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 
@@ -9,7 +10,7 @@ from app.models import Accident, AuthOTP, AuditLog, EmergencyResponse, User, Rol
 from app.email import EmailDeliveryError, send_email_verification_otp, send_password_reset_otp
 from app.schemas.auth import (
     RegisterRequest,
-    UserUpdateRequest,
+    UserProfileUpdate,
     LoginRequest,
     LoginResponse,
     UserResponse,
@@ -331,7 +332,7 @@ def get_me(
     response_model=UserResponse
 )
 def update_me(
-    user_data: UserUpdateRequest,
+    user_data: UserProfileUpdate,
     user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -355,26 +356,30 @@ def update_me(
             detail="At least one field is required"
         )
 
-    if "email" in updates:
+    if "username" in updates:
         existing_user = (
             db.query(User)
-            .filter(User.email == updates["email"], User.user_id != user_id)
+            .filter(User.username == updates["username"], User.user_id != user.user_id)
             .first()
         )
-
         if existing_user:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Username already exists"
             )
-
-    if "password" in updates:
-        user.password_hash = hash_password(updates.pop("password"))
 
     for field, value in updates.items():
         setattr(user, field, value)
 
-    db.commit()
+    user.updated_at = datetime.utcnow()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already exists"
+        ) from exc
     db.refresh(user)
 
     return user

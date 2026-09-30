@@ -20,6 +20,12 @@ class User(Base):
 
     user_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     role_id = Column(Uuid, ForeignKey("roles.role_id"), nullable=False)
+    username = Column(
+        String(50),
+        unique=True,
+        nullable=False,
+        default=lambda: f"user_{uuid.uuid4().hex}",
+    )
     name = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False)
     password_hash = Column(Text, nullable=False)
