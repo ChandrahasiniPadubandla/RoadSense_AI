@@ -193,11 +193,24 @@ def resolve_route_bundle(
         if not end_name:
             end_name = road.road_name
 
+    if start_name and end_name and start_name.strip().lower() == end_name.strip().lower():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "IDENTICAL_LOCATIONS",
+                "message": f"Start location and destination cannot be identical ('{start_name.strip()}'). Please provide two distinct locations.",
+                "field": "end_location"
+            }
+        )
+
     # 2. Resolve real latitude & longitude
     s_lat = start_lat
     s_lng = start_lng
     e_lat = end_lat
     e_lng = end_lng
+
+    start_geo_res = None
+    end_geo_res = None
 
     # Dynamic Geocoding & Local Database Route Resolution
     if (s_lat is None or s_lng is None) and start_name:
@@ -211,10 +224,18 @@ def resolve_route_bundle(
             if not road:
                 road = matched_s
         else:
-            geo_results = geocode_location(start_name)
-            if geo_results:
-                s_lat = geo_results[0]["latitude"]
-                s_lng = geo_results[0]["longitude"]
+            start_geo_res = geocode_location(start_name, db=db)
+            if not start_geo_res:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error_code": "LOCATION_NOT_FOUND",
+                        "message": f"Start location '{clean_s}' does not exist in geocoding records. Please provide a valid road or landmark.",
+                        "field": "start_location"
+                    }
+                )
+            s_lat = start_geo_res[0]["latitude"]
+            s_lng = start_geo_res[0]["longitude"]
 
     if (e_lat is None or e_lng is None) and end_name:
         clean_e = end_name.strip()
@@ -228,18 +249,44 @@ def resolve_route_bundle(
             pt = to_shape(matched_e.start_location)
             e_lat, e_lng = pt.y, pt.x
         else:
-            geo_results = geocode_location(end_name)
-            if geo_results:
-                e_lat = geo_results[0]["latitude"]
-                e_lng = geo_results[0]["longitude"]
+            end_geo_res = geocode_location(end_name, db=db)
+            if not end_geo_res:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error_code": "LOCATION_NOT_FOUND",
+                        "message": f"End location '{clean_e}' does not exist in geocoding records. Please provide a valid road or landmark.",
+                        "field": "end_location"
+                    }
+                )
+            e_lat = end_geo_res[0]["latitude"]
+            e_lng = end_geo_res[0]["longitude"]
 
-    # If start is resolved but end is not, create a realistic corridor offset
+    # If start is resolved but end was not specified, create a realistic corridor offset
     if (s_lat is not None and s_lng is not None) and (e_lat is None or e_lng is None):
+        if end_name:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_code": "LOCATION_NOT_FOUND",
+                    "message": f"End location '{end_name.strip()}' could not be resolved in geocoding.",
+                    "field": "end_location"
+                }
+            )
         e_lat = round(s_lat + 0.0050, 6)
         e_lng = round(s_lng + 0.0050, 6)
 
-    # If end is resolved but start is not, create a realistic corridor offset
+    # If end is resolved but start was not specified, create a realistic corridor offset
     if (e_lat is not None and e_lng is not None) and (s_lat is None or s_lng is None):
+        if start_name:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_code": "LOCATION_NOT_FOUND",
+                    "message": f"Start location '{start_name.strip()}' could not be resolved in geocoding.",
+                    "field": "start_location"
+                }
+            )
         s_lat = round(e_lat - 0.0050, 6)
         s_lng = round(e_lng - 0.0050, 6)
 
@@ -255,9 +302,22 @@ def resolve_route_bundle(
             }
         )
 
+    # Check for identical resolved coordinates
+    if abs(s_lat - e_lat) < 0.0001 and abs(s_lng - e_lng) < 0.0001:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "IDENTICAL_LOCATIONS",
+                "message": "Start location and destination resolve to the exact same point. Please provide two distinct locations.",
+                "field": "end_location"
+            }
+        )
+
     # Reverse geocode labels if user only passed coordinates (e.g. Map Click or GPS)
     start_label = start_name
-    if not start_label:
+    if start_geo_res:
+        start_label = start_geo_res[0].get("address", {}).get("road") or start_geo_res[0].get("primary_name") or start_name
+    elif not start_label:
         rev = reverse_geocode(s_lat, s_lng)
         if rev:
             start_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
@@ -265,15 +325,16 @@ def resolve_route_bundle(
         start_label = f"Location [{s_lat:.4f}, {s_lng:.4f}]"
 
     end_label = end_name
-    if not end_label:
+    if end_geo_res:
+        end_label = end_geo_res[0].get("address", {}).get("road") or end_geo_res[0].get("primary_name") or end_name
+    elif not end_label:
         rev = reverse_geocode(e_lat, e_lng)
         if rev:
             end_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
     if not end_label:
         end_label = f"Location [{e_lat:.4f}, {e_lng:.4f}]"
 
-    # 3. Match or locate Road entity from database for BOTH start and end locations,
-    # auto-creating any missing road using the Geocoding API (OpenStreetMap Nominatim + OSRM)
+    # 3. Match existing Road entity from database or construct dynamic corridor
     newly_created_roads = []
     created_new_road = False
 
@@ -291,66 +352,42 @@ def resolve_route_bundle(
     start_road = None
     end_road = None
 
-    # Check start road in database
+    # Check start road in database (lookup only - do not auto-create roads for waypoints)
     if start_name and start_name.strip():
         start_road = find_road_in_db(start_name)
-        if not start_road:
-            created_road, was_created = get_or_create_road_from_geocoding(
-                db=db,
-                road_name=start_name.strip(),
-                start_lat=s_lat,
-                start_lng=s_lng,
-                start_name=start_name.strip()
-            )
-            start_road = created_road
-            if was_created:
-                created_new_road = True
-                if start_road.road_name not in newly_created_roads:
-                    newly_created_roads.append(start_road.road_name)
 
-    # Check end road in database
+    # Check end road in database (lookup only - do not auto-create roads for waypoints)
     if end_name and end_name.strip():
         end_road = find_road_in_db(end_name)
-        if not end_road:
-            created_road, was_created = get_or_create_road_from_geocoding(
-                db=db,
-                road_name=end_name.strip(),
-                start_lat=e_lat,
-                start_lng=e_lng,
-                start_name=end_name.strip()
-            )
-            end_road = created_road
-            if was_created:
-                created_new_road = True
-                if end_road.road_name not in newly_created_roads:
-                    newly_created_roads.append(end_road.road_name)
 
     # Select the primary road for telemetry and feature conditioning
     if not road:
         road = start_road or end_road
 
-    # If still not resolved (e.g. coordinates passed without searched names), check close proximity (within 200m)
+    # If still not resolved, check close proximity (within 200m) to an existing registered road
     if not road and s_lat is not None and s_lng is not None:
         road = find_nearest_road_by_coordinates(db, s_lat, s_lng, max_distance_meters=200.0)
 
-    # If still not in DB, create road from geocoding
+    # If still not matching an existing DB road, use a dynamic in-memory corridor without creating fake DB rows
     if not road:
-        road, was_created = get_or_create_road_from_geocoding(
-            db=db,
-            road_name=start_label or end_label,
-            start_lat=s_lat,
-            start_lng=s_lng,
-            end_lat=e_lat,
-            end_lng=e_lng,
-            start_name=start_label,
-            end_name=end_label
-        )
-        if was_created:
-            created_new_road = True
-            if road.road_name not in newly_created_roads:
-                newly_created_roads.append(road.road_name)
+        if start_label and end_label and start_label.strip().lower() != end_label.strip().lower():
+            corridor_name = f"{start_label.strip()} - {end_label.strip()}"
+        else:
+            corridor_name = start_label or end_label or "Dynamic Corridor"
 
-    # Validate that all required road specifications are present in the database
+        road = Road(
+            road_id=None,
+            zone_id=None,
+            road_name=corridor_name,
+            road_type="Urban Arterial",
+            speed_limit=50.0,
+            road_capacity=2400,
+            road_condition="Good",
+            number_of_lanes=4,
+            is_active=True
+        )
+
+    # Validate that all required road specifications are present
     missing_road_fields = []
     if not road.road_type:
         missing_road_fields.append("road_type")
@@ -368,9 +405,9 @@ def resolve_route_bundle(
             status_code=422,
             detail={
                 "error_code": "INCOMPLETE_ROAD_RECORD",
-                "message": f"Road '{road.road_name}' (ID: {road.road_id}) is missing required specification(s): {', '.join(missing_road_fields)}. Defaults are disabled; please update this road in the database with complete attributes.",
+                "message": f"Road '{road.road_name}' (ID: {road.road_id}) is missing required specification(s): {', '.join(missing_road_fields)}.",
                 "missing_fields": missing_road_fields,
-                "road_id": str(road.road_id)
+                "road_id": str(road.road_id) if road.road_id else None
             }
         )
 
@@ -381,7 +418,7 @@ def resolve_route_bundle(
 
     # 2. Road Conditions (strictly real values from the Road entity)
     road_conditions = {
-        "road_id": str(road.road_id),
+        "road_id": str(road.road_id) if road.road_id else None,
         "road_name": road.road_name,
         "road_type": road.road_type,
         "road_capacity": int(road.road_capacity),
@@ -412,7 +449,7 @@ def resolve_route_bundle(
     )
 
     # 4. Historical Accident Statistics
-    accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
+    accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count() if road.road_id else 0
 
     # 5. Telemetry Baseline: Dynamic blend between real-time TomTom telemetry (near-term) and temporal forecast (future)
     raw_cap = int(road.road_capacity or 1500)

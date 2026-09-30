@@ -22,6 +22,7 @@ from app.routers import (
     traffic_predictions,
     accident_predictions,
     accident_hotspots,
+    voice,
 )
 
 
@@ -31,6 +32,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(audit.router, dependencies=auth_dep)
     app.include_router(dashboard.router, dependencies=auth_dep)
     app.include_router(chatbot.router)
+    app.include_router(voice.router)
     app.include_router(admin.router, dependencies=auth_dep)
     app.include_router(zones.router, dependencies=auth_dep)
     app.include_router(roads.router, dependencies=auth_dep)

@@ -201,7 +201,7 @@ def predict_route_accident(
     ml_result = trigger_ml_accident_model(bundle)
     pred_record = None
 
-    if req.persist and bundle["road"]:
+    if req.persist and bundle["road"] and getattr(bundle["road"], "road_id", None) is not None:
         pred_record = AccidentPrediction(
             road_id=bundle["road"].road_id,
             prediction_time=now,

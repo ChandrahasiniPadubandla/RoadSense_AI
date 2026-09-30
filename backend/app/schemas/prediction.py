@@ -271,6 +271,7 @@ class RoutePredictionRequest(BaseModel):
     end_latitude: Optional[float] = Field(default=None, description="End latitude, e.g. 17.4435")
     end_longitude: Optional[float] = Field(default=None, description="End longitude, e.g. 78.3772")
     road_id: Optional[UUID] = Field(default=None, description="Optional road_id if user selected a known road")
+    voice_text: Optional[str] = Field(default=None, description="Optional spoken natural query or voice transcript, e.g. 'Traffic from Ameerpet to Secunderabad'")
     target_time: Optional[datetime] = Field(default=None, description="Target prediction time")
     target_minutes_ahead: Optional[int] = Field(default=30, ge=5, le=1440)
     persist: bool = Field(default=True, description="Whether to record the generated prediction in the database")
@@ -279,7 +280,8 @@ class RoutePredictionRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "start_location": "Banjara Hills",
-                "end_location": "Hitec City"
+                "end_location": "Hitec City",
+                "voice_text": "Traffic from Banjara Hills to Hitec City"
             }
         }
     }

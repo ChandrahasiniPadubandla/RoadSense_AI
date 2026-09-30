@@ -2,11 +2,13 @@ import spacy
 import re
 
 
+from pathlib import Path
+
 # =========================================================
 # LOAD TRAINED MODEL
 # =========================================================
 
-MODEL_PATH = "location_ner_model"
+MODEL_PATH = str(Path(__file__).resolve().parent / "location_ner_model")
 
 nlp = spacy.load(MODEL_PATH)
 

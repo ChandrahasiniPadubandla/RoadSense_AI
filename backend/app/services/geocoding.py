@@ -345,13 +345,18 @@ def geocode_location(
             logger.debug("Local road corridor search failed: %s", e)
 
     # 2. Check Curated Hyderabad Bus Stations and Transit Directory
+    transit_stopwords = {
+        "road", "roads", "street", "highway", "avenue", "lane", "station",
+        "bus", "stop", "terminal", "depot", "stand", "crossroads", "junction",
+        "near", "opposite", "chowk", "circle", "flyover"
+    }
     for hub in HYDERABAD_TRANSIT_HUBS:
         matched = False
         if any(kw in norm_query for kw in hub["keywords"]):
             matched = True
         elif norm_query in hub["primary_name"].lower():
             matched = True
-        elif any(w in hub["primary_name"].lower() for w in norm_query.split() if len(w) > 2):
+        elif any(w in hub["primary_name"].lower() for w in norm_query.split() if len(w) >= 3 and w not in transit_stopwords):
             matched = True
 
         if matched:
@@ -693,47 +698,92 @@ def get_or_create_road_from_geocoding(
             if not candidate_names or any(c.lower() in nearby.road_name.lower() or nearby.road_name.lower() in c.lower() for c in candidate_names):
                 return nearby, False
 
-    # 3. Road was searched but is NOT in the database table -> Resolve via Geocoding API
-    logger.info("Road searched not found in database. Geocoding and auto-creating road: road_name=%s, start=%s, end=%s", road_name, start_name, end_name)
+    # 3. Road was searched but is NOT in the database table -> Verify and resolve via Geocoding API
+    logger.info("Road searched not found in database. Searching in geocoding: road_name=%s, start=%s, end=%s", road_name, start_name, end_name)
 
-    # 3a. Resolve start coordinates if missing
-    if start_lat is None or start_lng is None:
-        query_start = start_name or road_name
-        if query_start:
-            geo_start = geocode_location(query_start, db=db, limit=1)
-            if geo_start:
-                start_lat = geo_start[0]["latitude"]
-                start_lng = geo_start[0]["longitude"]
-                if not start_name:
-                    start_name = geo_start[0].get("primary_name") or query_start
-
-    # 3b. Resolve end coordinates if missing
-    if end_lat is None or end_lng is None:
-        if end_name:
-            geo_end = geocode_location(end_name, db=db, limit=1)
-            if geo_end:
-                end_lat = geo_end[0]["latitude"]
-                end_lng = geo_end[0]["longitude"]
-
-    # If start coordinates could still not be geocoded, raise 400
-    if start_lat is None or start_lng is None:
+    query_start = start_name or road_name
+    if not query_start and (start_lat is None or start_lng is None):
         raise HTTPException(
             status_code=400,
             detail={
-                "error_code": "GEOCODING_FAILED",
-                "message": f"Could not geocode location for '{start_name or road_name or 'unspecified'}'. Please provide a recognizable road or landmark.",
+                "error_code": "MISSING_LOCATION",
+                "message": "Please specify a road name or start coordinates.",
                 "field": "road_name"
             }
         )
+
+    geo_start = []
+    # 3a. Resolve start coordinates if missing
+    if start_lat is None or start_lng is None:
+        if query_start:
+            geo_start = geocode_location(query_start, db=db, limit=3)
+            if not geo_start:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error_code": "ROAD_NOT_FOUND",
+                        "message": f"Road or location '{query_start}' does not exist in geocoding records. Please provide a verified road name.",
+                        "field": "road_name" if road_name else "start_location"
+                    }
+                )
+            start_lat = geo_start[0]["latitude"]
+            start_lng = geo_start[0]["longitude"]
+            if not start_name:
+                start_name = geo_start[0].get("primary_name") or query_start
+
+    # 3b. Verify whether the searched entity is actually a road or has an OSM street
+    verified_road_name = None
+    if geo_start:
+        top_res = geo_start[0]
+        addr = top_res.get("address", {})
+        osm_road = addr.get("road")
+        is_corridor = (
+            top_res.get("category") == "corridor"
+            or top_res.get("type") in [
+                "road", "highway", "primary", "secondary", "tertiary",
+                "trunk", "residential", "living_street", "motorway", "track", "unclassified"
+            ]
+        )
+        if osm_road:
+            verified_road_name = osm_road
+        elif is_corridor:
+            verified_road_name = top_res.get("primary_name") or query_start
+        elif road_name:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_code": "NOT_A_ROAD",
+                    "message": f"'{road_name}' was found in geocoding as a {top_res.get('type', 'place')} but is not a recognized road or traffic corridor.",
+                    "field": "road_name"
+                }
+            )
+
+    # 3c. Resolve end coordinates if missing
+    if end_lat is None or end_lng is None:
+        if end_name:
+            geo_end = geocode_location(end_name, db=db, limit=1)
+            if not geo_end:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error_code": "ROAD_NOT_FOUND",
+                        "message": f"End location '{end_name}' does not exist in geocoding records.",
+                        "field": "end_location"
+                    }
+                )
+            end_lat = geo_end[0]["latitude"]
+            end_lng = geo_end[0]["longitude"]
 
     # If end coordinates are not set or identical to start, create a realistic 500m corridor offset
     if end_lat is None or end_lng is None or (abs(end_lat - start_lat) < 0.0001 and abs(end_lng - start_lng) < 0.0001):
         end_lat = round(start_lat + 0.0050, 6)
         end_lng = round(start_lng + 0.0050, 6)
 
-    # 3c. Clean up road name
+    # 3d. Clean up road name using verified road name from geocoding
     clean_name = None
-    if road_name and len(road_name.strip()) >= 2:
+    if verified_road_name:
+        clean_name = verified_road_name.strip()
+    elif road_name and len(road_name.strip()) >= 2:
         clean_name = road_name.strip()
     elif start_name and end_name and start_name.strip().lower() != end_name.strip().lower():
         clean_name = f"{start_name.strip()} - {end_name.strip()}"
@@ -746,11 +796,11 @@ def get_or_create_road_from_geocoding(
         clean_name = (rev.get("road") if rev else None) or (rev.get("display_name") if rev else None) or f"Road Corridor [{start_lat:.4f}, {start_lng:.4f}]"
 
     # Append 'Road' only if the name was auto-generated from coordinate reverse-lookup without road keywords
-    if not (road_name or start_name or end_name):
+    if not (verified_road_name or road_name or start_name or end_name):
         if not any(w in clean_name.lower() for w in ["road", "street", "highway", "expressway", "arterial", "avenue", "lane", "junction", "corridor", "track"]):
             clean_name = f"{clean_name} Road"
 
-    # 3d. Check if clean_name already exists in DB (to prevent duplicates)
+    # 3e. Check if clean_name already exists in DB (to prevent duplicates)
     dup_road = db.query(Road).filter(Road.road_name.ilike(clean_name)).first()
     if dup_road:
         return dup_road, False

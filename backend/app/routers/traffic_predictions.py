@@ -83,6 +83,16 @@ def predict_route_traffic(
     if target_time.tzinfo is not None:
         target_time = target_time.astimezone().replace(tzinfo=None)
 
+    start_name = req.start_location
+    end_name = req.end_location
+    if req.voice_text and (not start_name or not end_name):
+        from app.services.voice_service import extract_route_from_text
+        extracted = extract_route_from_text(req.voice_text)
+        if not start_name and extracted.get("start_location"):
+            start_name = extracted["start_location"]
+        if not end_name and extracted.get("end_location"):
+            end_name = extracted["end_location"]
+
     # 1. Resolve all required data for the ML model
     bundle = resolve_route_bundle(
         db=db,
@@ -90,8 +100,8 @@ def predict_route_traffic(
         start_lng=req.start_longitude,
         end_lat=req.end_latitude,
         end_lng=req.end_longitude,
-        start_name=req.start_location,
-        end_name=req.end_location,
+        start_name=start_name,
+        end_name=end_name,
         road_id=req.road_id,
         target_time=target_time
     )
@@ -100,7 +110,7 @@ def predict_route_traffic(
     ml_result = trigger_ml_traffic_model(bundle)
     pred_record = None
 
-    if req.persist and bundle["road"]:
+    if req.persist and bundle["road"] and getattr(bundle["road"], "road_id", None) is not None:
         pred_record = TrafficPrediction(
             road_id=bundle["road"].road_id,
             prediction_time=now,
@@ -177,7 +187,6 @@ def predict_route_traffic(
         ml_source=ml_result.get("ml_source", "backend-feature-engine"),
         created_at=now
     )
-
 
 # =========================================================
 # 2. QUERY ENDPOINTS (LATEST & ROAD HISTORY)
