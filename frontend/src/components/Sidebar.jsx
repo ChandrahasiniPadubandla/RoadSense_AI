@@ -19,16 +19,46 @@ export const NAV_ITEMS = [
   { to: '/user-management', label: 'User Management', roles: [ROLES.SUPER_ADMIN] },
 ];
 
+/**
+ * Slide-in sidebar. Opened/closed via Topbar hamburger button, backdrop click,
+ * Escape key, or page navigation.
+ */
+export default function Sidebar({ open = false, onClose = () => {} }) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
 
-export default function Sidebar() {
-  const { user } = useAuth();
+  // Normalize role and fallback to VIEWER so the sidebar never vanishes if role is hydrating
+  const userRole = (user?.role || ROLES.VIEWER).toUpperCase();
+  const visibleItems = NAV_ITEMS.filter((item) =>
+    item.roles.includes(userRole)
+  );
 
- 
-    const visibleItems = NAV_ITEMS.filter(
-  (item) => item.roles.includes(user?.role)
-);
+  // Close after navigating to another page
+  useEffect(() => {
+    if (open && typeof onClose === 'function') {
+      onClose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape' && typeof onClose === 'function') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
+  async function handleLogout() {
+    if (typeof onClose === 'function') onClose();
+    navigate('/', { replace: true });
+    await logout();
+  }
 
   return (
     <>
@@ -37,14 +67,12 @@ export default function Sidebar() {
         onClick={onClose}
         aria-hidden
         className={`fixed inset-0 z-[1999] bg-slate-900/30 backdrop-blur-[1px] transition-opacity duration-200 ${
-          open ? 'opacity-100' : 'pointer-events-none opacity-0'
+          open ? 'opacity-100 pointer-events-auto' : 'pointer-events-none opacity-0'
         }`}
       />
 
       <aside
         aria-hidden={!open}
-        onMouseEnter={() => { pointerWasInside.current = true; }}
-        onMouseLeave={() => { if (pointerWasInside.current) onClose(); }}
         className={`fixed inset-y-0 left-0 z-[2000] flex w-64 flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-200 ease-out dark:border-asphalt-700 dark:bg-asphalt-900 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
@@ -68,7 +96,7 @@ export default function Sidebar() {
               className={({ isActive }) =>
                 `block rounded-md px-3 py-2 text-sm transition-colors ${
                   isActive
-                    ? 'bg-signal-blue/15 text-signal-blue'
+                    ? 'bg-signal-blue/15 text-signal-blue font-semibold'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-asphalt-300 dark:hover:bg-asphalt-800 dark:hover:text-asphalt-100'
                 }`
               }

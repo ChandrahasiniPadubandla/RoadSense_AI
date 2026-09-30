@@ -238,6 +238,7 @@ def login(
         "login_at": login_at,
         "user": {
             "user_id": user.user_id,
+            "username": user.username or f"user_{user.user_id.hex}",
             "name": user.name,
             "email": user.email,
             "phone": user.phone,

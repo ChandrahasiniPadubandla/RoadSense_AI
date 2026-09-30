@@ -317,7 +317,18 @@ export default function Dashboard() {
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   };
   const severityBreakdown = useMemo(() => countBy(accidentFeatures, 'severity'), [accidentFeatures]);
-  const congestionBreakdown = useMemo(() => countBy(trafficFeatures, 'congestion_level'), [trafficFeatures]);
+  const congestionBreakdown = useMemo(() => {
+    const counts = {};
+    for (const f of trafficFeatures) {
+      const raw = f.properties?.congestion_level;
+      if (!raw || raw === 'UNKNOWN' || raw === 'NOT_PREDICTED') continue;
+      const lvl = raw.toUpperCase();
+      if (LEVEL_ORDER.includes(lvl)) {
+        counts[lvl] = (counts[lvl] || 0) + 1;
+      }
+    }
+    return LEVEL_ORDER.filter((name) => counts[name]).map((name) => ({ name, value: counts[name] }));
+  }, [trafficFeatures]);
 
   const networkStatus = useMemo(() => {
     const counts = {};
@@ -331,8 +342,13 @@ export default function Dashboard() {
         evaluatedCount++;
       }
     }
-    const total = roads.length;
-    return { total, segments: LEVEL_ORDER.filter((l) => counts[l]).map((l) => ({ level: l, count: counts[l], pct: (counts[l] / total) * 100 })) };
+    const total = evaluatedCount || 1;
+    return {
+      total: evaluatedCount,
+      totalRoads: roads.length,
+      unpredictedCount: Math.max(0, roads.length - evaluatedCount),
+      segments: LEVEL_ORDER.filter((l) => counts[l]).map((l) => ({ level: l, count: counts[l], pct: (counts[l] / total) * 100 })),
+    };
   }, [roads]);
 
   const volumeDelta = useMemo(() => {
@@ -558,15 +574,52 @@ export default function Dashboard() {
           {activeTab === 'roads' && (
             <>
           <section>
-            <p className="mb-3 text-xs text-slate-500 dark:text-asphalt-400">Latest reading per monitored road</p>
+            <div className="mb-3 flex items-baseline justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-asphalt-100">Road status</h3>
+                <p className="text-xs text-slate-500 dark:text-asphalt-400">Authentic AI traffic predictions from machine learning model</p>
+              </div>
+              <span className="rounded bg-signal-blue/10 px-2 py-0.5 text-xs font-medium text-signal-blue">
+                AI Model Predictions
+              </span>
+            </div>
             <DataTable
               label="roads"
               columns={[
                 { key: 'name', header: 'Road' },
-                { key: 'vehicleCount', header: 'Vehicles' },
+                {
+                  key: 'vehicleCount',
+                  header: 'Predicted Vehicles',
+                  render: (row) =>
+                    row.vehicleCount != null && row.vehicleCount !== '-'
+                      ? Number(row.vehicleCount).toLocaleString()
+                      : '—',
+                },
                 { key: 'avgSpeed', header: 'Avg speed' },
                 { key: 'weather', header: 'Weather' },
-                { key: 'trafficLevel', header: 'Level', render: (row) => <LevelBadge level={row.trafficLevel} colorMap={TRAFFIC_LEVEL_COLOR} /> },
+                {
+                  key: 'trafficLevel',
+                  header: 'Congestion Level',
+                  render: (row) => (
+                    <LevelBadge
+                      level={row.trafficLevel}
+                      colorMap={TRAFFIC_LEVEL_COLOR}
+                      fallbackText="Not Predicted"
+                    />
+                  ),
+                },
+                {
+                  key: 'confidenceScore',
+                  header: 'AI Confidence',
+                  render: (row) =>
+                    row.confidenceScore != null ? (
+                      <span className="font-medium text-slate-700 dark:text-asphalt-200">
+                        {Number(row.confidenceScore).toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 dark:text-asphalt-500">—</span>
+                    ),
+                },
               ]}
               rows={roads}
               emptyMessage="No road segments found in the database. Add roads or connect live traffic sensors to view records."

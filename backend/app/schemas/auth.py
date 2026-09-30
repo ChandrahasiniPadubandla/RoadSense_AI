@@ -103,7 +103,7 @@ class LoginRequest(BaseModel):
 
 class UserResponse(BaseModel):
     user_id: UUID
-    username: str
+    username: str | None = None
     name: str
     email: EmailStr
     phone: str | None = None
