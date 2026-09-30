@@ -7,6 +7,7 @@ from app.database.connection import get_db
 from app.database.models import (
     Road,
     TrafficRecord,
+    TrafficPrediction,
     Accident,
     AccidentHotspot,
     TrafficZone
@@ -43,7 +44,31 @@ def get_dashboard_stats(
     total_roads = db.query(Road).count()
     active_roads = db.query(Road).filter(Road.is_active == True).count()
 
-    # Subquery for the most recent traffic record for each road
+    # Subquery for the most recent AI traffic prediction for each road (primary source)
+    latest_pred_sub = (
+        db.query(
+            TrafficPrediction.road_id,
+            func.max(TrafficPrediction.created_at).label("max_created")
+        )
+        .group_by(TrafficPrediction.road_id)
+        .subquery()
+    )
+
+    latest_predictions = (
+        db.query(TrafficPrediction)
+        .join(
+            latest_pred_sub,
+            and_(
+                TrafficPrediction.road_id == latest_pred_sub.c.road_id,
+                TrafficPrediction.created_at == latest_pred_sub.c.max_created
+            )
+        )
+        .all()
+    )
+
+    pred_by_road = {p.road_id: p for p in latest_predictions}
+
+    # Subquery for the most recent traffic record for each road (telemetry source)
     latest_traffic_sub = (
         db.query(
             TrafficRecord.road_id,
@@ -65,11 +90,21 @@ def get_dashboard_stats(
         .all()
     )
 
-    high_traffic_roads = sum(
-        1 for r in latest_records
-        if (r.congestion_level and r.congestion_level.upper() in ["HIGH", "SEVERE"])
-        or (r.traffic_density is not None and float(r.traffic_density) >= 70.0)
-    )
+    traffic_by_road = {r.road_id: r for r in latest_records}
+
+    # High traffic roads evaluated primarily from AI predictions
+    active_road_records = db.query(Road).filter(Road.is_active == True).all()
+    high_traffic_roads = 0
+    for r in active_road_records:
+        pred = pred_by_road.get(r.road_id)
+        tr = traffic_by_road.get(r.road_id)
+        cong = None
+        if pred and pred.predicted_congestion:
+            cong = pred.predicted_congestion.upper()
+        elif tr and tr.congestion_level:
+            cong = tr.congestion_level.upper()
+        if cong in ["HIGH", "SEVERE"]:
+            high_traffic_roads += 1
 
     valid_speeds = [
         float(r.average_speed)

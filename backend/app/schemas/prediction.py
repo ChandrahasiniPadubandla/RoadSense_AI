@@ -93,9 +93,9 @@ class TrafficPredictionResponse(BaseModel):
     road_name: Optional[str] = None
     prediction_time: datetime
     target_time: datetime
-    congestion_level: str
-    estimated_time: str
-    predicted_congestion: str
+    congestion_level: Optional[str] = None
+    estimated_time: Optional[str] = None
+    predicted_congestion: Optional[str] = None
     predicted_vehicle_count: Optional[int] = None
     confidence_score: Optional[float] = None
     model_version_id: Optional[UUID] = None

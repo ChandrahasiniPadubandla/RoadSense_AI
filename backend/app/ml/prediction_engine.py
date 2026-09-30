@@ -193,7 +193,7 @@ def resolve_route_bundle(
         if not end_name:
             end_name = road.road_name
 
-    if start_name and end_name and start_name.strip().lower() == end_name.strip().lower():
+    if not road_id and start_name and end_name and start_name.strip().lower() == end_name.strip().lower():
         raise HTTPException(
             status_code=400,
             detail={
