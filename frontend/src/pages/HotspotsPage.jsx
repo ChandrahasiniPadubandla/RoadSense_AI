@@ -12,7 +12,7 @@ export default function HotspotsPage() {
   useEffect(() => {
     (async () => {
       setIsLoading(true);
-      const data = await getHotspots(20);
+      const data = await getHotspots(100);
       setHotspots(data);
       setIsLoading(false);
     })();

@@ -1,17 +1,22 @@
-
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import DataTable from '../components/DataTable';
 import LevelBadge from '../components/LevelBadge';
 import { TRAFFIC_LEVEL_COLOR } from '../utils/constants';
-import { getTrafficRecords, geocodeSearch } from '../api_services';
+import { getTrafficRecordsPage, geocodeSearch } from '../api_services';
 
 const LEVEL_OPTIONS = ['ALL', 'LOW', 'MEDIUM', 'HIGH', 'SEVERE'];
 
 export default function TrafficManagement() {
+  // Server-side pagination state: `records` only ever holds the CURRENT page.
   const [records, setRecords] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState('ALL');
 
   // Geocoding results
@@ -19,24 +24,54 @@ export default function TrafficManagement() {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState(null);
 
-  // Load traffic records only.
-  // No getAllRoads() call anymore.
+  const requestId = useRef(0);
+  const lastApplied = useRef('');
+
+  // Debounce the road-name search that is sent to the backend.
+  // A picked geocoded place is a place label rather than a road name, so it is
+  // not sent as a road-name filter (same behaviour as before pagination).
   useEffect(() => {
+    const timer = setTimeout(() => {
+      const next = selectedLocation ? '' : search.trim();
+      if (next !== lastApplied.current) {
+        lastApplied.current = next;
+        setAppliedSearch(next);
+        setPage(1);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search, selectedLocation]);
+
+  // Load ONE page of traffic records from the backend
+  // (filters + OFFSET/LIMIT are applied in SQL, total comes from X-Total-Count).
+  useEffect(() => {
+    const current = ++requestId.current;
     (async () => {
       try {
         setIsLoading(true);
+        setLoadError('');
 
-        const trafficData = await getTrafficRecords();
+        const result = await getTrafficRecordsPage({
+          page,
+          pageSize,
+          level: levelFilter,
+          search: appliedSearch,
+        });
 
-        setRecords(trafficData);
+        if (current !== requestId.current) return; // a newer request superseded this one
+        setRecords(result.items);
+        setTotal(result.total);
       } catch (error) {
+        if (current !== requestId.current) return;
         console.error('Failed to load traffic records:', error);
         setRecords([]);
+        setTotal(0);
+        setLoadError('Could not load traffic records from the server.');
       } finally {
-        setIsLoading(false);
+        if (current === requestId.current) setIsLoading(false);
       }
     })();
-  }, []);
+  }, [page, pageSize, levelFilter, appliedSearch]);
 
   // Search locations using the existing
   // OpenStreetMap Nominatim geocoding API.
@@ -68,78 +103,6 @@ export default function TrafficManagement() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Filter traffic records.
-  //
-  // If a geocoded location is selected, compare its
-  // coordinates with traffic-record coordinates when available.
-  //
-  // Otherwise, use the typed search text against any road-name
-  // information that may already exist in the traffic record.
-  const filtered = useMemo(() => {
-    return records.filter((r) => {
-      let matchesSearch = true;
-
-      if (selectedLocation) {
-        const selectedLat = Number(
-          selectedLocation.lat ??
-          selectedLocation.latitude
-        );
-
-        const selectedLng = Number(
-          selectedLocation.lon ??
-          selectedLocation.lng ??
-          selectedLocation.longitude
-        );
-
-        const recordLat = Number(
-          r.latitude ??
-          r.lat ??
-          r.start_latitude
-        );
-
-        const recordLng = Number(
-          r.longitude ??
-          r.lng ??
-          r.start_longitude
-        );
-
-        if (
-          Number.isFinite(selectedLat) &&
-          Number.isFinite(selectedLng) &&
-          Number.isFinite(recordLat) &&
-          Number.isFinite(recordLng)
-        ) {
-          // Approximate coordinate matching.
-          // 0.01 degrees is roughly around 1 km.
-          const latDifference = Math.abs(recordLat - selectedLat);
-          const lngDifference = Math.abs(recordLng - selectedLng);
-
-          matchesSearch =
-            latDifference <= 0.01 &&
-            lngDifference <= 0.01;
-        }
-      } else if (search.trim()) {
-        const searchText = search.toLowerCase();
-
-        const roadName =
-          r.road_name ||
-          r.road ||
-          r.location ||
-          '';
-
-        matchesSearch = roadName
-          .toString()
-          .toLowerCase()
-          .includes(searchText);
-      }
-
-      const matchesLevel =
-        levelFilter === 'ALL' ||
-        (r.congestion_level || '').toUpperCase() === levelFilter;
-
-      return matchesSearch && matchesLevel;
-    });
-  }, [records, search, selectedLocation, levelFilter]);
 
   const inputClass =
     'rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-signal-blue dark:border-asphalt-600 dark:bg-asphalt-950 dark:text-white';
@@ -242,7 +205,10 @@ export default function TrafficManagement() {
         {/* Congestion filter */}
         <select
           value={levelFilter}
-          onChange={(e) => setLevelFilter(e.target.value)}
+          onChange={(e) => {
+            setLevelFilter(e.target.value);
+            setPage(1);
+          }}
           className={inputClass}
         >
           {LEVEL_OPTIONS.map((lvl) => (
@@ -286,12 +252,30 @@ export default function TrafficManagement() {
       )}
 
       {/* Table */}
-      {isLoading ? (
+      {loadError && (
+        <div className="rounded-lg border border-signal-red/30 bg-signal-red/10 px-4 py-3 text-xs text-signal-red">
+          {loadError}
+        </div>
+      )}
+
+      {isLoading && records.length === 0 && !loadError ? (
         <p className="text-sm text-slate-500 dark:text-asphalt-400">
           Loading traffic records…
         </p>
       ) : (
         <DataTable
+          pagination={{
+            page,
+            pageSize,
+            total,
+            loading: isLoading,
+            onPageChange: setPage,
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              setPage(1);
+            },
+          }}
+          label="traffic records"
           columns={[
             {
               key: 'road',
@@ -346,7 +330,7 @@ export default function TrafficManagement() {
             },
           ]}
 
-          rows={filtered.map((r) => ({
+          rows={records.map((r) => ({
             ...r,
             id: r.traffic_id,
           }))}

@@ -22,7 +22,7 @@ export default function AnomaliesPage() {
 
   async function loadAnomalies() {
     setLoading(true);
-    try { setAnomalies(await getAnomalies()); }
+    try { setAnomalies(await getAnomalies(100)); }
     catch { setError('Could not load recorded anomalies from the server.'); }
     finally { setLoading(false); }
   }

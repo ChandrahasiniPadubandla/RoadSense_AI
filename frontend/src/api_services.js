@@ -483,7 +483,7 @@ export async function updateEmergencyResponse(responseId, payload) {
 
 export async function getAlerts() {
   try {
-    const { data } = await apiClient.get('/api/alerts');
+    const { data } = await apiClient.get('/api/alerts', { params: { limit: 500 } });
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/alerts:', error);
@@ -578,6 +578,26 @@ export async function getTrafficRecords() {
   }
 }
 
+/**
+ * Server-side paginated traffic records.
+ * The backend applies filters + OFFSET/LIMIT and reports the overall match
+ * count in the X-Total-Count header.
+ * Returns { items, total }.
+ */
+export async function getTrafficRecordsPage({ page = 1, pageSize = 20, level = 'ALL', search = '' } = {}) {
+  const { data, headers } = await apiClient.get('/api/traffic', {
+    params: {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      congestion_level: level && level !== 'ALL' ? level : undefined,
+      search: search || undefined,
+    },
+  });
+  const items = Array.isArray(data) ? data : [];
+  const headerTotal = Number(headers?.['x-total-count']);
+  return { items, total: Number.isFinite(headerTotal) ? headerTotal : items.length };
+}
+
 export async function createTrafficRecord(payload) {
   const { data } = await apiClient.post('/api/traffic', payload);
   return data;
@@ -664,14 +684,43 @@ export async function reverseGeocode(lat, lng) {
  * Fetch a report as JSON (for on-screen preview) from /api/reports.
  * reportType: 'summary' | 'accidents' | 'traffic' | 'hotspots' | 'predictions'
  */
+// <input type="date"> yields "YYYY-MM-DD"; the API expects datetimes. Make the
+// end date inclusive by pushing it to the end of that day.
+function toStartDateTime(d) {
+  return d ? `${d}T00:00:00` : undefined;
+}
+function toEndDateTime(d) {
+  return d ? `${d}T23:59:59` : undefined;
+}
+
 export async function getReportPreview(reportType, { startDate, endDate, limit = 200 } = {}) {
   const { data } = await apiClient.get('/api/reports', {
     params: {
       report_type: reportType,
       format: 'json',
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
+      start_date: toStartDateTime(startDate),
+      end_date: toEndDateTime(endDate),
       limit,
+    },
+  });
+  return data;
+}
+
+/**
+ * Server-side paginated report preview.
+ * Returns { items, total, page, page_size, total_pages } for accidents /
+ * traffic / hotspots / predictions. (The 'summary' report is a fixed KPI
+ * list and is not paginated — use getReportPreview for it.)
+ */
+export async function getReportPage(reportType, { startDate, endDate, page = 1, pageSize = 20 } = {}) {
+  const { data } = await apiClient.get('/api/reports', {
+    params: {
+      report_type: reportType,
+      format: 'json',
+      start_date: toStartDateTime(startDate),
+      end_date: toEndDateTime(endDate),
+      page,
+      page_size: pageSize,
     },
   });
   return data;
@@ -686,8 +735,8 @@ export async function downloadReportCsv(reportType, { startDate, endDate, limit 
     params: {
       report_type: reportType,
       format: 'csv',
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
+      start_date: toStartDateTime(startDate),
+      end_date: toEndDateTime(endDate),
       limit,
     },
     responseType: 'blob',
@@ -713,6 +762,10 @@ export default {
   getDashboardStats,
   getDashboardTrend,
   getRoads,
+  getTrafficRecordsPage,
+  getReportPreview,
+  getReportPage,
+  downloadReportCsv,
   getAnomalies,
   predictAnomaly,
   getTrafficLayer,

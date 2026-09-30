@@ -48,6 +48,17 @@ def _generate_csv_response(filename: str, headers: list[str], rows: list[list[An
     )
 
 
+def _page_envelope(items: list, total: int, page: int, page_size: int) -> dict:
+    """Standard paginated JSON envelope used by the Reports preview."""
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, -(-total // page_size)),
+    }
+
+
 @router.get(
     "/export",
     summary="Export Traffic, Accident, Hotspot, and Prediction Reports",
@@ -72,13 +83,20 @@ def export_report(
     ),
     start_date: Optional[datetime] = Query(None, description="Filter records starting from this ISO datetime"),
     end_date: Optional[datetime] = Query(None, description="Filter records up to this ISO datetime"),
-    limit: int = Query(1000, ge=1, le=10000, description="Max rows to export"),
+    limit: int = Query(1000, ge=1, le=10000, description="Max rows to export (CSV / unpaginated JSON)"),
+    page: Optional[int] = Query(
+        None, ge=1,
+        description="1-based page number. When supplied with format=json, the response is a paginated envelope "
+                    "{items, total, page, page_size, total_pages} using SQL OFFSET/LIMIT."
+    ),
+    page_size: int = Query(20, ge=1, le=200, description="Rows per page when `page` is supplied"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))
 ):
     rtype = report_type.strip().lower()
     fmt = format.strip().lower()
     timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    paginated = fmt == "json" and page is not None
 
     # =========================================================
     # 1. ACCIDENTS REPORT
@@ -93,10 +111,15 @@ def export_report(
         if end_date:
             query = query.filter(Accident.accident_datetime <= end_date)
 
-        records = query.order_by(Accident.accident_datetime.desc()).limit(limit).all()
+        query = query.order_by(Accident.accident_datetime.desc())
+        if paginated:
+            total = query.order_by(None).count()
+            records = query.offset((page - 1) * page_size).limit(page_size).all()
+        else:
+            records = query.limit(limit).all()
 
         if fmt == "json":
-            return [
+            items = [
                 {
                     "accident_id": str(a.accident_id),
                     "road_name": road_name or "Unknown Road",
@@ -111,6 +134,7 @@ def export_report(
                 }
                 for a, road_name in records
             ]
+            return _page_envelope(items, total, page, page_size) if paginated else items
 
         csv_headers = [
             "Accident ID",
@@ -154,10 +178,15 @@ def export_report(
         if end_date:
             query = query.filter(TrafficRecord.timestamp <= end_date)
 
-        records = query.order_by(TrafficRecord.timestamp.desc()).limit(limit).all()
+        query = query.order_by(TrafficRecord.timestamp.desc())
+        if paginated:
+            total = query.order_by(None).count()
+            records = query.offset((page - 1) * page_size).limit(page_size).all()
+        else:
+            records = query.limit(limit).all()
 
         if fmt == "json":
-            return [
+            items = [
                 {
                     "traffic_id": str(tr.traffic_id),
                     "road_name": road_name or "Unknown Road",
@@ -174,6 +203,7 @@ def export_report(
                 }
                 for tr, road_name in records
             ]
+            return _page_envelope(items, total, page, page_size) if paginated else items
 
         csv_headers = [
             "Traffic ID",
@@ -216,10 +246,15 @@ def export_report(
             db.query(AccidentHotspot, TrafficZone.zone_name)
             .outerjoin(TrafficZone, AccidentHotspot.zone_id == TrafficZone.zone_id)
         )
-        records = query.order_by(AccidentHotspot.accident_count.desc()).all()
+        query = query.order_by(AccidentHotspot.accident_count.desc())
+        if paginated:
+            total = query.order_by(None).count()
+            records = query.offset((page - 1) * page_size).limit(page_size).all()
+        else:
+            records = query.all()
 
         if fmt == "json":
-            return [
+            items = [
                 {
                     "hotspot_id": str(h.hotspot_id),
                     "zone_name": zone_name or "General Area",
@@ -230,6 +265,7 @@ def export_report(
                 }
                 for h, zone_name in records
             ]
+            return _page_envelope(items, total, page, page_size) if paginated else items
 
         csv_headers = [
             "Hotspot ID",
@@ -297,6 +333,9 @@ def export_report(
             })
 
         if fmt == "json":
+            if paginated:
+                start = (page - 1) * page_size
+                return _page_envelope(results[start:start + page_size], len(results), page, page_size)
             return results
 
         csv_headers = [

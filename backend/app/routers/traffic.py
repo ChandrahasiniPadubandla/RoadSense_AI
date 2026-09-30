@@ -1,5 +1,6 @@
+from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -79,16 +80,60 @@ def create_traffic_record(
     response_model=list[TrafficResponse]
 )
 def get_traffic_records(
+    response: Response,
+    limit: Optional[int] = Query(
+        None, ge=1, le=500,
+        description="Page size. Omit to return every record (legacy behaviour)."
+    ),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    congestion_level: Optional[str] = Query(
+        None, description="Filter by congestion level (LOW/MEDIUM/HIGH/SEVERE)"
+    ),
+    search: Optional[str] = Query(
+        None, description="Case-insensitive road name fragment"
+    ),
     db: Session = Depends(get_db)
 ):
+    """
+    Lists traffic observations, newest first.
 
-    return (
-        db.query(TrafficRecord)
-        .order_by(
-            TrafficRecord.timestamp.desc()
-        )
-        .all()
+    Supports server-side pagination via `limit` / `offset`. The total number of
+    records matching the filters (ignoring limit/offset) is returned in the
+    `X-Total-Count` response header, so the body stays a plain list and existing
+    consumers keep working.
+    """
+
+    query = (
+        db.query(TrafficRecord, Road.road_name)
+        .outerjoin(Road, TrafficRecord.road_id == Road.road_id)
     )
+
+    if congestion_level and congestion_level.strip().upper() != "ALL":
+        query = query.filter(
+            TrafficRecord.congestion_level.ilike(congestion_level.strip())
+        )
+
+    if search and search.strip():
+        query = query.filter(Road.road_name.ilike(f"%{search.strip()}%"))
+
+    total = query.count()
+
+    query = query.order_by(TrafficRecord.timestamp.desc())
+
+    if limit is not None:
+        query = query.offset(offset).limit(limit)
+
+    rows = query.all()
+
+    response.headers["X-Total-Count"] = str(total)
+
+    results = []
+    for record, road_name in rows:
+        item = TrafficResponse.model_validate(record)
+        item.road_name = road_name
+        results.append(item)
+
+    return results
 
 
 @router.get(
