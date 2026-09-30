@@ -1,20 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loginUser, logoutUser, registerUser, requestEmailVerification, verifyEmailUser } from '../api_services';
+import { loginUser, logoutUser, registerUser, requestEmailVerification, verifyEmailUser, getCurrentUser } from '../api_services';
 
 const AuthContext = createContext(null);
 const VERIFIED_EMAIL_KEY = 'verifiedEmail';
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const stored = localStorage.getItem('currentUser');
-      const token = localStorage.getItem('accessToken');
-      return stored && token ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [verifiedEmail, setVerifiedEmailState] = useState(() => {
     try {
       return localStorage.getItem(VERIFIED_EMAIL_KEY) || null;
@@ -24,18 +16,38 @@ export function AuthProvider({ children }) {
   });
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('currentUser');
-      const token = localStorage.getItem('accessToken');
-      if (storedUser && token) {
-        setUser(JSON.parse(storedUser));
-      } else {
-        setUser(null);
-      }
-    } catch {
+    let active = true;
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      setIsLoading(false);
+      return () => { active = false; };
+    }
+
+    getCurrentUser()
+      .then((currentUser) => {
+        if (active) setUser(currentUser);
+      })
+      .catch((error) => {
+        // Keep a still-possibly-valid token if the backend is temporarily offline.
+        // 401/404 responses indicate an invalid session; the interceptor clears 401s.
+        if (error.response?.status === 401 || error.response?.status === 404) {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('currentUser');
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    function clearUnauthorizedSession() {
       setUser(null);
     }
-    setIsLoading(false);
+    window.addEventListener('auth:unauthorized', clearUnauthorizedSession);
+    return () => window.removeEventListener('auth:unauthorized', clearUnauthorizedSession);
   }, []);
 
   async function login(email, password) {

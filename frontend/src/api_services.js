@@ -37,6 +37,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('currentUser');
+      window.dispatchEvent(new Event('auth:unauthorized'));
     }
     return Promise.reject(error);
   }
@@ -262,18 +263,29 @@ export async function loginUser(email, password) {
     if (token) {
       localStorage.setItem('accessToken', token);
     }
-    const user = {
-      id: data.user?.user_id || 'd40e5a7e-4df3-4a19-a271-8d02247b9f9f',
-      email: data.user?.email || email,
-      name: data.user?.name || email.split('@')[0],
-      role: data.user?.role_name || 'SUPER_ADMIN',
-    };
+    const user = normalizeAuthUser(data.user, email);
     localStorage.setItem('currentUser', JSON.stringify(user));
     return { accessToken: token, user };
   } catch (error) {
     const msg = error.response?.data?.detail || error.message || 'Login failed';
     throw new Error(msg);
   }
+}
+
+function normalizeAuthUser(user, fallbackEmail = '') {
+  return {
+    id: user?.user_id,
+    email: user?.email || fallbackEmail,
+    name: user?.name || fallbackEmail.split('@')[0],
+    role: user?.role_name || '',
+  };
+}
+
+export async function getCurrentUser() {
+  const { data } = await apiClient.get('/auth/me');
+  const user = normalizeAuthUser(data);
+  localStorage.setItem('currentUser', JSON.stringify(user));
+  return user;
 }
 
 export async function registerUser({ name, email, password, phone = null }) {
