@@ -15,8 +15,8 @@ import {
   getDashboardStats, getDashboardTrend, getRoads, getAccidentLayer, getTrafficLayer, getHotspots, getAnomalies,
 } from '../api_services';
 
-const LEVEL_BAR_COLOR = { LOW: '#3FA772', MEDIUM: '#E8A33D', HIGH: '#D14343', SEVERE: '#8F1D1D', UNKNOWN: '#7A828C' };
-const LEVEL_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'SEVERE', 'UNKNOWN'];
+const LEVEL_BAR_COLOR = { LOW: '#3FA772', MEDIUM: '#E8A33D', HIGH: '#D14343', SEVERE: '#8F1D1D' };
+const LEVEL_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'SEVERE'];
 const DONUT_COLORS = ['#3E7CB1', '#E8A33D', '#D14343', '#3FA772', '#8B5CF6', '#7A828C'];
 const TOWER_SPOTS = [[143, 110], [46, 60], [240, 60], [46, 200], [240, 200], [143, 250]];
 const TOWER_COLORS = ['#D14343', '#E8A33D', '#3E7CB1', '#3E7CB1', '#3E7CB1', '#3E7CB1'];
@@ -321,9 +321,15 @@ export default function Dashboard() {
 
   const networkStatus = useMemo(() => {
     const counts = {};
+    let evaluatedCount = 0;
     for (const r of roads) {
-      const lvl = (r.trafficLevel || 'UNKNOWN').toUpperCase();
-      counts[lvl] = (counts[lvl] || 0) + 1;
+      const raw = r.trafficLevel;
+      if (!raw || raw === 'UNKNOWN' || raw === 'NOT_PREDICTED') continue; // Do NOT turn unknown into dummy 'LOW'
+      const lvl = raw.toUpperCase();
+      if (LEVEL_ORDER.includes(lvl)) {
+        counts[lvl] = (counts[lvl] || 0) + 1;
+        evaluatedCount++;
+      }
     }
     const total = roads.length;
     return { total, segments: LEVEL_ORDER.filter((l) => counts[l]).map((l) => ({ level: l, count: counts[l], pct: (counts[l] / total) * 100 })) };

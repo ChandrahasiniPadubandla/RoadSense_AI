@@ -10,6 +10,7 @@ from app.database.connection import get_db
 from app.database.models import (
     Road,
     TrafficRecord,
+    TrafficPrediction,
     Accident,
     AccidentHotspot,
     TrafficAnomaly
@@ -96,7 +97,33 @@ def get_traffic_layer(
         .all()
     )
 
-    # 2. Get latest traffic record for each road
+    # 2. Get latest AI traffic prediction for each road (primary source)
+    latest_pred_sub = (
+        db.query(
+            TrafficPrediction.road_id,
+            func.max(TrafficPrediction.created_at).label("max_created")
+        )
+        .group_by(TrafficPrediction.road_id)
+        .subquery()
+    )
+
+    latest_predictions = (
+        db.query(TrafficPrediction)
+        .join(
+            latest_pred_sub,
+            and_(
+                TrafficPrediction.road_id == latest_pred_sub.c.road_id,
+                TrafficPrediction.created_at == latest_pred_sub.c.max_created
+            )
+        )
+        .all()
+    )
+
+    pred_by_road: dict[UUID, TrafficPrediction] = {
+        p.road_id: p for p in latest_predictions
+    }
+
+    # 3. Get latest traffic telemetry record for each road (secondary telemetry source)
     latest_traffic_sub = (
         db.query(
             TrafficRecord.road_id,
@@ -143,14 +170,42 @@ def get_traffic_layer(
             except Exception:
                 continue
 
+        pred = pred_by_road.get(road.road_id)
         tr = traffic_by_road.get(road.road_id)
-        congestion = tr.congestion_level if tr else None
+
+        # Prioritize AI Traffic Prediction over raw record; do NOT fake as LOW
+        if pred and pred.predicted_congestion:
+            congestion = pred.predicted_congestion.upper()
+        elif tr and tr.congestion_level:
+            congestion = tr.congestion_level.upper()
+        else:
+            congestion = None
+
+        # Vehicle Count: Use predicted vehicle count, fallback to telemetry
+        if pred and pred.predicted_vehicle_count is not None:
+            vehicle_count = pred.predicted_vehicle_count
+        elif tr and tr.vehicle_count is not None:
+            vehicle_count = tr.vehicle_count
+        else:
+            vehicle_count = None
+
+        # Average Speed
+        if tr and tr.average_speed is not None and float(tr.average_speed) > 0:
+            avg_speed = float(tr.average_speed)
+        elif road.speed_limit is not None:
+            avg_speed = float(road.speed_limit)
+        else:
+            avg_speed = 50.0
+
         density = float(tr.traffic_density) if tr and tr.traffic_density is not None else None
         color = _get_congestion_color(congestion, density)
 
         capacity_utilization = None
-        if tr and road.road_capacity and road.road_capacity > 0:
-            capacity_utilization = round((tr.vehicle_count / road.road_capacity) * 100, 1)
+        if road.road_capacity and road.road_capacity > 0 and vehicle_count is not None:
+            capacity_utilization = round((vehicle_count / road.road_capacity) * 100, 1)
+
+        confidence = float(pred.confidence_score) if pred and pred.confidence_score is not None else None
+        last_updated_dt = (pred.created_at if pred else (tr.timestamp if tr else None))
 
         road_id_str = str(road.road_id)
 
@@ -167,14 +222,16 @@ def get_traffic_layer(
                 "road_type": road.road_type,
                 "speed_limit": float(road.speed_limit) if road.speed_limit else None,
                 "road_capacity": road.road_capacity,
-                "congestion_level": congestion or "UNKNOWN",
+                "congestion_level": congestion,
+                "confidence_score": confidence,
                 "traffic_density": density,
-                "average_speed": float(tr.average_speed) if tr and tr.average_speed is not None else None,
-                "vehicle_count": tr.vehicle_count if tr else None,
+                "average_speed": avg_speed,
+                "vehicle_count": vehicle_count,
                 "capacity_utilization": capacity_utilization,
-                "weather_condition": tr.weather_condition if tr else None,
+                "weather_condition": (tr.weather_condition if tr else None) or "Clear",
                 "color": color,
-                "last_updated": tr.timestamp.isoformat() if tr else None
+                "is_predicted": pred is not None,
+                "last_updated": last_updated_dt.isoformat() if last_updated_dt else None
             }
         }
         features.append(feature)

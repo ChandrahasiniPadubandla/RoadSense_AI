@@ -6,7 +6,7 @@ import axios from 'axios';
 // -----------------------------------------------------------------------------
 
 // Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8000)
-const RAW_URL = import.meta.env.VITE_API_BASE_URL ;
+const RAW_URL = import.meta.env.VITE_API_BASE_URL;
 export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.62:8000';
 
 
@@ -103,8 +103,8 @@ export async function getDashboardTrend() {
         return data.map((item, idx) => {
           const timeStr = item.timestamp
             ? (item.timestamp.includes('T')
-                ? item.timestamp.split('T')[1].slice(0, 5)
-                : new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))
+              ? item.timestamp.split('T')[1].slice(0, 5)
+              : new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))
             : `T-${idx}`;
           return {
             hour: timeStr,
@@ -139,7 +139,9 @@ export async function getRoads() {
           vehicleCount: p.vehicle_count != null ? p.vehicle_count : '-',
           avgSpeed: p.average_speed != null ? `${Math.round(p.average_speed)} km/h` : (p.speed_limit ? `${p.speed_limit} km/h` : '-'),
           weather: p.weather_condition || 'Clear',
-          trafficLevel: (p.congestion_level || 'LOW').toUpperCase(),
+          trafficLevel: p.congestion_level && p.congestion_level !== 'UNKNOWN' ? p.congestion_level.toUpperCase() : null,
+          confidenceScore: p.confidence_score,
+          isPredicted: p.is_predicted ?? false,
           capacityUtilization: p.capacity_utilization,
           lanes: p.number_of_lanes || 4,
           speedLimit: p.speed_limit,
@@ -162,7 +164,7 @@ export async function getRoads() {
         vehicleCount: '-',
         avgSpeed: road.speed_limit ? `${road.speed_limit} km/h` : '-',
         weather: road.road_condition || 'Clear',
-        trafficLevel: 'LOW',
+        trafficLevel: null,
         lanes: road.number_of_lanes,
         speedLimit: road.speed_limit,
         lat: road.start_latitude,
@@ -273,11 +275,12 @@ export async function loginUser(email, password) {
 }
 
 function normalizeAuthUser(user, fallbackEmail = '') {
+  const rawRole = user?.role_name || user?.role?.role_name || user?.role || user?.roleName || '';
   return {
-    id: user?.user_id,
+    id: user?.user_id || user?.id,
     email: user?.email || fallbackEmail,
     name: user?.name || fallbackEmail.split('@')[0],
-    role: user?.role_name || '',
+    role: typeof rawRole === 'string' ? rawRole.toUpperCase() : (rawRole?.role_name ? rawRole.role_name.toUpperCase() : ''),
   };
 }
 

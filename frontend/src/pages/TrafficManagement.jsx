@@ -316,8 +316,9 @@ export default function TrafficManagement() {
               header: 'Congestion',
               render: (r) => (
                 <LevelBadge
-                  level={(r.congestion_level || 'LOW').toUpperCase()}
+                  level={r.congestion_level ? r.congestion_level.toUpperCase() : null}
                   colorMap={TRAFFIC_LEVEL_COLOR}
+                  fallbackText="Not Available"
                 />
               ),
             },

@@ -19,39 +19,16 @@ export const NAV_ITEMS = [
   { to: '/user-management', label: 'User Management', roles: [ROLES.SUPER_ADMIN] },
 ];
 
-/**
- * Slide-in sidebar. Hidden by default; opened from the hamburger button in the
- * Topbar. It closes when the pointer moves out of it, when the backdrop is
- * clicked, on Escape, and after navigating to another page.
- */
-export default function Sidebar({ open, onClose }) {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const pointerWasInside = useRef(false);
 
-  const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(user?.role));
+export default function Sidebar() {
+  const { user } = useAuth();
 
-  // Close after navigating
-  useEffect(() => {
-    onClose();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+ 
+    const visibleItems = NAV_ITEMS.filter(
+  (item) => item.roles.includes(user?.role)
+);
 
-  // Close on Escape + reset hover tracking each time it opens/closes
-  useEffect(() => {
-    pointerWasInside.current = false;
-    if (!open) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
 
-  async function handleLogout() {
-    onClose();
-    navigate('/', { replace: true });
-    await logout();
-  }
 
   return (
     <>

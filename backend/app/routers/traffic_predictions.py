@@ -35,7 +35,7 @@ def _format_traffic_response(p: TrafficPrediction, road_name: Optional[str] = No
     r_name = road_name or (p.road.road_name if p.road else None)
     target_dt = p.target_time or datetime.utcnow()
     est_time = format_estimated_time(target_dt)
-    cong = p.predicted_congestion or "LOW"
+    cong = p.predicted_congestion.upper() if p.predicted_congestion else None
 
     return TrafficPredictionResponse(
         prediction_id=p.prediction_id,

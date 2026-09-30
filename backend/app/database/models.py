@@ -31,6 +31,10 @@ class User(Base):
 
     role = relationship("Role")
 
+    @property
+    def role_name(self):
+        return self.role.role_name if self.role else None
+
 
 class AuthOTP(Base):
     __tablename__ = "auth_otps"

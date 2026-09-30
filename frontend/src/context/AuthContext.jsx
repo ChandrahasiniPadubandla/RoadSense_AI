@@ -5,8 +5,19 @@ const AuthContext = createContext(null);
 const VERIFIED_EMAIL_KEY = 'verifiedEmail';
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('currentUser');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
+    return !!token && !saved;
+  });
   const [verifiedEmail, setVerifiedEmailState] = useState(() => {
     try {
       return localStorage.getItem(VERIFIED_EMAIL_KEY) || null;

@@ -70,7 +70,13 @@ export default function HotspotsPage() {
             {
               key: 'risk_level',
               header: 'Risk level',
-              render: (h) => <LevelBadge level={(h.risk_level || 'LOW').toUpperCase()} colorMap={RISK_LEVEL_COLOR} />,
+              render: (h) => (
+                <LevelBadge
+                  level={h.risk_level ? h.risk_level.toUpperCase() : null}
+                  colorMap={RISK_LEVEL_COLOR}
+                  fallbackText="Unassessed"
+                />
+              ),
             },
             { key: 'risk_score', header: 'Risk score', render: (h) => (h.risk_score != null ? h.risk_score : '—') },
             {
