@@ -36,14 +36,6 @@ export default function Topbar({ title, onMenuClick }) {
         >
           {isDarkMode ? '☀️' : '🌙'}
         </button>
-
-        <div className="text-right">
-          <p className="text-sm leading-tight text-slate-900 dark:text-asphalt-100">{user?.name}</p>
-          <p className="text-xs leading-tight text-slate-500 dark:text-asphalt-400">
-            {ROLE_LABELS[user?.role] || user?.role}
-          </p>
-        </div>
-
         {canSeeAlerts && (
           <Link
             to="/alerts"
@@ -54,6 +46,15 @@ export default function Topbar({ title, onMenuClick }) {
             <Bell size={16} />
           </Link>
         )}
+
+        <div className="text-right">
+          <p className="text-sm leading-tight text-slate-900 dark:text-asphalt-100">{user?.name}</p>
+          <p className="text-xs leading-tight text-slate-500 dark:text-asphalt-400">
+            {ROLE_LABELS[user?.role] || user?.role}
+          </p>
+        </div>
+
+        
       </div>
     </header>
   );

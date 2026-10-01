@@ -64,12 +64,28 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
     <>
       {/* Backdrop */}
       <div
-        onClick={onClose}
-        aria-hidden
-        className={`fixed inset-0 z-[1999] bg-slate-900/30 backdrop-blur-[1px] transition-opacity duration-200 ${
-          open ? 'opacity-100 pointer-events-auto' : 'pointer-events-none opacity-0'
-        }`}
-      />
+  onClick={onClose}
+  aria-hidden
+  className={`
+    fixed
+    inset-0
+    z-[1999]
+
+    bg-slate-900/30
+    backdrop-blur-[1px]
+
+    transition-opacity
+    duration-200
+
+    md:hidden
+
+    ${
+      open
+        ? 'opacity-100 pointer-events-auto'
+        : 'pointer-events-none opacity-0'
+    }
+  `}
+/>
 
       <aside
         aria-hidden={!open}

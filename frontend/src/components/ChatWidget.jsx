@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+
 import ChatMessage from './ChatMessage';
+
 import { sendChatbotMessage } from '../api_services';
 
 const STARTER_QUESTIONS = [
@@ -14,18 +16,22 @@ const WELCOME_MESSAGE = {
   text: 'Hi! I’m the RoadSense AI Assistant. Ask me about traffic conditions, congestion predictions, accident risk, routes, or accident hotspots — all answers are grounded in RoadSense data and ML predictions.',
 };
 
-export default function ChatWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+export default function ChatWidget({
+  isOpen,
+  setIsOpen,
+}) {
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('');
+
   const scrollRef = useRef(null);
 
-  // Automatically scroll to the latest message
+  // Automatically scroll to latest message
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTop =
+        scrollRef.current.scrollHeight;
     }
   }, [messages, loading, isOpen]);
 
@@ -55,7 +61,10 @@ export default function ChatWidget() {
           content: m.text,
         }));
 
-      const data = await sendChatbotMessage(trimmed, history);
+      const data = await sendChatbotMessage(
+        trimmed,
+        history
+      );
 
       // Add AI response
       setMessages((current) => [
@@ -70,6 +79,7 @@ export default function ChatWidget() {
       if (data.mode) {
         setMode(data.mode);
       }
+
     } catch (error) {
       const detail =
         error.response?.data?.detail ||
@@ -84,6 +94,7 @@ export default function ChatWidget() {
           isError: true,
         },
       ]);
+
     } finally {
       setLoading(false);
     }
@@ -115,12 +126,14 @@ export default function ChatWidget() {
             right-0
             top-0
             z-50
+
             flex
             h-screen
             w-[360px]
             max-w-[90vw]
             flex-col
             overflow-hidden
+
             border-l
             border-slate-200
             bg-white
@@ -128,8 +141,13 @@ export default function ChatWidget() {
 
             dark:border-slate-700
             dark:bg-slate-900
+
+            transition-transform
+            duration-300
+            ease-in-out
           "
         >
+
           {/* =====================================================
               HEADER
           ===================================================== */}
@@ -140,6 +158,7 @@ export default function ChatWidget() {
               shrink-0
               items-center
               justify-between
+
               border-b
               border-slate-200
               bg-slate-50
@@ -150,10 +169,13 @@ export default function ChatWidget() {
               dark:bg-slate-800
             "
           >
+
             {/* LEFT SIDE */}
+
             <div className="flex min-w-0 items-center gap-3">
 
               {/* AI ICON */}
+
               <div
                 className="
                   flex
@@ -163,6 +185,7 @@ export default function ChatWidget() {
                   items-center
                   justify-center
                   rounded-xl
+
                   bg-blue-100
                   text-xl
 
@@ -173,6 +196,7 @@ export default function ChatWidget() {
               </div>
 
               {/* TITLE */}
+
               <div className="min-w-0">
 
                 <div className="flex items-center gap-2">
@@ -182,9 +206,10 @@ export default function ChatWidget() {
                       truncate
                       text-sm
                       font-bold
-                      tracking-wide
-                      text-slate-800
                       uppercase
+                      tracking-wide
+
+                      text-slate-800
 
                       dark:text-slate-100
                     "
@@ -193,6 +218,7 @@ export default function ChatWidget() {
                   </p>
 
                   {/* ONLINE */}
+
                   <span
                     className="
                       flex
@@ -200,9 +226,11 @@ export default function ChatWidget() {
                       items-center
                       gap-1
                       rounded-full
+
                       bg-emerald-100
                       px-2
                       py-0.5
+
                       text-[9px]
                       font-semibold
                       text-emerald-600
@@ -211,6 +239,7 @@ export default function ChatWidget() {
                       dark:text-emerald-400
                     "
                   >
+
                     <span
                       className="
                         h-1.5
@@ -224,6 +253,7 @@ export default function ChatWidget() {
                     />
 
                     Online
+
                   </span>
 
                 </div>
@@ -241,12 +271,15 @@ export default function ChatWidget() {
                 </p>
 
               </div>
+
             </div>
 
             {/* RIGHT SIDE BUTTONS */}
+
             <div className="flex shrink-0 items-center gap-1">
 
               {/* RESET */}
+
               <button
                 onClick={handleReset}
                 title="Restart conversation"
@@ -254,10 +287,13 @@ export default function ChatWidget() {
                   rounded-lg
                   px-2
                   py-1.5
+
                   text-[10px]
                   font-medium
+
                   text-slate-500
                   transition-colors
+
                   hover:bg-slate-200
                   hover:text-slate-800
 
@@ -270,13 +306,16 @@ export default function ChatWidget() {
               </button>
 
               {/* CLOSE */}
+
               <button
                 onClick={() => setIsOpen(false)}
                 className="
                   rounded-lg
                   p-1.5
+
                   text-slate-500
                   transition-colors
+
                   hover:bg-slate-200
                   hover:text-slate-800
 
@@ -290,6 +329,7 @@ export default function ChatWidget() {
               </button>
 
             </div>
+
           </div>
 
           {/* =====================================================
@@ -302,6 +342,7 @@ export default function ChatWidget() {
               flex-1
               space-y-3
               overflow-y-auto
+
               bg-white
               px-4
               py-4
@@ -321,9 +362,7 @@ export default function ChatWidget() {
               />
             ))}
 
-            {/* =================================================
-                STARTER QUESTIONS
-            ================================================= */}
+            {/* STARTER QUESTIONS */}
 
             {messages.length === 1 && (
               <div className="mt-3 space-y-2 pt-1">
@@ -334,6 +373,7 @@ export default function ChatWidget() {
                     font-semibold
                     uppercase
                     tracking-wider
+
                     text-slate-400
 
                     dark:text-slate-500
@@ -352,13 +392,17 @@ export default function ChatWidget() {
                       className="
                         rounded-xl
                         border
+
                         border-slate-200
                         bg-slate-50
+
                         px-3
                         py-2.5
+
                         text-left
                         text-xs
                         leading-5
+
                         text-slate-700
                         transition-all
 
@@ -383,12 +427,11 @@ export default function ChatWidget() {
                   ))}
 
                 </div>
+
               </div>
             )}
 
-            {/* =================================================
-                THINKING INDICATOR
-            ================================================= */}
+            {/* THINKING INDICATOR */}
 
             {loading && (
               <div className="flex items-center gap-2">
@@ -400,8 +443,10 @@ export default function ChatWidget() {
                     items-center
                     gap-1.5
                     rounded-lg
+
                     bg-slate-100
                     px-3
+
                     text-[10px]
                     text-slate-500
 
@@ -427,6 +472,7 @@ export default function ChatWidget() {
                       animate-bounce
                       rounded-full
                       bg-slate-400
+
                       [animation-delay:0.2s]
                     "
                   />
@@ -438,6 +484,7 @@ export default function ChatWidget() {
                       animate-bounce
                       rounded-full
                       bg-slate-400
+
                       [animation-delay:0.4s]
                     "
                   />
@@ -447,6 +494,7 @@ export default function ChatWidget() {
                   </span>
 
                 </div>
+
               </div>
             )}
 
@@ -463,8 +511,10 @@ export default function ChatWidget() {
               shrink-0
               items-center
               gap-2
+
               border-t
               border-slate-200
+
               bg-slate-50
               p-3
 
@@ -481,16 +531,23 @@ export default function ChatWidget() {
               className="
                 min-w-0
                 flex-1
+
                 rounded-xl
                 border
                 border-slate-200
+
                 bg-white
+
                 px-3
                 py-2.5
+
                 text-xs
                 text-slate-800
+
                 outline-none
+
                 placeholder:text-slate-400
+
                 focus:border-blue-500
                 focus:ring-2
                 focus:ring-blue-500/10
@@ -508,14 +565,19 @@ export default function ChatWidget() {
               className="
                 shrink-0
                 rounded-xl
+
                 bg-blue-600
                 px-3
                 py-2.5
+
                 text-xs
                 font-semibold
                 text-white
+
                 transition-all
+
                 hover:bg-blue-700
+
                 disabled:cursor-not-allowed
                 disabled:opacity-40
               "
@@ -532,11 +594,15 @@ export default function ChatWidget() {
           <div
             className="
               shrink-0
+
               border-t
               border-slate-200
+
               bg-white
+
               px-4
               py-2
+
               text-center
               text-[9px]
               text-slate-400
@@ -550,6 +616,7 @@ export default function ChatWidget() {
               ? 'Powered by Groq · LangChain'
               : 'RoadSense AI Assistant'}
           </div>
+
         </div>
       )}
 
@@ -561,19 +628,27 @@ export default function ChatWidget() {
         onClick={() => setIsOpen((v) => !v)}
         className="
           fixed
+
           bottom-5
           right-5
+
           z-[60]
+
           flex
           h-12
           w-12
+
           items-center
           justify-center
+
           rounded-full
+
           bg-blue-600
           text-lg
           text-white
+
           shadow-xl
+
           transition-all
           duration-200
 
@@ -586,6 +661,7 @@ export default function ChatWidget() {
       >
         {isOpen ? '✕' : '💬'}
       </button>
+
     </>
   );
 }
