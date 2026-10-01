@@ -16,7 +16,8 @@ from app.schemas.auth import (
     UserResponse,
     ForgotPasswordRequest,
     ResetPasswordRequest,
-    VerifyEmailRequest
+    VerifyEmailRequest,
+    ChangePasswordRequest
 )
 from app.security import (
     hash_password,
@@ -305,6 +306,22 @@ def verify_email(
     }
 
 
+def _format_user_profile(user: User) -> dict:
+    role_name = user.role.role_name if user.role else None
+    return {
+        "user_id": user.user_id,
+        "username": user.username or f"user_{user.user_id.hex}",
+        "name": user.name,
+        "email": user.email,
+        "phone": user.phone,
+        "role_id": user.role_id,
+        "role_name": role_name,
+        "is_active": user.is_active,
+        "is_email_verified": user.is_email_verified,
+        "created_at": user.created_at,
+    }
+
+
 @router.get(
     "/me",
     response_model=UserResponse
@@ -325,7 +342,7 @@ def get_me(
             detail="User not found"
         )
 
-    return user
+    return _format_user_profile(user)
 
 
 @router.put(
@@ -383,7 +400,44 @@ def update_me(
         ) from exc
     db.refresh(user)
 
-    return user
+    return _format_user_profile(user)
+
+
+@router.post(
+    "/change-password",
+    summary="Change password for current authenticated user"
+)
+def change_password(
+    data: ChangePasswordRequest,
+    user_id: UUID = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.user_id == user_id, User.is_active.is_(True))
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect. Please check and try again."
+        )
+
+    user.password_hash = hash_password(data.new_password)
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "message": "Password changed successfully"
+    }
+
 
 
 @router.delete("/me")

@@ -28,9 +28,12 @@ def _format_accident_response(accident: Accident) -> AccidentResponse:
         lat = point.y
         lon = point.x
 
+    road_name = accident.road.road_name if getattr(accident, "road", None) else None
+
     return AccidentResponse(
         accident_id=accident.accident_id,
         road_id=accident.road_id,
+        road_name=road_name,
         latitude=lat,
         longitude=lon,
         accident_time=getattr(accident, "accident_datetime", None) or getattr(accident, "accident_time", None),
