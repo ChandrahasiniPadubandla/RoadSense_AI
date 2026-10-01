@@ -866,3 +866,12 @@ export default {
   getVoiceStatus,
   extractRouteFromVoice,
 };
+export async function getEmergencyResponders() {
+  try {
+    const { data } = await apiClient.get("/api/emergency/responders");
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Error fetching emergency responders:", error);
+    throw error;
+  }
+}
