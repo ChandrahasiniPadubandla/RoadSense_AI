@@ -111,6 +111,7 @@ class UserResponse(BaseModel):
     role_name: str | None = None
     is_active: bool
     is_email_verified: bool
+    created_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -152,3 +153,14 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def validate_new_password(cls, value: str) -> str:
         return validate_password_strength(value, min_len=8, field_name="New password")
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(validation_alias=AliasChoices("current_password", "currentPassword"))
+    new_password: str = Field(validation_alias=AliasChoices("new_password", "newPassword"))
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return validate_password_strength(value, min_len=8, field_name="New password")
+

@@ -64,6 +64,19 @@ def _serialize_emergency(emergency: EmergencyResponse, db: Session = None):
                 "description": accident.description,
             }
 
+    assigned_user_summary = None
+    if db is not None and emergency.assigned_user_id:
+        from app.database.models import User
+        user = db.query(User).filter(User.user_id == emergency.assigned_user_id).first()
+        if user:
+            assigned_user_summary = {
+                "user_id": str(user.user_id),
+                "name": user.name,
+                "username": user.username,
+                "email": user.email,
+                "phone": user.phone,
+            }
+
     return {
         "response_id": str(emergency.response_id),
 
@@ -80,6 +93,8 @@ def _serialize_emergency(emergency: EmergencyResponse, db: Session = None):
             if emergency.assigned_user_id
             else None
         ),
+
+        "assigned_user": assigned_user_summary,
 
         "response_status": emergency.response_status,
 
@@ -147,7 +162,7 @@ def create_emergency(
             if emergency_data.response_status
             else "PENDING"
         ),
-        assigned_at=emergency_data.assigned_at,
+        assigned_at=emergency_data.assigned_at or datetime.now(timezone.utc),
         arrived_at=emergency_data.arrived_at,
         resolved_at=emergency_data.resolved_at,
         notes=emergency_data.notes
@@ -158,6 +173,36 @@ def create_emergency(
     db.refresh(emergency)
 
     return _serialize_emergency(emergency, db)
+
+
+@router.get(
+    "/responders",
+    summary="Get available responders for emergency dispatch",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY", "EMERGENCY_RESPONSE"))]
+)
+def get_responders(
+    db: Session = Depends(get_db)
+):
+    from app.database.models import User, Role
+    users = (
+        db.query(User, Role.role_name)
+        .outerjoin(Role, User.role_id == Role.role_id)
+        .filter(User.is_active == True)
+        .order_by(User.name.asc())
+        .all()
+    )
+    return [
+        {
+            "user_id": str(u.user_id),
+            "name": u.name,
+            "username": u.username,
+            "email": u.email,
+            "phone": u.phone,
+            "role_name": role_name or "RESPONDER",
+        }
+        for u, role_name in users
+    ]
+
 
 
 # ============================================================
@@ -246,7 +291,7 @@ def get_emergency(
 @router.patch(
     "/{response_id}",
     summary="Update an emergency response",
-    dependencies=[Depends(require_roles("SUPER_ADMIN", "EMERGENCY_RESPONSE"))]
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY", "EMERGENCY_RESPONSE"))]
 )
 def update_emergency(
     response_id: UUID,
@@ -295,6 +340,14 @@ def update_emergency(
     if emergency_update.notes is not None:
         emergency.notes = emergency_update.notes
 
+    # Automatically set arrived_at when status becomes ARRIVED
+    if (
+        emergency.response_status
+        and emergency.response_status.upper() == "ARRIVED"
+        and emergency.arrived_at is None
+    ):
+        emergency.arrived_at = datetime.now(timezone.utc)
+
     # Automatically set resolved_at when status becomes RESOLVED
     if (
         emergency.response_status
@@ -302,6 +355,7 @@ def update_emergency(
         and emergency.resolved_at is None
     ):
         emergency.resolved_at = datetime.now(timezone.utc)
+
 
     db.commit()
     db.refresh(emergency)
