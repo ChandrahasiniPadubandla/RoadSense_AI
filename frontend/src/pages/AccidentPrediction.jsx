@@ -5,6 +5,7 @@ import React, {
 } from 'react';
 
 import DataTable from '../components/DataTable';
+import VoiceAssistant from '../components/VoiceAssistant';
 
 import {
   geocodeSearch,
@@ -125,6 +126,23 @@ export default function AccidentPrediction() {
     useRef(null);
 
 
+  // Set when the voice assistant fills a field, so the type-ahead dropdown
+  // doesn't pop open for a value that was already decided.
+  const skipStartSearchRef =
+    useRef(false);
+
+  const skipEndSearchRef =
+    useRef(false);
+
+
+  // ==================================================
+  // VOICE
+  // ==================================================
+
+  const [pendingVoiceRun, setPendingVoiceRun] =
+    useState(false);
+
+
   // ==================================================
   // LOAD RECENT PREDICTIONS
   // ==================================================
@@ -191,6 +209,17 @@ export default function AccidentPrediction() {
   // ==================================================
 
   useEffect(() => {
+
+    if (skipStartSearchRef.current) {
+
+      skipStartSearchRef.current = false;
+
+      setStartLocations([]);
+
+      return undefined;
+
+    }
+
 
     const searchStartLocation =
       async () => {
@@ -271,6 +300,17 @@ export default function AccidentPrediction() {
   // ==================================================
 
   useEffect(() => {
+
+    if (skipEndSearchRef.current) {
+
+      skipEndSearchRef.current = false;
+
+      setEndLocations([]);
+
+      return undefined;
+
+    }
+
 
     const searchEndLocation =
       async () => {
@@ -485,12 +525,91 @@ export default function AccidentPrediction() {
 
 
   // ==================================================
+  // VOICE ASSISTANT
+  // ==================================================
+
+  function handleVoiceRoute(voice) {
+
+    const nextStart =
+      voice.start_location || '';
+
+    const nextEnd =
+      voice.end_location || '';
+
+
+    if (
+      nextStart &&
+      nextStart !== startSearch
+    ) {
+      skipStartSearchRef.current = true;
+    }
+
+    if (
+      nextEnd &&
+      nextEnd !== endSearch
+    ) {
+      skipEndSearchRef.current = true;
+    }
+
+
+    setError('');
+
+    setResult(null);
+
+    setStartLocations([]);
+
+    setEndLocations([]);
+
+
+    if (nextStart) {
+      setStartSearch(nextStart);
+    }
+
+    if (nextEnd) {
+      setEndSearch(nextEnd);
+    }
+
+
+    setForm((previous) => ({
+
+      ...previous,
+
+      start_location:
+        nextStart || previous.start_location,
+
+      end_location:
+        nextEnd || previous.end_location,
+
+    }));
+
+
+    // Both places understood -> run the prediction hands-free.
+    if (voice.success) {
+      setPendingVoiceRun(true);
+    }
+
+  }
+
+
+  useEffect(() => {
+
+    if (!pendingVoiceRun) return;
+
+    setPendingVoiceRun(false);
+
+    handleSubmit();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingVoiceRun]);
+
+
+  // ==================================================
   // SUBMIT PREDICTION
   // ==================================================
 
   async function handleSubmit(event) {
 
-    event.preventDefault();
+    event?.preventDefault?.();
 
 
     setError('');
@@ -695,6 +814,17 @@ export default function AccidentPrediction() {
           onSubmit={handleSubmit}
           className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-6"
         >
+
+
+          {/* ==================================================
+              VOICE ASSISTANT
+          ================================================== */}
+
+          <VoiceAssistant
+            onRoute={handleVoiceRoute}
+            disabled={isSubmitting}
+            hint="Try: “Accident risk from Banjara Hills to Hitec City”"
+          />
 
 
           {/* ==================================================

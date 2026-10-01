@@ -14,6 +14,26 @@ MODEL_PATH = REPO_ROOT / "voice_extractor" / "location_ner_model"
 _nlp = None
 _model_load_attempted = False
 
+# Words that start a spoken query but are never a place name.
+_GENERIC_QUERY_WORDS = {
+    "traffic", "accident", "route", "risk", "check", "show",
+    "traffic status", "traffic congestion", "accident risk",
+}
+
+# Trailing time / politeness phrases that people tack onto a spoken query
+# ("... to Kondapur right now", "... to Nagole in 30 minutes"). They are not
+# part of the destination and would make the location lookup fail.
+_TRAILING_FILLER = re.compile(
+    r"\s+(?:"
+    r"right\s+now|now|today|tonight|tomorrow|please|currently|at\s+the\s+moment"
+    r"|(?:in|after|within|for)\s+(?:the\s+next\s+)?(?:an?|\d+|one|two|three|five|ten|fifteen|twenty|thirty|forty[- ]five|sixty)\s*(?:min(?:ute)?s?|hours?|hrs?)"
+    r"|at\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?"
+    r"|(?:this|in\s+the)\s+(?:morning|afternoon|evening|night)"
+    r"|during\s+(?:the\s+)?(?:morning|evening|peak)(?:\s+hours?)?"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
 
 def get_nlp_model():
     """Lazily load the spaCy location NER model."""
@@ -120,6 +140,9 @@ def extract_locations_pattern(text: str) -> Tuple[Optional[str], Optional[str]]:
         start = m.group(1).strip()
         # Ensure start does not start with generic commands
         start = re.sub(r"^(traffic|accident|route|risk|check|show)\s+", "", start, flags=re.IGNORECASE).strip()
+        # "traffic to Nagole" has a destination but no origin.
+        if not start or start.lower() in _GENERIC_QUERY_WORDS:
+            return None, m.group(2).strip()
         return start, m.group(2).strip()
 
     return None, None
@@ -175,6 +198,12 @@ def extract_route_from_text(raw_text: str) -> Dict[str, Any]:
             return None
         # Remove trailing question marks, periods, commas
         cleaned_loc = re.sub(r"[?!.,;]+$", "", loc).strip()
+        # Remove trailing time / politeness phrases ("right now", "in 30 minutes"...)
+        previous = None
+        while previous != cleaned_loc:
+            previous = cleaned_loc
+            cleaned_loc = _TRAILING_FILLER.sub("", cleaned_loc)
+            cleaned_loc = re.sub(r"[?!.,;]+$", "", cleaned_loc).strip()
         # Remove leading "the "
         cleaned_loc = re.sub(r"^the\s+", "", cleaned_loc, flags=re.IGNORECASE).strip()
         return cleaned_loc if cleaned_loc else None

@@ -538,6 +538,21 @@ export async function updateUserRole(username, roleId) {
   return data;
 }
 
+/**
+ * Update a user's username (and optionally name/phone).
+ * PATCH /api/admin/users/{user_id}/profile  (Super Admin only)
+ * Body matches UserProfileUpdate (backend/app/schemas/auth.py):
+ *   { username?, name?, phone? }  — username: 3-50 chars, letters/numbers/_ . -
+ * Keyed by the stable user_id (not the display name), so it is safe to rename.
+ */
+export async function updateUserProfile(userId, payload) {
+  const { data } = await apiClient.patch(
+    `/api/admin/users/${encodeURIComponent(userId)}/profile`,
+    payload
+  );
+  return data;
+}
+
 export async function updateUserStatus(username, isActive) {
   const { data } = await apiClient.patch(`/api/admin/users/${encodeURIComponent(username)}/status`, {
     is_active: isActive,
@@ -692,7 +707,43 @@ export async function reverseGeocode(lat, lng) {
 }
 
 // -----------------------------------------------------------------------------
-// 13. REPORTS & ANALYTICS EXPORT (Super Admin + Traffic Authority)
+// 13. VOICE ASSISTANT (spaCy location NER + regex fallback —
+//     see backend/app/routers/voice.py, schemas/voice.py, services/voice_service.py)
+// -----------------------------------------------------------------------------
+
+/**
+ * Health/status of the voice extraction service.
+ * GET /api/voice/status -> { status, model_loaded, engine, labels }
+ * Never throws: returns { status: 'offline', model_loaded: false } on failure
+ * so the UI can show a calm "voice service offline" state.
+ */
+export async function getVoiceStatus() {
+  try {
+    const { data } = await apiClient.get('/api/voice/status', { timeout: 8000 });
+    return data;
+  } catch (error) {
+    console.warn('Voice status check failed:', error.message);
+    return { status: 'offline', model_loaded: false, engine: null, labels: [] };
+  }
+}
+
+/**
+ * Turn a spoken transcript into a start/end pair.
+ * POST /api/voice/extract-route  { text }
+ * Returns VoiceRouteExtractResponse:
+ *   { success, start_location, end_location, raw_text, cleaned_text,
+ *     method ('ner' | 'pattern' | 'hybrid' | 'partial' | 'none'),
+ *     model_loaded, message }
+ * success is true only when BOTH locations were found; for partial matches
+ * the one that was found is still returned together with a helpful message.
+ */
+export async function extractRouteFromVoice(text) {
+  const { data } = await apiClient.post('/api/voice/extract-route', { text });
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// 14. REPORTS & ANALYTICS EXPORT (Super Admin + Traffic Authority)
 // -----------------------------------------------------------------------------
 
 /**
@@ -808,4 +859,10 @@ export default {
   createAlert,
   getAdminUsers,
   getAdminRoles,
+  updateUserRole,
+  updateUserStatus,
+  updateUserProfile,
+  deleteUser,
+  getVoiceStatus,
+  extractRouteFromVoice,
 };

@@ -6,6 +6,7 @@ import React, {
 
 import LevelBadge from '../components/LevelBadge';
 import DataTable from '../components/DataTable';
+import VoiceAssistant from '../components/VoiceAssistant';
 
 import {
   TRAFFIC_LEVEL_COLOR,
@@ -60,6 +61,20 @@ export default function TrafficPrediction() {
   const endContainerRef = useRef(null);
 
   const endInputRef = useRef(null);
+
+  // Set when the voice assistant fills a field, so the type-ahead dropdown
+  // doesn't pop open for a value that was already decided.
+  const skipStartSearchRef = useRef(false);
+
+  const skipEndSearchRef = useRef(false);
+
+
+  // --------------------------------------------------
+  // VOICE
+  // --------------------------------------------------
+
+  const [pendingVoiceRun, setPendingVoiceRun] =
+    useState(false);
 
 
   // --------------------------------------------------
@@ -148,6 +163,16 @@ export default function TrafficPrediction() {
 
   useEffect(() => {
 
+    if (skipStartSearchRef.current) {
+
+      skipStartSearchRef.current = false;
+
+      setStartLocations([]);
+
+      return;
+    }
+
+
     const query =
       form.start_location.trim();
 
@@ -213,6 +238,16 @@ export default function TrafficPrediction() {
   // --------------------------------------------------
 
   useEffect(() => {
+
+    if (skipEndSearchRef.current) {
+
+      skipEndSearchRef.current = false;
+
+      setEndLocations([]);
+
+      return;
+    }
+
 
     const query =
       form.end_location.trim();
@@ -354,6 +389,72 @@ export default function TrafficPrediction() {
 
 
   // --------------------------------------------------
+  // VOICE ASSISTANT
+  // --------------------------------------------------
+
+  function handleVoiceRoute(voice) {
+
+    const nextStart =
+      voice.start_location || '';
+
+    const nextEnd =
+      voice.end_location || '';
+
+
+    if (
+      nextStart &&
+      nextStart !== form.start_location
+    ) {
+      skipStartSearchRef.current = true;
+    }
+
+    if (
+      nextEnd &&
+      nextEnd !== form.end_location
+    ) {
+      skipEndSearchRef.current = true;
+    }
+
+
+    setError('');
+
+    setResult(null);
+
+    setStartLocations([]);
+
+    setEndLocations([]);
+
+
+    setForm((prev) => ({
+      ...prev,
+      start_location:
+        nextStart || prev.start_location,
+      end_location:
+        nextEnd || prev.end_location,
+    }));
+
+
+    // Both places understood -> run the prediction hands-free.
+    if (voice.success) {
+      setPendingVoiceRun(true);
+    }
+
+  }
+
+
+  useEffect(() => {
+
+    if (!pendingVoiceRun) return;
+
+    setPendingVoiceRun(false);
+
+    handleSubmit();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingVoiceRun]);
+
+
+  // --------------------------------------------------
   // PAYLOAD
   // --------------------------------------------------
 
@@ -424,7 +525,7 @@ export default function TrafficPrediction() {
 
   async function handleSubmit(e) {
 
-    e.preventDefault();
+    e?.preventDefault?.();
 
 
     setError('');
@@ -611,6 +712,15 @@ export default function TrafficPrediction() {
           onSubmit={handleSubmit}
           className="rounded-lg border border-slate-200 dark:border-asphalt-700 bg-white dark:bg-asphalt-900 p-6"
         >
+
+
+          {/* VOICE ASSISTANT */}
+
+          <VoiceAssistant
+            onRoute={handleVoiceRoute}
+            disabled={isSubmitting}
+            hint="Try: “Traffic from Uppal to Nagole”"
+          />
 
 
           {/* START LOCATION */}

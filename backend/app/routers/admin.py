@@ -47,6 +47,23 @@ def _format_user(user: User) -> UserAdminResponse:
     )
 
 
+def _get_user_by_ref(db: Session, ref: str) -> User | None:
+    """
+    Resolve a user from a stable user_id (UUID).
+
+    For backward compatibility with older clients, a display name is still
+    accepted as a fallback. Display names are NOT unique, so the UUID should
+    always be preferred — it guarantees the intended account is the one changed.
+    """
+    try:
+        user = db.query(User).filter(User.user_id == UUID(ref)).first()
+        if user:
+            return user
+    except ValueError:
+        pass  # not a UUID -> treat it as a legacy display name
+    return db.query(User).filter(User.name == ref).first()
+
+
 @router.get("/roles", response_model=list[RoleResponse], summary="List all available system roles")
 def get_roles(
     db: Session = Depends(get_db)
@@ -115,11 +132,11 @@ def update_user_profile(
 
 @router.patch("/users/{username}/role", response_model=UserAdminResponse, summary="Change a user's system role")
 def update_user_role(
-    username: str = Path(..., description="The user's name used as the username"),
+    username: str = Path(..., description="The user's user_id (UUID). A display name is also accepted for older clients."),
     role_update: UserRoleUpdate = Body(...),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.name == username).first()
+    user = _get_user_by_ref(db, username)
     if not user:
         raise HTTPException(status_code=404, detail=f"User with username '{username}' does not exist.")
 
@@ -140,11 +157,11 @@ def update_user_role(
 
 @router.patch("/users/{username}/status", response_model=UserAdminResponse, summary="Activate or deactivate a user")
 def update_user_status(
-    username: str = Path(..., description="The user's name used as the username"),
+    username: str = Path(..., description="The user's user_id (UUID). A display name is also accepted for older clients."),
     status_update: UserStatusUpdate = Body(...),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.name == username).first()
+    user = _get_user_by_ref(db, username)
     if not user:
         raise HTTPException(status_code=404, detail=f"User with username '{username}' does not exist.")
 
@@ -158,11 +175,11 @@ def update_user_status(
 
 @router.delete("/users/{username}", summary="Delete a user permanently")
 def delete_user(
-    username: str = Path(..., description="The user's name used as the username"),
+    username: str = Path(..., description="The user's user_id (UUID). A display name is also accepted for older clients."),
     current_user: User = Depends(require_roles("SUPER_ADMIN")),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.name == username).first()
+    user = _get_user_by_ref(db, username)
     if not user:
         raise HTTPException(status_code=404, detail=f"User with username '{username}' does not exist.")
 

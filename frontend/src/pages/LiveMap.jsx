@@ -22,6 +22,7 @@ import {
   predictRouteTraffic,
   predictRouteAccident,
 } from '../api_services';
+import VoiceAssistant from '../components/VoiceAssistant';
 
 // Background traffic-road layer colors (unchanged 4-tier scale, used for the
 // city-wide road overlay you toggle in "Layers").
@@ -200,6 +201,7 @@ export default function LiveMap() {
   const [routeGeometry, setRouteGeometry] = useState(null); // [[lat,lng], ...]
   const [routeInfo, setRouteInfo] = useState(null); // { distance_km, duration_minutes, is_real_route, steps }
   const [routeLoading, setRouteLoading] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
   const [routeError, setRouteError] = useState('');
   const [stepsExpanded, setStepsExpanded] = useState(true);
   const [flyTarget, setFlyTarget] = useState(null); // [lat,lng] - pan map here once
@@ -257,8 +259,8 @@ export default function LiveMap() {
   }, [resolvedTargetDate, routeInfo?.duration_minutes]);
 
   // Builds the prediction request payload for a specific target date
-  function buildPredictionPayload(targetDate) {
-    if (!startPoint || !endPoint) return null;
+  function buildPredictionPayload(targetDate, sp = startPoint, ep = endPoint) {
+    if (!sp || !ep) return null;
     const pad = (n) => String(n).padStart(2, '0');
     const yyyy = targetDate.getFullYear();
     const MM = pad(targetDate.getMonth() + 1);
@@ -271,12 +273,12 @@ export default function LiveMap() {
     const diffMins = Math.max(5, Math.round((targetDate.getTime() - Date.now()) / 60000));
 
     return {
-      start_location: startPoint.label,
-      end_location: endPoint.label,
-      start_latitude: startPoint.lat,
-      start_longitude: startPoint.lng,
-      end_latitude: endPoint.lat,
-      end_longitude: endPoint.lng,
+      start_location: sp.label,
+      end_location: ep.label,
+      start_latitude: sp.lat,
+      start_longitude: sp.lng,
+      end_latitude: ep.lat,
+      end_longitude: ep.lng,
       target_time: localIso,
       target_minutes_ahead: diffMins,
     };
@@ -561,8 +563,10 @@ export default function LiveMap() {
     );
   }
 
-  async function handleFindRoute() {
-    if (!startPoint || !endPoint) {
+  // Fetches the live route + ML predictions for an explicit start/end pair.
+  // (Voice input calls this directly because React state hasn't updated yet.)
+  async function runRoute(sp, ep) {
+    if (!sp || !ep) {
       setRouteError('Pick both a start and an end location from the suggestions first.');
       return;
     }
@@ -576,7 +580,7 @@ export default function LiveMap() {
 
     try {
       // Live OSRM routing - real street-level geometry + turn-by-turn steps.
-      const route = await getDrivingRoute(startPoint.lat, startPoint.lng, endPoint.lat, endPoint.lng);
+      const route = await getDrivingRoute(sp.lat, sp.lng, ep.lat, ep.lng);
       setRouteGeometry(route.coordinates);
       setRouteInfo(route);
     } catch (err) {
@@ -590,13 +594,13 @@ export default function LiveMap() {
     // same start/end pair. Best-effort: if the model can't resolve the
     // locations to a known road, we just omit that card.
     setPredictionsLoading(true);
-    const payload = buildPredictionPayload(resolvedTargetDate) || {
-      start_location: startPoint.label,
-      end_location: endPoint.label,
-      start_latitude: startPoint.lat,
-      start_longitude: startPoint.lng,
-      end_latitude: endPoint.lat,
-      end_longitude: endPoint.lng,
+    const payload = buildPredictionPayload(resolvedTargetDate, sp, ep) || {
+      start_location: sp.label,
+      end_location: ep.label,
+      start_latitude: sp.lat,
+      start_longitude: sp.lng,
+      end_latitude: ep.lat,
+      end_longitude: ep.lng,
       target_minutes_ahead: 30,
     };
     const [trafficResult, accidentResult] = await Promise.allSettled([
@@ -606,6 +610,99 @@ export default function LiveMap() {
     if (trafficResult.status === 'fulfilled') setRouteTraffic(trafficResult.value);
     if (accidentResult.status === 'fulfilled') setRouteAccidentRisk(accidentResult.value);
     setPredictionsLoading(false);
+  }
+
+  function handleFindRoute() {
+    return runRoute(startPoint, endPoint);
+  }
+
+  // Turns a geocoder suggestion into the { lat, lng, label } shape used above
+  // (same label rules as selectSuggestion).
+  function suggestionToPoint(suggestion) {
+    const label = suggestion.primary_name
+      ? (suggestion.secondary_name ? `${suggestion.primary_name}, ${suggestion.secondary_name}` : suggestion.primary_name)
+      : suggestion.display_name;
+    return {
+      lat: suggestion.latitude,
+      lng: suggestion.longitude,
+      label,
+      category: suggestion.category,
+    };
+  }
+
+  // Voice assistant: "directions from Uppal to Nagole" -> geocode both places,
+  // fill the A/B boxes and draw the route. Uses the best geocoder match for
+  // each spoken place; the resolved names stay visible in the boxes so the
+  // user can correct them if the wrong place was picked.
+  async function handleVoiceRoute(voice) {
+    const startText = voice.start_location;
+    const endText = voice.end_location;
+
+    setDirectionsMode(true);
+    setSearchQuery('');
+    setSearchPoint(null);
+    setSearchSuggestions([]);
+    setStartSuggestions([]);
+    setEndSuggestions([]);
+    setActiveField(null);
+    setRouteError('');
+    setVoiceBusy(true);
+
+    try {
+      const [startResults, endResults] = await Promise.all([
+        startText ? geocodeSearch(startText) : Promise.resolve(null),
+        endText ? geocodeSearch(endText) : Promise.resolve(null),
+      ]);
+
+      let sp = startPoint;
+      let ep = endPoint;
+      const notFound = [];
+
+      if (startText) {
+        const match = startResults?.[0];
+        if (match) {
+          sp = suggestionToPoint(match);
+          setStartPoint(sp);
+          setStartQuery(sp.label);
+        } else {
+          sp = null;
+          setStartPoint(null);
+          setStartQuery(startText);
+          notFound.push(startText);
+        }
+      }
+
+      if (endText) {
+        const match = endResults?.[0];
+        if (match) {
+          ep = suggestionToPoint(match);
+          setEndPoint(ep);
+          setEndQuery(ep.label);
+        } else {
+          ep = null;
+          setEndPoint(null);
+          setEndQuery(endText);
+          notFound.push(endText);
+        }
+      }
+
+      if (notFound.length > 0) {
+        setRouteError(
+          `Couldn't find ${notFound.map((n) => `“${n}”`).join(' or ')} on the map. Try a more specific place name.`
+        );
+        return;
+      }
+
+      // Both places were heard and located -> go straight to the route.
+      if (voice.success && sp && ep) {
+        await runRoute(sp, ep);
+      }
+    } catch (err) {
+      console.error('Voice route lookup failed:', err);
+      setRouteError('Could not look up those places. Please try again.');
+    } finally {
+      setVoiceBusy(false);
+    }
   }
 
   function handleClearRoute() {
@@ -1241,6 +1338,15 @@ export default function LiveMap() {
       {/* ------------------------------------------------------------- */}
       <div className="absolute left-3 top-3 z-[1000] w-[min(92vw,380px)]">
         <div className="max-h-[85vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
+          <div className="px-2 pt-2">
+            <VoiceAssistant
+              compact
+              onRoute={handleVoiceRoute}
+              disabled={voiceBusy || routeLoading}
+              hint="Try: “Directions from Uppal to Nagole”"
+            />
+          </div>
+
           {!directionsMode ? (
             // ---- Single search box mode ------------------------------
             <div className="p-2">
