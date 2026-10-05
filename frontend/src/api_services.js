@@ -875,7 +875,3 @@ export async function getEmergencyResponders() {
     throw error;
   }
 }
-export const getEmergencyResponders = async () => {
-  const response = await api.get("/api/emergency/responders");
-  return response.data;
-};
