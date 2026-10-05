@@ -80,10 +80,14 @@ export function AuthProvider({ children }) {
         ) {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('currentUser');
+<<<<<<< HEAD
 
           if (active) {
             setUser(null);
           }
+=======
+          if (active) setUser(null);
+>>>>>>> 50fbc05c54e938b6a36d9ef13585104b0804d743
         }
       })
       .finally(() => {
