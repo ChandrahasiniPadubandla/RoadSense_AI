@@ -44,6 +44,7 @@ export function AuthProvider({ children }) {
         if (error.response?.status === 401 || error.response?.status === 404) {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('currentUser');
+          if (active) setUser(null);
         }
       })
       .finally(() => {

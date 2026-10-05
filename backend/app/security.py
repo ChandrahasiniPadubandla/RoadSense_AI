@@ -15,6 +15,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 DEFAULT_JWT_SECRET = "roadsense-ai-jwt-secret-key-change-in-production"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30
 password_hash = PasswordHash.recommended()
 
 
@@ -34,8 +35,17 @@ def get_jwt_settings() -> tuple[str, str]:
 
 def create_access_token(user_id: UUID | str | int) -> str:
     secret_key, algorithm = get_jwt_settings()
-    expire_minutes = int(
-        os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+    configured_expire_minutes = int(
+        os.getenv(
+            "ACCESS_TOKEN_EXPIRE_MINUTES",
+            str(ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+    )
+    if configured_expire_minutes <= 0:
+        raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be positive.")
+    expire_minutes = min(
+        configured_expire_minutes,
+        ACCESS_TOKEN_EXPIRE_MINUTES
     )
 
     expire = datetime.now(timezone.utc) + timedelta(
@@ -168,4 +178,3 @@ def require_roles(*allowed_roles: str):
         return current_user
 
     return role_checker
-
