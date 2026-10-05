@@ -185,11 +185,14 @@ def get_responders(
 ):
     from app.database.models import User, Role
     users = (
-        db.query(User, Role.role_name)
-        .outerjoin(Role, User.role_id == Role.role_id)
-        .filter(User.is_active == True)
-        .order_by(User.name.asc())
-        .all()
+    db.query(User, Role.role_name)
+    .join(Role, User.role_id == Role.role_id)
+    .filter(
+        User.is_active == True,
+        Role.role_name == "EMERGENCY_RESPONSE"
+    )
+    .order_by(User.name.asc())
+    .all()
     )
     return [
         {
