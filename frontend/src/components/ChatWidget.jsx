@@ -4,6 +4,8 @@ import ChatMessage from './ChatMessage';
 
 import { sendChatbotMessage } from '../api_services';
 
+import { useAuth } from '../context/AuthContext';
+
 const STARTER_QUESTIONS = [
   'What roads does RoadSense track?',
   'What is the accident risk from Banjara Hills to Hitec City?',
@@ -11,23 +13,58 @@ const STARTER_QUESTIONS = [
   'What are the current system-wide traffic statistics?',
 ];
 
-const WELCOME_MESSAGE = {
-  role: 'assistant',
-  text: 'Hi! I’m the RoadSense AI Assistant. Ask me about traffic conditions, congestion predictions, accident risk, routes, or accident hotspots — all answers are grounded in RoadSense data and ML predictions.',
-};
-
 export default function ChatWidget({
   isOpen,
   setIsOpen,
 }) {
-  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+  // Get logged-in user from AuthContext
+  const { user } = useAuth();
+
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('');
 
   const scrollRef = useRef(null);
 
-  // Automatically scroll to latest message
+  // =========================================================
+  // CREATE WELCOME MESSAGE
+  // =========================================================
+
+  function createWelcomeMessage() {
+    const username = user?.name?.trim() || user?.username?.trim() || 'there';
+
+    return {
+      role: 'assistant',
+      sender: 'RoadSense AI',
+      text: `Hey ${username}! I’m the RoadSense AI Assistant. Ask me about traffic conditions, congestion predictions, accident risk, routes, or accident hotspots — all answers are grounded in RoadSense data and ML predictions.`,
+    };
+  }
+
+  // =========================================================
+  // INITIAL WELCOME MESSAGE
+  // =========================================================
+
+  useEffect(() => {
+    // Only create the welcome message when the user information
+    // is available. This prevents "Hey there!" appearing first
+    // while the user data is still loading.
+    if (user?.name || user?.username) {
+      setMessages((current) => {
+        // Don't replace an existing conversation
+        if (current.length > 0) {
+          return current;
+        }
+
+        return [createWelcomeMessage()];
+      });
+    }
+  }, [user?.name, user?.username]);
+
+  // =========================================================
+  // AUTOMATICALLY SCROLL TO LATEST MESSAGE
+  // =========================================================
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop =
@@ -35,7 +72,23 @@ export default function ChatWidget({
     }
   }, [messages, loading, isOpen]);
 
-  // Send message to backend
+  // =========================================================
+  // GET MESSAGE SENDER
+  // =========================================================
+
+  function getMessageSender(message) {
+    return (
+      message.sender ||
+      (message.role === 'assistant'
+        ? 'RoadSense AI'
+        : 'You')
+    );
+  }
+
+  // =========================================================
+  // SEND MESSAGE TO BACKEND
+  // =========================================================
+
   async function sendMessage(text = input) {
     const trimmed = text.trim();
 
@@ -43,10 +96,14 @@ export default function ChatWidget({
 
     const userMessage = {
       role: 'user',
+      sender: 'You',
       text: trimmed,
     };
 
-    const nextMessages = [...messages, userMessage];
+    const nextMessages = [
+      ...messages,
+      userMessage,
+    ];
 
     setMessages(nextMessages);
     setInput('');
@@ -71,6 +128,7 @@ export default function ChatWidget({
         ...current,
         {
           role: 'assistant',
+          sender: 'RoadSense AI',
           text: data.reply,
         },
       ]);
@@ -90,6 +148,7 @@ export default function ChatWidget({
         ...current,
         {
           role: 'assistant',
+          sender: 'RoadSense AI',
           text: detail,
           isError: true,
         },
@@ -100,15 +159,21 @@ export default function ChatWidget({
     }
   }
 
-  // Handle form submit
+  // =========================================================
+  // HANDLE FORM SUBMIT
+  // =========================================================
+
   function handleSubmit(e) {
     e.preventDefault();
     sendMessage();
   }
 
-  // Reset conversation
+  // =========================================================
+  // RESET CONVERSATION
+  // =========================================================
+
   function handleReset() {
-    setMessages([WELCOME_MESSAGE]);
+    setMessages([createWelcomeMessage()]);
     setMode('');
     setInput('');
   }
@@ -354,12 +419,28 @@ export default function ChatWidget({
             {/* CHAT MESSAGES */}
 
             {messages.map((m, idx) => (
-              <ChatMessage
+              <div
                 key={idx}
-                role={m.role}
-                text={m.text}
-                isError={m.isError}
-              />
+                className="flex flex-col gap-1"
+              >
+
+                <span
+                  className={
+                    m.role === 'user'
+                      ? 'text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400'
+                      : 'text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400'
+                  }
+                >
+                  {getMessageSender(m)}
+                </span>
+
+                <ChatMessage
+                  role={m.role}
+                  text={m.text}
+                  isError={m.isError}
+                />
+
+              </div>
             ))}
 
             {/* STARTER QUESTIONS */}
