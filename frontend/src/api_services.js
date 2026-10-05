@@ -275,13 +275,35 @@ export async function loginUser(email, password) {
 }
 
 function normalizeAuthUser(user, fallbackEmail = '') {
-  const rawRole = user?.role_name || user?.role?.role_name || user?.role || user?.roleName || '';
+  const rawRole = user?.role_name ?? user?.role ?? '';
+
   return {
     id: user?.user_id || user?.id,
+    username: user?.username || '',
     email: user?.email || fallbackEmail,
-    name: user?.name || fallbackEmail.split('@')[0],
-    role: typeof rawRole === 'string' ? rawRole.toUpperCase() : (rawRole?.role_name ? rawRole.role_name.toUpperCase() : ''),
+    name: user?.name || fallbackEmail.split('@')[0] || '',
+    phone: user?.phone ?? user?.mobile ?? user?.phone_number ?? '',
+    role:
+      typeof rawRole === 'string'
+        ? rawRole.toUpperCase()
+        : rawRole?.role_name
+          ? rawRole.role_name.toUpperCase()
+          : '',
   };
+}
+export async function updateMyProfile(payload) {
+  const response = await apiClient.put('/auth/me', payload);
+
+  const updatedUser = normalizeAuthUser(response.data);
+
+  try {
+    localStorage.setItem(
+      'currentUser',
+      JSON.stringify(updatedUser)
+    );
+  } catch {}
+
+  return updatedUser;
 }
 
 export async function getCurrentUser() {
@@ -865,6 +887,7 @@ export default {
   deleteUser,
   getVoiceStatus,
   extractRouteFromVoice,
+  updateMyProfile,
 };
 export async function getEmergencyResponders() {
   try {
