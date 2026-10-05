@@ -29,7 +29,7 @@ def predict_anomaly(
       - road_capacity
       - previous_traffic
       - hour
-    Executes the trained Isolation Forest model from RoadSense_AI/traffic_congestion.
+    Executes the trained Isolation Forest model from Metrivon_AI/traffic_congestion.
     """
     return ml_service.predict_anomaly(request)
 

@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 
-logger = logging.getLogger("roadsense.voice")
+logger = logging.getLogger("Metrivon.voice")
 
 # Resolve model path dynamically relative to repository root
 REPO_ROOT = Path(__file__).resolve().parents[3]

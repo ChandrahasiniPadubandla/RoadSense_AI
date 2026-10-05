@@ -17,7 +17,7 @@ from app.services.geocoding import (
     get_driving_route
 )
 
-logger = logging.getLogger("roadsense.geocoding_router")
+logger = logging.getLogger("Metrivon.geocoding_router")
 
 router = APIRouter(
     prefix="/geo",
@@ -38,7 +38,7 @@ def search_location(
 ):
     """
     Geocodes text queries into real GPS latitude & longitude.
-    Integrates RoadSense AI monitored corridors, curated Hyderabad transit hubs,
+    Integrates Metrivon AI monitored corridors, curated Hyderabad transit hubs,
     and OpenStreetMap Nominatim with local in-memory caching.
     """
     results = geocode_location(query=query, city_bias=city or "", limit=limit, db=db)

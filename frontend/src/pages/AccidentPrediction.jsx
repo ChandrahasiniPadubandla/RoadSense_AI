@@ -794,7 +794,7 @@ export default function AccidentPrediction() {
         <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
 
           Enter a starting point and destination.
-          RoadSense AI retrieves road, weather,
+          Metrivon AI retrieves road, weather,
           traffic, and accident-history data from
           the backend to predict route risk.
 

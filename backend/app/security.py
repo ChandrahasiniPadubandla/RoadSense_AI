@@ -14,7 +14,7 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-DEFAULT_JWT_SECRET = "roadsense-ai-jwt-secret-key-change-in-production"
+DEFAULT_JWT_SECRET = "Metrivon-ai-jwt-secret-key-change-in-production"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30
 password_hash = PasswordHash.recommended()
 

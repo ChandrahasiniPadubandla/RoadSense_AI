@@ -693,7 +693,7 @@ export default function TrafficPrediction() {
 
           Predicts congestion along a route between
           a start location and an end location,
-          using RoadSense AI&rsquo;s traffic congestion
+          using Metrivon AI&rsquo;s traffic congestion
           prediction service.
 
         </p>

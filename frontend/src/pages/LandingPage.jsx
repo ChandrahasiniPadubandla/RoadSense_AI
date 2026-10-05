@@ -73,31 +73,31 @@ export default function LandingPage() {
   }
 
   function handleCopyEmail() {
-    navigator.clipboard?.writeText('support@roadsense.ai');
+    navigator.clipboard?.writeText('support@Metrivon.ai');
     setCopiedEmail(true);
     setTimeout(() => setCopiedEmail(false), 2000);
   }
 
   const FAQ_ITEMS = [
     {
-      q: 'How does RoadSense AI detect traffic hazards early?',
+      q: 'How does Metrivon AI detect traffic hazards early?',
       a: 'The platform continuously monitors arterial speeds, vehicle congestion density, and live meteorological conditions. By cross-referencing road friction and bottleneck patterns with historical incident points, the application flags high-risk corridors minutes before accidents happen, giving police and dispatchers time to intervene.',
     },
     {
-      q: 'Who can access the RoadSense Command Center?',
+      q: 'Who can access the Metrivon Command Center?',
       a: 'The command center is specifically built for municipal traffic police authorities, emergency medical service dispatchers, and urban transportation engineers. Each user group receives an interface tailored to their exact operational scope with role-based access security.',
     },
     {
       q: 'How are emergency services assisted during critical incidents?',
-      a: 'When an alert is triggered or extreme risk is forecasted on an arterial route, RoadSense AI activates emergency corridor guidance. Traffic control teams can pre-clear congestion and sync signal timing to prioritize approaching ambulances and rescue vehicles.',
+      a: 'When an alert is triggered or extreme risk is forecasted on an arterial route, Metrivon AI activates emergency corridor guidance. Traffic control teams can pre-clear congestion and sync signal timing to prioritize approaching ambulances and rescue vehicles.',
     },
     {
       q: 'Can city planners use this application for urban road planning?',
-      a: 'Yes. RoadSense AI securely stores historical flow data, recurring choke point metrics, and incident hotspots. Urban planners can analyze these patterns over time to plan road widening, redesign hazardous intersections, and optimize traffic signal timings.',
+      a: 'Yes. Metrivon AI securely stores historical flow data, recurring choke point metrics, and incident hotspots. Urban planners can analyze these patterns over time to plan road widening, redesign hazardous intersections, and optimize traffic signal timings.',
     },
     {
       q: 'What makes this different from regular GPS navigation apps?',
-      a: 'Consumer GPS apps guide individual drivers after traffic or crashes occur. RoadSense AI is an enterprise command platform for municipal authorities that actively predicts and prevents incidents, manages entire arterial road networks, and coordinates emergency services in real time.',
+      a: 'Consumer GPS apps guide individual drivers after traffic or crashes occur. Metrivon AI is an enterprise command platform for municipal authorities that actively predicts and prevents incidents, manages entire arterial road networks, and coordinates emergency services in real time.',
     },
   ];
 
@@ -272,7 +272,7 @@ export default function LandingPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className={`text-xl font-black tracking-tight transition-colors ${theme.brandText}`}>
-                  RoadSense
+                  Metrivon
                 </span>
                 <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-signal-blue/20 text-signal-blue border border-signal-blue/40 tracking-wider">
                   AI
@@ -370,7 +370,7 @@ export default function LandingPage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className={`px-3.5 py-2.5 text-sm font-medium rounded-xl transition-colors ${theme.navLink}`}
                 >
-                  About RoadSense AI
+                  About Metrivon AI
                 </a>
                 <a
                   href="#features"
@@ -443,7 +443,7 @@ export default function LandingPage() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className={`mt-6 text-base sm:text-xl leading-relaxed max-w-3xl mx-auto font-normal transition-colors ${theme.subtext}`}
             >
-              RoadSense AI equips traffic police, municipal authorities, and emergency teams with
+              Metrivon AI equips traffic police, municipal authorities, and emergency teams with
               continuous arterial monitoring, predictive hazard warnings, and coordinated green corridors
               before congestion turns into collisions.
             </motion.p>
@@ -507,13 +507,13 @@ export default function LandingPage() {
             {/* Left Content */}
             <div className="lg:col-span-6 space-y-6">
               <span className="text-xs font-mono text-signal-blue uppercase tracking-widest font-bold">
-                Why RoadSense AI
+                Why Metrivon AI
               </span>
               <h2 className={`text-3xl sm:text-4xl font-extrabold leading-tight transition-colors ${theme.heading}`}>
                 Transforming City Traffic From Reactive Response to Proactive Safety
               </h2>
               <p className={`text-base leading-relaxed transition-colors ${theme.subtext}`}>
-                Conventional traffic operations only react after a collision or severe choke point has already stopped traffic. RoadSense AI changes the paradigm by analyzing arterial speeds, density surges, and meteorological friction to neutralize danger zones before collisions occur.
+                Conventional traffic operations only react after a collision or severe choke point has already stopped traffic. Metrivon AI changes the paradigm by analyzing arterial speeds, density surges, and meteorological friction to neutralize danger zones before collisions occur.
               </p>
               <p className={`text-sm leading-relaxed transition-colors ${theme.muted}`}>
                 Municipal traffic police departments, emergency hospital dispatchers, and urban planning engineers gain a single synchronized platform to monitor road health, anticipate accidents, and prioritize rescue routes.
@@ -565,10 +565,10 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* RoadSense AI Proactive Card */}
+              {/* Metrivon AI Proactive Card */}
               <div className={`p-6 rounded-2xl border space-y-3 relative transition-colors ${theme.proactiveCard}`}>
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-signal-blue uppercase font-bold">RoadSense AI Standard</span>
+                  <span className="text-signal-blue uppercase font-bold">Metrivon AI Standard</span>
                   <span className="text-signal-green font-bold flex items-center gap-1">
                     <TrendingUp size={14} /> Proactive Prevention
                   </span>
@@ -734,7 +734,7 @@ export default function LandingPage() {
               Frequently Asked Questions
             </span>
             <h2 className={`text-3xl sm:text-4xl font-extrabold mt-2 transition-colors ${theme.heading}`}>
-              Common Questions About RoadSense AI
+              Common Questions About Metrivon AI
             </h2>
             <p className={`mt-3 text-sm transition-colors ${theme.subtext}`}>
               Clear answers regarding platform deployment, roles, and emergency coordination.
@@ -814,7 +814,7 @@ export default function LandingPage() {
                     </div>
                     <div>
                       <p className={`text-[10px] font-mono uppercase ${theme.muted}`}>Official Email</p>
-                      <p className={`text-sm font-semibold transition-colors ${theme.heading}`}>support@roadsense.ai</p>
+                      <p className={`text-sm font-semibold transition-colors ${theme.heading}`}>support@Metrivon.ai</p>
                     </div>
                   </div>
                   <button
@@ -866,7 +866,7 @@ export default function LandingPage() {
                     </div>
                     <h3 className={`text-lg font-bold transition-colors ${theme.heading}`}>Inquiry Received</h3>
                     <p className={`text-xs max-w-sm mx-auto leading-relaxed transition-colors ${theme.subtext}`}>
-                      Thank you for reaching out to RoadSense AI. Our operational support team will review your inquiry and respond shortly.
+                      Thank you for reaching out to Metrivon AI. Our operational support team will review your inquiry and respond shortly.
                     </p>
                     <button
                       type="button"
@@ -976,7 +976,7 @@ export default function LandingPage() {
             </div>
 
             <h2 className={`text-3xl sm:text-4xl font-black tracking-tight transition-colors ${theme.heading}`}>
-              Ready to Access the RoadSense Command Center?
+              Ready to Access the Metrivon Command Center?
             </h2>
             <p className={`mt-3 text-sm sm:text-base max-w-xl mx-auto transition-colors ${theme.subtext}`}>
               Certified municipal officers, dispatch personnel, and traffic authorities can sign in now to inspect real-time corridors, predictive alerts, and safety analytics.
@@ -1011,7 +1011,7 @@ export default function LandingPage() {
                 <Navigation size={18} className="transform -rotate-45" />
               </div>
               <div>
-                <p className={`text-sm font-bold transition-colors ${theme.heading}`}>RoadSense AI</p>
+                <p className={`text-sm font-bold transition-colors ${theme.heading}`}>Metrivon AI</p>
                 <p className={`text-[11px] transition-colors ${theme.muted}`}>Smart Traffic &amp; Accident Prediction System</p>
               </div>
             </div>
@@ -1026,7 +1026,7 @@ export default function LandingPage() {
           </div>
 
           <div className={`mt-8 pt-8 border-t flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] ${theme.footerDivider}`}>
-            <p>© {new Date().getFullYear()} RoadSense AI Systems. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} Metrivon AI Systems. All rights reserved.</p>
             <p className="font-mono">Built for municipal resilience &amp; proactive road safety.</p>
           </div>
         </div>

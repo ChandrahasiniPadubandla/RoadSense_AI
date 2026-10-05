@@ -1359,7 +1359,7 @@ export default function LiveMap() {
                     setSearchPoint(null);
                   }}
                   onFocus={() => setActiveField('search')}
-                  placeholder="Search RoadSense Maps"
+                  placeholder="Search Metrivon Maps"
                   className={panelInputClass}
                 />
                 {searchQuery && (

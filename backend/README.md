@@ -1,6 +1,6 @@
-# RoadSense AI Backend
+# Metrivon AI Backend
 
-This backend exposes the real RoadSense AI APIs and integrates the trained accident-risk model with the existing PostgreSQL database.
+This backend exposes the real Metrivon AI APIs and integrates the trained accident-risk model with the existing PostgreSQL database.
 
 ## Real database architecture used for prediction
 

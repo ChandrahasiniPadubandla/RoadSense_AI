@@ -16,7 +16,7 @@ from app.ml.prediction_engine import (
     normalize_model_weather,
 )
 
-logger = logging.getLogger("roadsense.accident_risk_features")
+logger = logging.getLogger("Metrivon.accident_risk_features")
 
 
 class AccidentRiskFeatureService:

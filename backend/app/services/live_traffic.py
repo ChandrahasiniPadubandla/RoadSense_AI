@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
-logger = logging.getLogger("roadsense.live_traffic")
+logger = logging.getLogger("Metrivon.live_traffic")
 
 # In-memory TTL cache to respect API rate limits and avoid repetitive requests
 # Key: (round(lat, 3), round(lng, 3)), Value: (timestamp, result_dict)
@@ -54,7 +54,7 @@ def get_live_traffic_flow(
             )
             req = urllib.request.Request(
                 url,
-                headers={"User-Agent": "RoadSenseAI-Backend/1.0 (contact@roadsense.ai)"}
+                headers={"User-Agent": "MetrivonAI-Backend/1.0 (contact@Metrivon.ai)"}
             )
             with urllib.request.urlopen(req, timeout=3.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))

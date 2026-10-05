@@ -10,7 +10,7 @@ from app.routers import register_routers
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 app = FastAPI(
-    title="RoadSense AI",
+    title="Metrivon AI",
     description="AI-Based Smart Traffic & Accident Prediction System",
     version="1.0.0"
 )
@@ -32,7 +32,7 @@ def serve_frontend_spa():
     frontend_index = FRONTEND_DIST / "index.html"
     if frontend_index.exists():
         return FileResponse(frontend_index)
-    return {"message": "RoadSense AI API is running"}
+    return {"message": "Metrivon AI API is running"}
 
 
 if FRONTEND_DIST.exists():

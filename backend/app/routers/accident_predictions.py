@@ -73,7 +73,7 @@ def predict_accident_risk_route(
         feature_payload = accident_risk_feature_service.build_feature_payload(db, road.road_id)
         result = accident_risk_service.predict(feature_payload)
     except ValueError as exc:
-        logger = logging.getLogger("roadsense")
+        logger = logging.getLogger("Metrivon")
         logger.exception("Accident-risk feature preparation failed for road_id=%s", road.road_id)
         raise HTTPException(
             status_code=422,
@@ -84,7 +84,7 @@ def predict_accident_risk_route(
             },
         ) from exc
     except RuntimeError as exc:
-        logger = logging.getLogger("roadsense")
+        logger = logging.getLogger("Metrivon")
         logger.exception("Accident-risk prediction failed for road_id=%s", road.road_id)
         raise HTTPException(
             status_code=500,

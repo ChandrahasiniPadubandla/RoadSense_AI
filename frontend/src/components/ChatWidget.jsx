@@ -7,7 +7,7 @@ import { sendChatbotMessage } from '../api_services';
 import { useAuth } from '../context/AuthContext';
 
 const STARTER_QUESTIONS = [
-  'What roads does RoadSense track?',
+  'What roads does Metrivon track?',
   'What is the accident risk from Banjara Hills to Hitec City?',
   'Which zones have the most accident hotspots?',
   'What are the current system-wide traffic statistics?',
@@ -36,8 +36,8 @@ export default function ChatWidget({
 
     return {
       role: 'assistant',
-      sender: 'RoadSense AI',
-      text: `Hey ${username}! I’m the RoadSense AI Assistant. Ask me about traffic conditions, congestion predictions, accident risk, routes, or accident hotspots — all answers are grounded in RoadSense data and ML predictions.`,
+      sender: 'Metrivon AI',
+      text: `Hey ${username}! I’m the Metrivon AI Assistant. Ask me about traffic conditions, congestion predictions, accident risk, routes, or accident hotspots — all answers are grounded in Metrivon data and ML predictions.`,
     };
   }
 
@@ -80,7 +80,7 @@ export default function ChatWidget({
     return (
       message.sender ||
       (message.role === 'assistant'
-        ? 'RoadSense AI'
+        ? 'Metrivon AI'
         : 'You')
     );
   }
@@ -128,7 +128,7 @@ export default function ChatWidget({
         ...current,
         {
           role: 'assistant',
-          sender: 'RoadSense AI',
+          sender: 'Metrivon AI',
           text: data.reply,
         },
       ]);
@@ -148,7 +148,7 @@ export default function ChatWidget({
         ...current,
         {
           role: 'assistant',
-          sender: 'RoadSense AI',
+          sender: 'Metrivon AI',
           text: detail,
           isError: true,
         },
@@ -279,7 +279,7 @@ export default function ChatWidget({
                       dark:text-slate-100
                     "
                   >
-                    RoadSense AI
+                    Metrivon AI
                   </p>
 
                   {/* ONLINE */}
@@ -695,7 +695,7 @@ export default function ChatWidget({
           >
             {mode === 'groq'
               ? 'Powered by Groq · LangChain'
-              : 'RoadSense AI Assistant'}
+              : 'Metrivon AI Assistant'}
           </div>
 
         </div>

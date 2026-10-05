@@ -16,7 +16,7 @@ try:
 except Exception:
     pass
 
-logger = logging.getLogger("roadsense")
+logger = logging.getLogger("Metrivon")
 
 
 class AccidentRiskService:

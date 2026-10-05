@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class GeocodeSearchResult(BaseModel):
-    display_name: str = Field(..., description="Full formatted address/name from OpenStreetMap or RoadSense database")
+    display_name: str = Field(..., description="Full formatted address/name from OpenStreetMap or Metrivon database")
     latitude: float = Field(..., description="Latitude in decimal degrees")
     longitude: float = Field(..., description="Longitude in decimal degrees")
     type: Optional[str] = Field(default="location", description="Type of place (e.g. suburb, road, amenity)")

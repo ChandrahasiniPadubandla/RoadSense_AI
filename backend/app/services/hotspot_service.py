@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from app.database.models import AccidentHotspot, TrafficZone, Road, Accident, AccidentPrediction
 
-logger = logging.getLogger("roadsense")
+logger = logging.getLogger("Metrivon")
 
 
 def resolve_risk_level(risk_score: float) -> str:

@@ -67,7 +67,7 @@ export default function Register() {
   // Theme State (synced with localStorage)
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
-      const saved = localStorage.getItem('roadsense_theme');
+      const saved = localStorage.getItem('Metrivon_theme');
       return saved !== null ? saved === 'dark' : true;
     } catch {
       return true;
@@ -76,7 +76,7 @@ export default function Register() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('roadsense_theme', isDarkMode ? 'dark' : 'light');
+      localStorage.setItem('Metrivon_theme', isDarkMode ? 'dark' : 'light');
     } catch { }
   }, [isDarkMode]);
 
@@ -330,7 +330,7 @@ export default function Register() {
             <div>
               <div className="flex items-center gap-2">
                 <span className={`text-xl font-black tracking-tight transition-colors ${theme.brandText}`}>
-                  RoadSense
+                  Metrivon
                 </span>
                 <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-signal-blue/20 text-signal-blue border border-signal-blue/40 tracking-wider">
                   AI
@@ -401,7 +401,7 @@ export default function Register() {
               </Link>
 
               <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.1] ${theme.heading}`}>
-                RoadSense AI{' '}
+                Metrivon AI{' '}
                 <span className="bg-gradient-to-r from-sky-400 via-cyan-400 to-signal-green bg-clip-text text-transparent">
                   for Your Department.
                 </span>
@@ -764,7 +764,7 @@ export default function Register() {
       <footer className={`relative z-10 border-t py-6 text-xs transition-colors duration-300 ${isDarkMode ? 'border-white/[0.08] bg-[#0A0D12] text-asphalt-400' : 'border-slate-200 bg-slate-100 text-slate-600'
         }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-          <p>© {new Date().getFullYear()} RoadSense AI Systems. Municipal Traffic Operations.</p>
+          <p>© {new Date().getFullYear()} Metrivon AI Systems. Municipal Traffic Operations.</p>
           <div className="flex items-center gap-4 text-[11px]">
             <Link to="/" className="hover:text-signal-blue transition-colors">Overview</Link>
             <Link to="/login" className="hover:text-signal-blue transition-colors">Sign In</Link>

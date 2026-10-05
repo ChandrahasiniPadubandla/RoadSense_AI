@@ -12,12 +12,12 @@ from geoalchemy2.shape import to_shape
 
 from app.database.models import Road
 
-logger = logging.getLogger("roadsense.geocoding")
+logger = logging.getLogger("Metrivon.geocoding")
 
 # Simple in-memory cache to avoid redundant external network calls
 _GEOCODE_CACHE: Dict[str, List[Dict[str, Any]]] = {}
 _REVERSE_CACHE: Dict[str, Dict[str, Any]] = {}
-USER_AGENT = "RoadSenseAI-Backend/1.0 (contact@roadsense.ai)"
+USER_AGENT = "MetrivonAI-Backend/1.0 (contact@Metrivon.ai)"
 
 # Curated high-precision transit hubs and landmarks in Hyderabad to ensure
 # 100% instant and accurate recognition for bus stands, terminals, and interchanges.
@@ -279,7 +279,7 @@ def geocode_location(
     """
     Geocodes an address or landmark name into real latitude and longitude.
     Seamlessly integrates:
-      1. RoadSense AI registered monitored corridors from the local database.
+      1. Metrivon AI registered monitored corridors from the local database.
       2. Major Hyderabad Bus Stations, Transit Interchanges, and Terminals.
       3. Cleaned and humanized OpenStreetMap Nominatim geocoding.
     """
@@ -298,7 +298,7 @@ def geocode_location(
     def _coord_key(lat: float, lon: float) -> str:
         return f"{round(lat, 3)}_{round(lon, 3)}"
 
-    # 1. Search Monitored Road Corridors in RoadSense AI Database
+    # 1. Search Monitored Road Corridors in Metrivon AI Database
     if db is not None:
         try:
             # If the user typed "road", "main road", or specific road names
@@ -333,7 +333,7 @@ def geocode_location(
                         results.append({
                             "display_name": f"{r.road_name}, Hyderabad",
                             "primary_name": r.road_name,
-                            "secondary_name": f"RoadSense Monitored Corridor ({r.road_type or 'Urban Arterial'})",
+                            "secondary_name": f"Metrivon Monitored Corridor ({r.road_type or 'Urban Arterial'})",
                             "latitude": lat,
                             "longitude": lng,
                             "type": "road",

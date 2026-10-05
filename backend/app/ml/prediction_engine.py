@@ -561,13 +561,13 @@ def normalize_model_weather(w: str, rainfall: float = 0.0) -> str:
 
 def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Executes the trained ML traffic congestion model directly from RoadSense_AI/traffic_congestion.
+    Executes the trained ML traffic congestion model directly from Metrivon_AI/traffic_congestion.
     Invokes predict_traffic and predict_expected_congestion_time.
     """
     target_time = bundle["target_time"]
     est_time = format_estimated_time(target_time)
 
-    # Directly Execute the Trained Model from RoadSense_AI/traffic_congestion
+    # Directly Execute the Trained Model from Metrivon_AI/traffic_congestion
     traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
     model_file = os.path.join(traffic_dir, "traffic_congestion_classifier.json")
     time_model_file = os.path.join(traffic_dir, "expected_congestion_time_regressor.json")
@@ -578,7 +578,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             detail={
                 "error": "ML_TRAFFIC_MODEL_NOT_FOUND",
                 "issue": f"Trained traffic model file not found in: {traffic_dir}",
-                "message": "Ensure the updated trained model files exist in RoadSense_AI/traffic_congestion.",
+                "message": "Ensure the updated trained model files exist in Metrivon_AI/traffic_congestion.",
                 "prepared_features": bundle["ml_features"]
             }
         )
@@ -688,7 +688,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 "route_geometry": bundle.get("route_geometry", []),
                 "accident_points": acc_pts,
                 "live_traffic": bundle.get("live_traffic"),
-                "ml_source": "trained-model (RoadSense_AI/traffic_congestion)"
+                "ml_source": "trained-model (Metrivon_AI/traffic_congestion)"
             }
     except Exception as err:
         raise HTTPException(
@@ -704,7 +704,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
 def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes the trained ML traffic anomaly detection model (Isolation Forest) directly
-    from RoadSense_AI/traffic_congestion/predict_anomaly.py.
+    from Metrivon_AI/traffic_congestion/predict_anomaly.py.
     """
     traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
     model_file = os.path.join(traffic_dir, "final_traffic_anomaly_model.pkl")
@@ -715,7 +715,7 @@ def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
             detail={
                 "error": "ML_ANOMALY_MODEL_NOT_FOUND",
                 "issue": f"Trained anomaly model file not found in: {traffic_dir}",
-                "message": "Ensure final_traffic_anomaly_model.pkl exists in RoadSense_AI/traffic_congestion.",
+                "message": "Ensure final_traffic_anomaly_model.pkl exists in Metrivon_AI/traffic_congestion.",
                 "features": features
             }
         )
@@ -737,7 +737,7 @@ def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
             from predict_anomaly import predict_anomaly_detailed
 
             result = predict_anomaly_detailed(features)
-            result["ml_source"] = "trained-isolation-forest (RoadSense_AI/traffic_congestion)"
+            result["ml_source"] = "trained-isolation-forest (Metrivon_AI/traffic_congestion)"
             return result
     except Exception as err:
         raise HTTPException(
@@ -753,10 +753,10 @@ def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
 
 def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Executes the trained ML accident risk model directly from RoadSense_AI/predict_accident_risk.
-    Directly invokes predict_accident_risk() from RoadSense_AI/predict_accident_risk/predict_accident_risk.py.
+    Executes the trained ML accident risk model directly from Metrivon_AI/predict_accident_risk.
+    Directly invokes predict_accident_risk() from Metrivon_AI/predict_accident_risk/predict_accident_risk.py.
     """
-    # Directly Execute the Trained Model from RoadSense_AI/predict_accident_risk
+    # Directly Execute the Trained Model from Metrivon_AI/predict_accident_risk
     accident_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "predict_accident_risk"))
     model_file = os.path.join(accident_dir, "accident_risk_classifier.json")
 
@@ -766,7 +766,7 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             detail={
                 "error": "ML_ACCIDENT_MODEL_NOT_FOUND",
                 "issue": f"Trained accident model file not found at: {model_file}",
-                "message": "Ensure the trained model exists in RoadSense_AI/predict_accident_risk/accident_risk_classifier.json.",
+                "message": "Ensure the trained model exists in Metrivon_AI/predict_accident_risk/accident_risk_classifier.json.",
                 "prepared_features": bundle["ml_features"]
             }
         )
@@ -953,7 +953,7 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 "confidence_score": round(conf_score, 1),
                 "route_geometry": bundle.get("route_geometry", []),
                 "accident_points": acc_pts,
-                "ml_source": "trained-model (RoadSense_AI/predict_accident_risk)"
+                "ml_source": "trained-model (Metrivon_AI/predict_accident_risk)"
             }
     except Exception as err:
         raise HTTPException(
