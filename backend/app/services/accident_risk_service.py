@@ -28,7 +28,7 @@ class AccidentRiskService:
     }
 
     def __init__(self, model_dir: str | Path | None = None):
-        base_dir = Path(model_dir) if model_dir is not None else Path(__file__).resolve().parents[1] / "ml" / "models"
+        base_dir = Path(model_dir) if model_dir is not None else Path(__file__).resolve().parents[3] / "predict_accident_risk"
         self.model_dir = base_dir
         self.classifier = None
         self.regressor = None
