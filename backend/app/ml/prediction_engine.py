@@ -660,14 +660,8 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             # The standalone ML regressor was trained on fixed junction segments (~6.5 km).
             # For full routes (e.g. 23 km), traveling duration must scale with actual distance
             # and congestion-adjusted speed (Distance / Speed * 60):
-            route_distance_km = float(bundle.get("distance_km") or 0.0)
-            if route_distance_km > 0 and calibrated_speed > 0:
-                calc_transit_mins = round((route_distance_km / calibrated_speed) * 60.0, 1)
-                actual_duration_mins = max(5.0, calc_transit_mins)
-                end_dt = target_time + timedelta(minutes=actual_duration_mins)
-                exp_time = f"{target_time.strftime('%I:%M %p').lstrip('0')} - {end_dt.strftime('%I:%M %p').lstrip('0')}"
-            else:
-                exp_time = time_res.get("expected_congestion_period") or est_time
+            
+            exp_time = time_res.get("expected_congestion_period") or est_time
 
             acc_pts = get_accidents_along_route(
                 db=bundle["db"],
