@@ -95,7 +95,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
       >
         <div className="border-b border-slate-200 px-5 py-5 dark:border-asphalt-700">
           <p className="text-sm font-black tracking-tight text-slate-900 dark:text-asphalt-100">
-            Smart Traffic System
+            Metrivon
           </p>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-asphalt-400">
             Prediction &amp; Monitoring

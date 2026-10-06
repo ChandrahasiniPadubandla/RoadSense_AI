@@ -7,7 +7,7 @@ import axios from 'axios';
 
 // Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8000)
 const RAW_URL = import.meta.env.VITE_API_BASE_URL;
-export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.62:8000';
+export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.64:8000';
 
 
 
