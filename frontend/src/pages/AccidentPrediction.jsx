@@ -6,7 +6,7 @@ import React, {
 
 import DataTable from '../components/DataTable';
 import VoiceAssistant from '../components/VoiceAssistant';
-
+import PageHeader from '../components/PageHeader';
 import {
   geocodeSearch,
   predictRouteAccident,
