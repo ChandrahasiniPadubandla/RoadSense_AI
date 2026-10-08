@@ -264,13 +264,18 @@ export default function LandingPage() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Left: Brand Identity */}
-          <Link to="/" className="flex items-center gap-3.5 flex-shrink-0">
-            <div className="relative flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-br from-signal-blue via-signal-blue to-signal-blue/40 border border-white/25 shadow-xl shadow-signal-blue/30">
-              <Navigation size={22} className="text-white transform -rotate-45" />
+          <Link to="/" className="">
+            <div >
+              <Navigation size={22} className="" />
 
             </div>
             <div>
               <div className="flex items-center gap-2">
+                <img
+      src="images\Merivon_logo.png"
+      alt="Metrivon"
+      className="h-20 w-20 0-w-[120px] object-contain"
+    />
                 <span className={`text-xl font-black tracking-tight transition-colors ${theme.brandText}`}>
                   Metrivon
                 </span>
