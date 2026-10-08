@@ -313,25 +313,27 @@ def resolve_route_bundle(
             }
         )
 
-    # Reverse geocode labels if user only passed coordinates (e.g. Map Click or GPS)
-    start_label = start_name
-    if start_geo_res:
-        start_label = start_geo_res[0].get("address", {}).get("road") or start_geo_res[0].get("primary_name") or start_name
-    elif not start_label:
-        rev = reverse_geocode(s_lat, s_lng)
-        if rev:
-            start_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
+    # Preserve the user's provided location name if available
+    start_label = (start_name or "").strip()
     if not start_label:
+        if start_geo_res:
+            start_label = start_geo_res[0].get("primary_name") or start_geo_res[0].get("display_name")
+        elif s_lat is not None and s_lng is not None:
+            rev = reverse_geocode(s_lat, s_lng)
+            if rev:
+                start_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
+    if not start_label and s_lat is not None and s_lng is not None:
         start_label = f"Location [{s_lat:.4f}, {s_lng:.4f}]"
 
-    end_label = end_name
-    if end_geo_res:
-        end_label = end_geo_res[0].get("address", {}).get("road") or end_geo_res[0].get("primary_name") or end_name
-    elif not end_label:
-        rev = reverse_geocode(e_lat, e_lng)
-        if rev:
-            end_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
+    end_label = (end_name or "").strip()
     if not end_label:
+        if end_geo_res:
+            end_label = end_geo_res[0].get("primary_name") or end_geo_res[0].get("display_name")
+        elif e_lat is not None and e_lng is not None:
+            rev = reverse_geocode(e_lat, e_lng)
+            if rev:
+                end_label = rev.get("road") or rev.get("suburb") or rev.get("neighbourhood") or rev.get("display_name")
+    if not end_label and e_lat is not None and e_lng is not None:
         end_label = f"Location [{e_lat:.4f}, {e_lng:.4f}]"
 
     # 3. Match existing Road entity from database or construct dynamic corridor
@@ -561,8 +563,8 @@ def normalize_model_weather(w: str, rainfall: float = 0.0) -> str:
 
 def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Executes the trained ML traffic congestion model directly from Metrivon_AI/traffic_congestion.
-    Invokes predict_traffic and predict_expected_congestion_time.
+    Executes the trained ML traffic congestion classifier directly from Metrivon_AI/traffic_congestion.
+    Invokes predict_traffic to classify real congestion level.
     """
     target_time = bundle["target_time"]
     est_time = format_estimated_time(target_time)
@@ -570,15 +572,14 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
     # Directly Execute the Trained Model from Metrivon_AI/traffic_congestion
     traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
     model_file = os.path.join(traffic_dir, "traffic_congestion_classifier.json")
-    time_model_file = os.path.join(traffic_dir, "expected_congestion_time_regressor.json")
 
-    if not os.path.exists(model_file) or not os.path.exists(time_model_file):
+    if not os.path.exists(model_file):
         raise HTTPException(
             status_code=503,
             detail={
                 "error": "ML_TRAFFIC_MODEL_NOT_FOUND",
                 "issue": f"Trained traffic model file not found in: {traffic_dir}",
-                "message": "Ensure the updated trained model files exist in Metrivon_AI/traffic_congestion.",
+                "message": "Ensure traffic_congestion_classifier.json exists in Metrivon_AI/traffic_congestion.",
                 "prepared_features": bundle["ml_features"]
             }
         )
@@ -599,7 +600,6 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             from predict_traffic import predict_traffic
-            from predict_expected_congestion_time import predict_expected_congestion_time
 
             road_data = bundle["road_conditions"]
             weather_data = bundle["weather_conditions"]
@@ -651,17 +651,19 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             }
 
             traffic_res = predict_traffic(new_record)
-            time_res = predict_expected_congestion_time(new_record)
 
             cong_level = str(traffic_res["congestion_level"]).upper()
             conf_score = traffic_res.get("confidence_score")
 
-            # Route distance scaling:
-            # The standalone ML regressor was trained on fixed junction segments (~6.5 km).
-            # For full routes (e.g. 23 km), traveling duration must scale with actual distance
-            # and congestion-adjusted speed (Distance / Speed * 60):
-            
-            exp_time = time_res.get("expected_congestion_period") or est_time
+            route_distance_km = float(bundle.get("distance_km") or 0.0)
+            if route_distance_km > 0 and calibrated_speed > 0:
+                calc_transit_mins = round((route_distance_km / calibrated_speed) * 60.0, 1)
+                actual_duration_mins = max(5.0, calc_transit_mins)
+                end_dt = target_time + timedelta(minutes=actual_duration_mins)
+                exp_time = f"{target_time.strftime('%I:%M %p').lstrip('0')} - {end_dt.strftime('%I:%M %p').lstrip('0')}"
+            else:
+                exp_time = est_time
+
 
             acc_pts = get_accidents_along_route(
                 db=bundle["db"],

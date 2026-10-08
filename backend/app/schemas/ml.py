@@ -27,7 +27,7 @@ class CongestionPredictionRequest(BaseModel):
 
 class CongestionPredictionResponse(BaseModel):
     predicted_congestion: str
-    expected_congestion_time: str
+    expected_congestion_time: Optional[str] = None
     model_status: str = "database-backed"
 
 
