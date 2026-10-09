@@ -1066,83 +1066,52 @@ export default function TrafficPrediction() {
               {/* ANOMALY */}
 
               {result.anomaly_detection && (
+  <div
+    className={`rounded-lg border p-3.5 transition-all ${
+      result.anomaly_detection.is_anomaly
+        ? 'border-rose-500/40 bg-rose-950/20 text-rose-300'
+        : 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300'
+    }`}
+  >
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        {/* Icon */}
+        <span className="text-sm">
+          {result.anomaly_detection.is_anomaly ? '⚠️' : '✓'}
+        </span>
 
-                <div
-                  className={`rounded-lg border p-3.5 transition-all ${
-                    result.anomaly_detection.is_anomaly
-                      ? 'border-rose-500/40 bg-rose-950/20 text-rose-300'
-                      : 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300'
-                  }`}
-                >
+        {/* Title */}
+        <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">
+          Traffic Anomaly Analysis
+        </span>
+      </div>
 
-                  <div className="flex items-center justify-between">
+      {/* Prediction Badge */}
+      <span
+        className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+          result.anomaly_detection.is_anomaly
+            ? 'border border-rose-500/40 bg-rose-500/20 text-rose-700 dark:text-rose-300'
+            : 'border border-emerald-500/40 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+        }`}
+      >
+        {result.anomaly_detection.prediction}
+      </span>
+    </div>
 
-                    <div className="flex items-center gap-2">
+    {/* Description + Score */}
+    <p className="mt-1.5 text-[11px] text-gray-700 dark:text-gray-400">
+      {result.anomaly_detection.is_anomaly
+        ? 'Unusual traffic pattern or unexpected volume surge detected along this corridor.'
+        : 'Traffic patterns are conforming to normal historical parameters.'}
 
-                      <span className="text-sm">
-
-                        {result.anomaly_detection.is_anomaly
-                          ? '⚠️'
-                          : '✓'}
-
-                      </span>
-
-                      <span className="text-xs font-semibold text-asphalt-100">
-
-                        Traffic Anomaly Analysis
-
-                      </span>
-
-                    </div>
-
-
-                    <span
-                      className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                        result.anomaly_detection.is_anomaly
-                          ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
-                          : 'border border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
-                      }`}
-                    >
-
-                      {
-                        result.anomaly_detection
-                          .prediction
-                      }
-
-                    </span>
-
-                  </div>
-
-
-                  <p className="mt-1.5 text-[11px] text-asphalt-300">
-
-                    {result.anomaly_detection.is_anomaly
-
-                      ? 'Unusual traffic pattern or unexpected volume surge detected along this corridor.'
-
-                      : 'Traffic patterns are conforming to normal historical parameters.'}
-
-
-                    {result.anomaly_detection.anomaly_score != null && (
-
-                      <span className="text-asphalt-400 font-mono ml-1">
-
-                        (
-                        score:{' '}
-                        {result.anomaly_detection.anomaly_score.toFixed(
-                          4
-                        )}
-                        )
-
-                      </span>
-
-                    )}
-
-                  </p>
-
-                </div>
-
-              )}
+      {result.anomaly_detection.anomaly_score != null && (
+        <span className="ml-1 font-mono text-gray-700 dark:text-gray-400">
+          (score: {result.anomaly_detection.anomaly_score.toFixed(4)})
+        </span>
+      )}
+    </p>
+  </div>
+)}
 
 
               {/* METRICS */}
