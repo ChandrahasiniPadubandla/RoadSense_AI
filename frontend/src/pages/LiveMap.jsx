@@ -768,7 +768,7 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
         if (match) {
           sp = suggestionToPoint(match);
           setStartPoint(sp);
-          setStartQuery(sp.label);
+          setStartQuery(startText);
         } else {
           sp = null;
           setStartPoint(null);
@@ -782,7 +782,7 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
         if (match) {
           ep = suggestionToPoint(match);
           setEndPoint(ep);
-          setEndQuery(ep.label);
+          setEndQuery(endText);
         } else {
           ep = null;
           setEndPoint(null);
