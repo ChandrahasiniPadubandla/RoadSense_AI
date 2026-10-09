@@ -61,6 +61,7 @@ def _geocoding_settings() -> Dict[str, Any]:
         "timeout": _as_float(os.getenv("GEOCODING_TIMEOUT_SECONDS"), 6.0),
         "city": (os.getenv("GEOCODING_DEFAULT_CITY", "Hyderabad") or "Hyderabad").strip(),
         "language": (os.getenv("GEOCODING_LANGUAGE", "en") or "en").strip(),
+        "bbox": get_geocoding_bbox(),
     }
 
 
@@ -68,6 +69,65 @@ def _city_bias_coords(city: Optional[str]) -> Tuple[float, float]:
     if city and city.strip().lower() in _CITY_BIAS_COORDS:
         return _CITY_BIAS_COORDS[city.strip().lower()]
     return _CITY_BIAS_COORDS["hyderabad"]
+
+
+# -----------------------------------------------------------------------------
+# Geographic scope for suggestions.
+#
+# Suggestions and voice geocoding are limited to Hyderabad so every developer
+# gets identical results regardless of network or machine. The bounding box is
+# (min_lon, min_lat, max_lon, max_lat) in WGS84 degrees and can be overridden
+# with the GEOCODING_BBOX environment variable (e.g. for another deployment).
+# -----------------------------------------------------------------------------
+DEFAULT_HYDERABAD_BBOX: Tuple[float, float, float, float] = (78.20, 17.20, 78.65, 17.60)
+
+
+def _parse_bbox(value: Optional[str]) -> Optional[Tuple[float, float, float, float]]:
+    if not value:
+        return None
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != 4:
+        logger.warning("Ignoring GEOCODING_BBOX=%r; expected 'min_lon,min_lat,max_lon,max_lat'.", value)
+        return None
+    try:
+        min_lon, min_lat, max_lon, max_lat = (float(part) for part in parts)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring GEOCODING_BBOX=%r; values must be numeric.", value)
+        return None
+    if not (min_lon < max_lon and min_lat < max_lat):
+        logger.warning("Ignoring GEOCODING_BBOX=%r; min values must be less than max values.", value)
+        return None
+    return (min_lon, min_lat, max_lon, max_lat)
+
+
+def get_geocoding_bbox() -> Tuple[float, float, float, float]:
+    """Active (min_lon, min_lat, max_lon, max_lat) used to limit suggestions."""
+    return _parse_bbox(os.getenv("GEOCODING_BBOX")) or DEFAULT_HYDERABAD_BBOX
+
+
+def is_within_geocoding_boundary(
+    latitude: Optional[float],
+    longitude: Optional[float],
+    bbox: Optional[Tuple[float, float, float, float]] = None,
+) -> bool:
+    """True when the coordinate lies inside the configured city bounding box."""
+    if latitude is None or longitude is None:
+        return False
+    min_lon, min_lat, max_lon, max_lat = bbox or get_geocoding_bbox()
+    return (min_lat <= float(latitude) <= max_lat) and (min_lon <= float(longitude) <= max_lon)
+
+
+def filter_within_geocoding_boundary(
+    items: List[Dict[str, Any]],
+    bbox: Optional[Tuple[float, float, float, float]] = None,
+) -> List[Dict[str, Any]]:
+    """Drop candidates that fall outside the configured city bounding box."""
+    active = bbox or get_geocoding_bbox()
+    return [
+        item
+        for item in items
+        if is_within_geocoding_boundary(item.get("latitude"), item.get("longitude"), active)
+    ]
 
 
 def _normalize_feature(feature: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -129,6 +189,7 @@ def search_geocoding_candidates(
         "lat": latitude,
         "lon": longitude,
         "lang": settings["language"],
+        "bbox": ",".join(str(value) for value in settings["bbox"]),
     }
     effective_key = settings["api_key"] if api_key is None else api_key
     if effective_key:
@@ -161,7 +222,7 @@ def search_geocoding_candidates(
         normalized = _normalize_feature(feature)
         if normalized:
             candidates.append(normalized)
-    return candidates
+    return filter_within_geocoding_boundary(candidates, settings["bbox"])
 
 
 ADMIN_TERMS_TO_FILTER = [
@@ -237,7 +298,9 @@ def geocode_location(
     if not clean_query:
         return []
 
-    cache_key = f"{clean_query.lower()}_{city_bias.lower()}_{limit}_{bool(db)}"
+    bbox = get_geocoding_bbox()
+    bbox_key = ",".join(str(value) for value in bbox)
+    cache_key = f"{clean_query.lower()}_{city_bias.lower()}_{limit}_{bool(db)}_{bbox_key}"
     if cache_key in _GEOCODE_CACHE:
         return _GEOCODE_CACHE[cache_key]
 
@@ -275,7 +338,7 @@ def geocode_location(
                         mid = coords[len(coords) // 2]
                         lat, lng = float(mid[1]), float(mid[0])
 
-                if lat is not None and lng is not None:
+                if lat is not None and lng is not None and is_within_geocoding_boundary(lat, lng, bbox):
                     ck = _coord_key(lat, lng)
                     if ck not in seen_coords:
                         seen_coords.add(ck)
@@ -307,7 +370,8 @@ def geocode_location(
             "q": search_str,
             "limit": limit * 2,
             "lat": 17.3850,
-            "lon": 78.4867
+            "lon": 78.4867,
+            "bbox": bbox_key
         }
         url = f"https://photon.komoot.io/api/?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -332,6 +396,8 @@ def geocode_location(
             if len(coords) < 2:
                 continue
             lon, lat = float(coords[0]), float(coords[1])
+            if not is_within_geocoding_boundary(lat, lon, bbox):
+                continue
             ck = _coord_key(lat, lon)
             if ck in seen_coords:
                 continue
@@ -371,6 +437,8 @@ def geocode_location(
         for _, feat in scored_features:
             coords = feat.get("geometry", {}).get("coordinates", [])
             lon, lat = float(coords[0]), float(coords[1])
+            if not is_within_geocoding_boundary(lat, lon, bbox):
+                continue
             ck = _coord_key(lat, lon)
             if ck in seen_coords:
                 continue
