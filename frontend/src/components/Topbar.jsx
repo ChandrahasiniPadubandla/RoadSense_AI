@@ -265,15 +265,15 @@ export default function Topbar({
           {/* Page title */}
 
           <h1
-            className="
-              text-lg
-              md:text-xl
-              font-semibold
-              truncate
-            "
-          >
-            {title}
-          </h1>
+  className="
+    text-lg
+    md:text-xl
+    font-semibold
+    truncate
+  "
+>
+  Metrivon
+</h1>
 
         </div>
 

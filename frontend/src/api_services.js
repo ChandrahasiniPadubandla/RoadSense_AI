@@ -702,18 +702,23 @@ export async function geocodeSearch(query, city = 'Hyderabad', limit = 5) {
 }
 
 /**
- * Real street-level driving route between two points, via OSRM
- * (Open Source Routing Machine — a live public routing API, not a
- * straight line). Throws on failure so the caller can show a real error
- * instead of silently drawing nothing.
+ * Get a street route between two points for the selected travel mode.
+ * The backend returns mode-specific geometry and duration when its route
+ * endpoint forwards `mode` to the routing service. Throws on failure so
+ * LiveMap can show a route error instead of silently drawing nothing.
+ * Supported modes: 'bike' (2-Wheeler), 'car', and 'foot' (Walk).
  */
-export async function getDrivingRoute(startLat, startLng, endLat, endLng) {
+export async function getDrivingRoute(startLat, startLng, endLat, endLng, mode = 'car') {
+  const supportedModes = ['bike', 'car', 'foot'];
+  const routingMode = supportedModes.includes(mode) ? mode : 'car';
+
   const { data } = await apiClient.get('/api/geo/route', {
     params: {
       start_lat: startLat,
       start_lng: startLng,
       end_lat: endLat,
       end_lng: endLng,
+      mode: routingMode,
     },
   });
   return data;

@@ -39,7 +39,7 @@ def search_location(
     """
     Geocodes text queries into real GPS latitude & longitude.
     Integrates Metrivon AI monitored corridors, curated Hyderabad transit hubs,
-    and OpenStreetMap Nominatim with local in-memory caching.
+    and Komoot Photon API (Elasticsearch + OSM) with local in-memory caching.
     """
     results = geocode_location(query=query, city_bias=city or "", limit=limit, db=db)
     return results
@@ -56,7 +56,7 @@ def reverse_geocode_point(
 ):
     """
     Converts GPS latitude & longitude (from browser GPS or map click) into human-readable road,
-    suburb, and city names.
+    suburb, and city names using Photon reverse geocoding.
     """
     data = reverse_geocode(latitude=lat, longitude=lng)
     if not data:
@@ -96,23 +96,25 @@ def get_nearest_road(
 @router.get(
     "/route",
     response_model=DrivingRouteResult,
-    summary="Get Street-Level Driving Route Geometry (OSRM)"
+    summary="Get Street-Level Route Geometry by Vehicle Mode (Car, Bike, Walk)"
 )
 def get_route(
     start_lat: float = Query(..., ge=-90.0, le=90.0, description="Start Latitude"),
     start_lng: float = Query(..., ge=-180.0, le=180.0, description="Start Longitude"),
     end_lat: float = Query(..., ge=-90.0, le=90.0, description="End Latitude"),
-    end_lng: float = Query(..., ge=-180.0, le=180.0, description="End Longitude")
+    end_lng: float = Query(..., ge=-180.0, le=180.0, description="End Longitude"),
+    mode: str = Query("driving", description="Vehicle routing mode: 'driving' (car), 'bike', or 'foot' (walk)")
 ):
     """
-    Returns actual street driving route coordinates [[lat, lng], ...], distance in km,
-    and travel duration using Open Source Routing Machine (OSRM).
+    Returns actual street route coordinates [[lat, lng], ...], distance in km,
+    turn-by-turn directions, and travel duration tailored to the vehicle profile (driving, bike, foot).
     """
     route_info = get_driving_route(
         start_lat=start_lat,
         start_lng=start_lng,
         end_lat=end_lat,
-        end_lng=end_lng
+        end_lng=end_lng,
+        mode=mode
     )
     return DrivingRouteResult(**route_info)
 

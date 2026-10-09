@@ -19,181 +19,6 @@ _GEOCODE_CACHE: Dict[str, List[Dict[str, Any]]] = {}
 _REVERSE_CACHE: Dict[str, Dict[str, Any]] = {}
 USER_AGENT = "MetrivonAI-Backend/1.0 (contact@Metrivon.ai)"
 
-# Curated high-precision transit hubs and landmarks in Hyderabad to ensure
-# 100% instant and accurate recognition for bus stands, terminals, and interchanges.
-HYDERABAD_TRANSIT_HUBS: List[Dict[str, Any]] = [
-    {
-        "primary_name": "Mahatma Gandhi Bus Station (MGBS / Imlibun)",
-        "secondary_name": "Gowliguda / CBS, Hyderabad",
-        "display_name": "Mahatma Gandhi Bus Station (MGBS / Imlibun), Gowliguda, Hyderabad",
-        "latitude": 17.3781,
-        "longitude": 78.4851,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["mgbs", "imlibun", "bus stand", "bus stands", "bus tsnd", "bus tsnds", "bus stop", "cbs", "gowliguda", "central bus station"]
-    },
-    {
-        "primary_name": "Jubilee Bus Station (JBS)",
-        "secondary_name": "Picket, Secunderabad",
-        "display_name": "Jubilee Bus Station (JBS), Secunderabad",
-        "latitude": 17.4503,
-        "longitude": 78.4983,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["jbs", "jubilee", "bus stand", "bus stands", "bus tsnd", "bus tsnds", "secunderabad", "picket"]
-    },
-    {
-        "primary_name": "Central Bus Station (CBS / Afzalgunj)",
-        "secondary_name": "Afzalgunj, Hyderabad",
-        "display_name": "Central Bus Station (CBS / Afzalgunj), Afzalgunj, Hyderabad",
-        "latitude": 17.3732,
-        "longitude": 78.4776,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["cbs", "afzalgunj", "bus stand", "bus stands", "bus tsnd", "bus tsnds"]
-    },
-    {
-        "primary_name": "Koti Bus Stand & Depot",
-        "secondary_name": "Women's College Road, Koti, Hyderabad",
-        "display_name": "Koti Bus Stand & Depot, Koti, Hyderabad",
-        "latitude": 17.3833,
-        "longitude": 78.4857,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["koti", "bus stand", "bus stands", "bus tsnd", "bus tsnds", "koti bus"]
-    },
-    {
-        "primary_name": "Dilsukhnagar Bus Station & Depot",
-        "secondary_name": "Vijayawada Highway, Dilsukhnagar, Hyderabad",
-        "display_name": "Dilsukhnagar Bus Station & Depot, Dilsukhnagar, Hyderabad",
-        "latitude": 17.3688,
-        "longitude": 78.5273,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["dilsukhnagar", "bus stand", "bus stands", "bus tsnd", "bus tsnds", "depot"]
-    },
-    {
-        "primary_name": "Mehdipatnam Bus Station & Depot",
-        "secondary_name": "PVNR Expressway Junction, Mehdipatnam, Hyderabad",
-        "display_name": "Mehdipatnam Bus Station & Depot, Mehdipatnam, Hyderabad",
-        "latitude": 17.3916,
-        "longitude": 78.4410,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["mehdipatnam", "bus stand", "bus stands", "bus tsnd", "bus tsnds"]
-    },
-    {
-        "primary_name": "Secunderabad Bus Station (Rathifile)",
-        "secondary_name": "Station Road, Secunderabad",
-        "display_name": "Secunderabad Bus Station (Rathifile), Secunderabad",
-        "latitude": 17.4360,
-        "longitude": 78.5001,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["secunderabad", "rathifile", "bus stand", "bus stands", "bus tsnd", "bus tsnds"]
-    },
-    {
-        "primary_name": "Miyapur Bus Station & Metro Terminal",
-        "secondary_name": "Mumbai Highway, Miyapur, Hyderabad",
-        "display_name": "Miyapur Bus Station & Metro Terminal, Miyapur, Hyderabad",
-        "latitude": 17.4965,
-        "longitude": 78.3615,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["miyapur", "bus stand", "bus stands", "bus tsnd", "bus tsnds", "allwyn"]
-    },
-    {
-        "primary_name": "Uppal Bus Terminal & Ring Road Stand",
-        "secondary_name": "Inner Ring Road, Uppal, Hyderabad",
-        "display_name": "Uppal Bus Terminal & Ring Road Stand, Uppal, Hyderabad",
-        "latitude": 17.4018,
-        "longitude": 78.5602,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["uppal", "bus stand", "bus stands", "bus tsnd", "bus tsnds"]
-    },
-    {
-        "primary_name": "KPHB / Kukatpally Bus Stop",
-        "secondary_name": "KPHB Colony, Mumbai Highway, Hyderabad",
-        "display_name": "KPHB / Kukatpally Bus Stop, Kukatpally, Hyderabad",
-        "latitude": 17.4932,
-        "longitude": 78.3995,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["kphb", "kukatpally", "bus stop", "bus stand", "bus tsnd"]
-    },
-    {
-        "primary_name": "Ameerpet Metro & Bus Interchange",
-        "secondary_name": "Ameerpet Crossroads, Hyderabad",
-        "display_name": "Ameerpet Metro & Bus Interchange, Ameerpet, Hyderabad",
-        "latitude": 17.4375,
-        "longitude": 78.4483,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["ameerpet", "bus stop", "bus stand", "bus tsnd", "metro"]
-    },
-    {
-        "primary_name": "Charminar Bus Stand",
-        "secondary_name": "Old City, Charminar, Hyderabad",
-        "display_name": "Charminar Bus Stand, Charminar, Hyderabad",
-        "latitude": 17.3615,
-        "longitude": 78.4745,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["charminar", "bus stand", "bus tsnd"]
-    },
-    {
-        "primary_name": "Lingampally Bus Station",
-        "secondary_name": "Railway Station Road, BHEL, Lingampally",
-        "display_name": "Lingampally Bus Station, Lingampally, Hyderabad",
-        "latitude": 17.4912,
-        "longitude": 78.3218,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["lingampally", "bhel", "bus stand", "bus tsnd"]
-    },
-    {
-        "primary_name": "ECIL X Roads Bus Station",
-        "secondary_name": "ECIL X Roads, Moula Ali, Hyderabad",
-        "display_name": "ECIL X Roads Bus Station, ECIL, Hyderabad",
-        "latitude": 17.4716,
-        "longitude": 78.5728,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["ecil", "moula ali", "bus stand", "bus tsnd"]
-    },
-    {
-        "primary_name": "Hayathnagar Bus Depot & Terminal",
-        "secondary_name": "Vijayawada Highway, Hayathnagar, Hyderabad",
-        "display_name": "Hayathnagar Bus Depot & Terminal, Hayathnagar, Hyderabad",
-        "latitude": 17.3256,
-        "longitude": 78.6012,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["hayathnagar", "bus stand", "bus tsnd", "depot"]
-    },
-    {
-        "primary_name": "Falaknuma Bus Station & Depot",
-        "secondary_name": "Falaknuma, Old City, Hyderabad",
-        "display_name": "Falaknuma Bus Station & Depot, Falaknuma, Hyderabad",
-        "latitude": 17.3288,
-        "longitude": 78.4682,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["falaknuma", "bus stand", "bus tsnd"]
-    },
-    {
-        "primary_name": "Patancheru Bus Station",
-        "secondary_name": "Mumbai Highway, Patancheru, Hyderabad",
-        "display_name": "Patancheru Bus Station, Patancheru, Hyderabad",
-        "latitude": 17.5284,
-        "longitude": 78.2635,
-        "type": "bus_station",
-        "category": "transit",
-        "keywords": ["patancheru", "bus stand", "bus tsnd"]
-    },
-]
-
 ADMIN_TERMS_TO_FILTER = [
     "greater hyderabad municipal corporation",
     "ghmc",
@@ -208,24 +33,6 @@ ADMIN_TERMS_TO_FILTER = [
     "telangana",
     "india"
 ]
-
-
-def normalize_search_query(query: str) -> str:
-    """Corrects common typos in transit and street terms."""
-    q = query.strip()
-    tokens = q.lower().split()
-    corrected = []
-    for token in tokens:
-        # Match typos like 'tsnd', 'tsnds', 'stnd', 'stnds' -> 'stand'
-        if token in ["tsnd", "tsnds", "stnd", "stnds", "stns", "statn"]:
-            corrected.append("stand")
-        elif token in ["buss", "bsu"]:
-            corrected.append("bus")
-        elif token in ["raod", "rpad", "rod"]:
-            corrected.append("road")
-        else:
-            corrected.append(token)
-    return " ".join(corrected)
 
 
 def clean_osm_display_name(raw_display_name: str, address: Dict[str, Any]) -> Tuple[str, str, str]:
@@ -246,7 +53,7 @@ def clean_osm_display_name(raw_display_name: str, address: Dict[str, Any]) -> Tu
     )
     if suburb:
         sub_lower = suburb.lower()
-        if any(admin in sub_lower for admin in ["ward", "zone", "ghmc", "corporation"]):
+        if any(admin in sub_lower for admin in ADMIN_TERMS_TO_FILTER):
             suburb = None
         elif suburb.lower() == primary.lower():
             suburb = None
@@ -277,18 +84,15 @@ def geocode_location(
     db: Optional[Session] = None
 ) -> List[Dict[str, Any]]:
     """
-    Geocodes an address or landmark name into real latitude and longitude.
-    Seamlessly integrates:
-      1. Metrivon AI registered monitored corridors from the local database.
-      2. Major Hyderabad Bus Stations, Transit Interchanges, and Terminals.
-      3. Cleaned and humanized OpenStreetMap Nominatim geocoding.
+    Dynamically geocodes an address, landmark, POI, metro station, mall, hospital, or street name
+    into real GPS latitude and longitude using live OpenStreetMap Komoot Photon API (like Google Maps),
+    with support for registered monitored road corridors from the local database.
     """
     clean_query = query.strip()
     if not clean_query:
         return []
 
-    norm_query = normalize_search_query(clean_query).lower()
-    cache_key = f"{norm_query}_{city_bias.lower()}_{limit}_{bool(db)}"
+    cache_key = f"{clean_query.lower()}_{city_bias.lower()}_{limit}_{bool(db)}"
     if cache_key in _GEOCODE_CACHE:
         return _GEOCODE_CACHE[cache_key]
 
@@ -298,15 +102,15 @@ def geocode_location(
     def _coord_key(lat: float, lon: float) -> str:
         return f"{round(lat, 3)}_{round(lon, 3)}"
 
-    # 1. Search Monitored Road Corridors in Metrivon AI Database
+    # 1. Search Monitored Road Corridors in Metrivon AI Database (if present)
     if db is not None:
         try:
-            # If the user typed "road", "main road", or specific road names
-            is_generic_road = norm_query in ["road", "roads", "main road", "main roads", "corridor"]
+            q_lower = clean_query.lower()
+            is_generic_road = q_lower in ["road", "roads", "main road", "main roads", "corridor"]
             if is_generic_road:
                 db_roads = db.query(Road).limit(limit).all()
             else:
-                road_keyword = norm_query.replace("road", "").strip() or norm_query
+                road_keyword = q_lower.replace("road", "").strip() or q_lower
                 db_roads = (
                     db.query(Road)
                     .filter(Road.road_name.ilike(f"%{road_keyword}%"))
@@ -344,118 +148,176 @@ def geocode_location(
         except Exception as e:
             logger.debug("Local road corridor search failed: %s", e)
 
-    # 2. Check Curated Hyderabad Bus Stations and Transit Directory
-    transit_stopwords = {
-        "road", "roads", "street", "highway", "avenue", "lane", "station",
-        "bus", "stop", "terminal", "depot", "stand", "crossroads", "junction",
-        "near", "opposite", "chowk", "circle", "flyover"
+    # 2. Dynamic Live Geocoding via Komoot Photon API (OSM + Elasticsearch)
+    # Extracts distinct search tokens (e.g. 'moospet' from 'moospet metro station')
+    tokens = clean_query.lower().split()
+    generic_transit_words = {
+        "metro", "station", "subway", "bus", "stand", "stop", "railway",
+        "terminal", "crossroads", "junction", "circle", "chowk"
     }
-    for hub in HYDERABAD_TRANSIT_HUBS:
-        matched = False
-        if any(kw in norm_query for kw in hub["keywords"]):
-            matched = True
-        elif norm_query in hub["primary_name"].lower():
-            matched = True
-        elif any(w in hub["primary_name"].lower() for w in norm_query.split() if len(w) >= 3 and w not in transit_stopwords):
-            matched = True
+    distinctive_tokens = [t for t in tokens if t not in generic_transit_words and len(t) >= 3]
 
-        if matched:
-            ck = _coord_key(hub["latitude"], hub["longitude"])
-            if ck not in seen_coords:
-                seen_coords.add(ck)
-                results.append({
-                    "display_name": hub["display_name"],
-                    "primary_name": hub["primary_name"],
-                    "secondary_name": hub["secondary_name"],
-                    "latitude": hub["latitude"],
-                    "longitude": hub["longitude"],
-                    "type": hub["type"],
-                    "category": "transit",
-                    "importance": 0.95,
-                    "address": {"amenity": hub["primary_name"], "city": "Hyderabad"}
-                })
-
-    # If we already have enough high-confidence local & transit results, return them
-    if len(results) >= limit:
-        final_results = results[:limit]
-        _GEOCODE_CACHE[cache_key] = final_results
-        return final_results
-
-    # 3. External OpenStreetMap Nominatim Geocoding
-    search_term = norm_query
-    if city_bias and city_bias.lower() not in norm_query:
-        search_term = f"{norm_query}, {city_bias}"
-
-    params = {
-        "q": search_term,
-        "format": "json",
-        "limit": limit * 2,
-        "addressdetails": 1,
-        "countrycodes": "in"
-    }
-    url = f"https://nominatim.openstreetmap.org/search?{urllib.parse.urlencode(params)}"
-
-    try:
+    def _fetch_photon(search_str: str) -> List[Dict[str, Any]]:
+        params = {
+            "q": search_str,
+            "limit": limit * 2,
+            "lat": 17.3850,
+            "lon": 78.4867
+        }
+        url = f"https://photon.komoot.io/api/?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+            return data.get("features", [])
 
-        for item in data:
-            lat = float(item["lat"])
-            lon = float(item["lon"])
+    try:
+        raw_features = _fetch_photon(clean_query)
+        # If the user specified a transit or POI descriptor, also fetch core name to discover exact nodes (e.g. Moosapet station node)
+        if distinctive_tokens:
+            core_query = " ".join(distinctive_tokens)
+            if core_query != clean_query.lower():
+                core_features = _fetch_photon(core_query)
+                raw_features = raw_features + core_features
+
+        # Score and rank features by relevance to user query
+        scored_features: List[Tuple[float, Dict[str, Any]]] = []
+        for feat in raw_features:
+            geom = feat.get("geometry", {})
+            coords = geom.get("coordinates", [])
+            if len(coords) < 2:
+                continue
+            lon, lat = float(coords[0]), float(coords[1])
+            ck = _coord_key(lat, lon)
+            if ck in seen_coords:
+                continue
+
+            props = feat.get("properties", {})
+            raw_name = props.get("name") or props.get("street") or clean_query.title()
+            name_lower = raw_name.lower()
+            osm_key = (props.get("osm_key") or "").lower()
+            osm_value = (props.get("osm_value") or "").lower()
+
+            score = 0.0
+            if distinctive_tokens:
+                for dt in distinctive_tokens:
+                    if dt in name_lower:
+                        score += 50.0
+                    elif len(dt) >= 4 and any(dt[:4] in w for w in name_lower.split()):
+                        # Fuzzy typo tolerance (e.g. moospet vs moosapet)
+                        score += 40.0
+            else:
+                score += 10.0
+
+            q_lower = clean_query.lower()
+            if "metro" in q_lower and (osm_key == "railway" or "metro" in name_lower or osm_value in ["station", "subway", "subway_entrance"]):
+                score += 30.0
+            if "bus" in q_lower and (osm_value in ["bus_station", "bus_stop"] or "bus" in name_lower):
+                score += 30.0
+            if "mall" in q_lower and (osm_value in ["mall", "commercial", "department_store"] or "mall" in name_lower):
+                score += 30.0
+            if "hospital" in q_lower and (osm_value in ["hospital", "clinic"] or "hospital" in name_lower):
+                score += 30.0
+
+            scored_features.append((score, feat))
+
+        # Sort highest score first
+        scored_features.sort(key=lambda x: x[0], reverse=True)
+
+        for _, feat in scored_features:
+            coords = feat.get("geometry", {}).get("coordinates", [])
+            lon, lat = float(coords[0]), float(coords[1])
             ck = _coord_key(lat, lon)
             if ck in seen_coords:
                 continue
             seen_coords.add(ck)
 
-            raw_name = item.get("display_name", "")
-            address = item.get("address", {})
-            primary, secondary, clean_disp = clean_osm_display_name(raw_name, address)
+            props = feat.get("properties", {})
+            raw_name = props.get("name") or props.get("street") or clean_query.title()
+            osm_key = (props.get("osm_key") or "").lower()
+            osm_value = (props.get("osm_value") or "").lower()
+            lower_name = raw_name.lower()
 
-            place_type = item.get("type", "location")
+            locality = props.get("locality") or props.get("district")
+            street = props.get("street")
+            city = props.get("city") or props.get("district") or props.get("county") or "Hyderabad"
+            state = props.get("state", "Telangana")
+            postcode = props.get("postcode", "")
+
+            # Classify dynamically like Google Maps
             category = "location"
-            if place_type in ["bus_station", "station", "stop", "platform", "tram_stop"]:
+            place_type = osm_value or osm_key or "location"
+
+            q_lower = clean_query.lower()
+            if (osm_key == "railway" and osm_value in ["station", "subway_entrance", "subway", "halt", "tram_stop"]) or "metro" in lower_name or ("metro" in q_lower and osm_value in ["station", "subway"]):
+                if "metro" in lower_name or "metro" in q_lower or osm_value in ["subway", "subway_entrance"]:
+                    category = "metro"
+                    place_type = "metro_station"
+                    if "metro" not in lower_name and "station" not in lower_name:
+                        raw_name = f"{raw_name} Metro Station"
+                else:
+                    category = "railway"
+                    place_type = "railway_station"
+            elif (osm_key in ["amenity", "highway"] and osm_value in ["bus_station", "bus_stop"]) or "bus stand" in lower_name or "bus stop" in lower_name or "depot" in lower_name:
                 category = "transit"
-            elif place_type in ["road", "highway", "primary", "secondary", "tertiary", "trunk", "residential"]:
+                place_type = "bus_station"
+            elif (osm_key in ["amenity", "healthcare"] and osm_value in ["hospital", "clinic", "doctors"]) or "hospital" in lower_name or "clinic" in lower_name:
+                category = "hospital"
+                place_type = "hospital"
+            elif (osm_key in ["shop", "building", "landuse"] and osm_value in ["mall", "department_store", "supermarket", "commercial"]) or "mall" in lower_name or "shopping" in lower_name:
+                category = "mall"
+                place_type = "mall"
+            elif (osm_key in ["aeroway", "amenity"] and osm_value in ["aerodrome", "airport"]) or "airport" in lower_name:
+                category = "airport"
+                place_type = "airport"
+            elif osm_key in ["highway", "road"] or osm_value in ["road", "highway", "primary", "secondary", "tertiary", "trunk", "residential"]:
                 category = "corridor"
-            elif place_type in ["attraction", "historic", "monument", "mall", "hospital"]:
+                place_type = "road"
+            elif osm_key in ["tourism", "historic", "leisure"] or osm_value in ["attraction", "monument", "theme_park"]:
                 category = "poi"
+                place_type = "landmark"
+
+            # Clean secondary area description
+            area_tokens = []
+            for part in [locality, street, city]:
+                if part and part.lower() not in raw_name.lower() and part not in area_tokens:
+                    area_tokens.append(part)
+            secondary = ", ".join(area_tokens) if area_tokens else city
+            display_name = f"{raw_name}, {secondary}" if secondary and secondary not in raw_name else raw_name
 
             results.append({
-                "display_name": clean_disp,
-                "primary_name": primary,
+                "display_name": display_name,
+                "primary_name": raw_name,
                 "secondary_name": secondary,
                 "latitude": lat,
                 "longitude": lon,
                 "type": place_type,
                 "category": category,
-                "importance": float(item.get("importance", 0.0)),
-                "address": address
+                "importance": 0.9 if category in ["metro", "mall", "hospital", "transit"] else 0.85,
+                "address": {
+                    "amenity": raw_name,
+                    "road": street,
+                    "suburb": locality,
+                    "city": city,
+                    "state": state,
+                    "postcode": postcode,
+                }
             })
 
             if len(results) >= limit:
                 break
 
     except Exception as err:
-        logger.warning("Geocoding failed for '%s': %s", clean_query, err)
-
-    if not results:
-        # Retry with simplified query (stripping junction, chowk, circle, crossroads)
-        simplified = norm_query
-        for suffix in ["junction", "crossroads", "cross roads", "x roads", "x-roads", "circle", "square", "chowk", "bus stop", "stop", "station"]:
-            if suffix in simplified:
-                simplified = simplified.replace(suffix, "").strip()
-        if simplified and simplified != norm_query and len(simplified) >= 3:
-            return geocode_location(query=simplified, city_bias=city_bias, limit=limit, db=db)
+        logger.warning("Dynamic Photon geocoding failed for '%s': %s", clean_query, err)
 
     final_results = results[:limit]
     _GEOCODE_CACHE[cache_key] = final_results
     return final_results
 
 
+
 def reverse_geocode(latitude: float, longitude: float) -> Optional[Dict[str, Any]]:
     """
-    Reverse-geocodes exact GPS coordinates into a human-readable street/area name.
+    Reverse-geocodes exact GPS coordinates into a human-readable street/area name using Photon API.
     """
     cache_key = f"{round(latitude, 4)}_{round(longitude, 4)}"
     if cache_key in _REVERSE_CACHE:
@@ -464,48 +326,56 @@ def reverse_geocode(latitude: float, longitude: float) -> Optional[Dict[str, Any
     params = {
         "lat": latitude,
         "lon": longitude,
-        "format": "json",
-        "addressdetails": 1
     }
-    url = f"https://nominatim.openstreetmap.org/reverse?{urllib.parse.urlencode(params)}"
+    url = f"https://photon.komoot.io/reverse?{urllib.parse.urlencode(params)}"
 
     try:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))
 
-        addr = data.get("address", {})
-        road_name = (
-            addr.get("road")
-            or addr.get("suburb")
-            or addr.get("neighbourhood")
-            or addr.get("residential")
-            or addr.get("city")
-            or "Selected Location"
-        )
+        features = data.get("features", [])
+        if features:
+            props = features[0].get("properties", {})
+            name = props.get("name") or props.get("street") or "Selected Location"
+            street = props.get("street") or name
+            locality = props.get("locality") or props.get("district")
+            city = props.get("city") or props.get("district") or props.get("county") or "Hyderabad"
+            state = props.get("state", "Telangana")
+            postcode = props.get("postcode")
 
-        primary, secondary, clean_disp = clean_osm_display_name(
-            data.get("display_name", f"Location ({latitude:.4f}, {longitude:.4f})"),
-            addr
-        )
+            area_parts = [p for p in [locality, city] if p and p.lower() not in name.lower()]
+            secondary = ", ".join(area_parts) if area_parts else city
+            display_name = f"{name}, {secondary}" if secondary and secondary not in name else name
 
-        result = {
-            "display_name": clean_disp,
-            "road": road_name,
-            "suburb": addr.get("suburb"),
-            "neighbourhood": addr.get("neighbourhood"),
-            "city": addr.get("city") or addr.get("state_district"),
-            "state": addr.get("state"),
-            "postcode": addr.get("postcode"),
-            "latitude": latitude,
-            "longitude": longitude
-        }
-
-        _REVERSE_CACHE[cache_key] = result
-        return result
+            result = {
+                "display_name": display_name,
+                "road": street,
+                "suburb": locality,
+                "neighbourhood": props.get("district"),
+                "city": city,
+                "state": state,
+                "postcode": postcode,
+                "latitude": latitude,
+                "longitude": longitude
+            }
+            _REVERSE_CACHE[cache_key] = result
+            return result
     except Exception as err:
-        logger.warning("Reverse geocoding failed for (%s, %s): %s", latitude, longitude, err)
-        return None
+        logger.warning("Photon reverse geocoding failed for (%s, %s): %s", latitude, longitude, err)
+
+    fallback_result = {
+        "display_name": f"Location ({latitude:.4f}, {longitude:.4f})",
+        "road": "Selected Road",
+        "suburb": None,
+        "neighbourhood": None,
+        "city": "Hyderabad",
+        "state": "Telangana",
+        "postcode": None,
+        "latitude": latitude,
+        "longitude": longitude
+    }
+    return fallback_result
 
 
 def find_nearest_road_by_coordinates(
@@ -585,59 +455,190 @@ def find_nearest_road_by_coordinates(
 _ROUTE_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
+def _calculate_realistic_urban_duration(
+    dist_km: float,
+    raw_dur_secs: float,
+    num_steps: int,
+    mode: str
+) -> float:
+    """
+    Computes realistic urban travel duration modeled after real Indian metropolitan traffic
+    (e.g., Hyderabad), where average city car speeds range from 18-26 km/h (unlike
+    the ideal theoretical free-flow 60-80 km/h speeds returned by raw OSRM).
+    
+    Dynamically accounts for:
+    - Urban street hierarchy (city streets vs. expressways/flyovers)
+    - Traffic light signals & intersection wait times based on number of maneuvers
+    - Time-of-day traffic peak curves (morning/evening rush hour vs. midday vs. late night)
+    - Two-wheeler lane filtering speed advantages
+    - Pedestrian sidewalk walking velocity
+    """
+    from datetime import datetime, timezone, timedelta
+
+    if dist_km <= 0.05:
+        return 1.0
+
+    num_turns = max(num_steps, 1)
+
+    # 1. Walk mode: pedestrian velocity ~4.8 km/h (~12.5 min/km)
+    if mode == "foot":
+        if raw_dur_secs > (dist_km / 8.0) * 3600:
+            return round(raw_dur_secs / 60.0, 1)
+        return round(max((dist_km / 4.8) * 60.0, 1.0), 1)
+
+    # 2. Derive raw OSRM speed to detect if corridor is high-speed expressway vs urban street
+    raw_speed_kmh = (dist_km / (raw_dur_secs / 3600.0)) if raw_dur_secs > 0 else 40.0
+
+    # 3. Dynamic Time-of-Day Traffic Factor (IST local hour: UTC + 5:30)
+    ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    now_hour = ist_now.hour
+
+    # Peak hours: 8:30-11:30 AM and 17:00-21:30 PM
+    if 17 <= now_hour <= 21:
+        time_factor = 1.25  # Evening peak
+    elif 8 <= now_hour <= 11:
+        time_factor = 1.20  # Morning rush hour
+    elif now_hour >= 23 or now_hour < 6:
+        time_factor = 0.85  # Late night clear roads
+    else:
+        time_factor = 1.10  # Standard daytime traffic
+
+    # 4. Urban vs Expressway Speed Calibration
+    if raw_speed_kmh >= 75.0:
+        # Expressway / Ring Road / Highway corridor (e.g. ORR, PVNR Expressway)
+        # Vehicles move at ~55-65 km/h with few traffic lights
+        effective_car_speed = min(raw_speed_kmh * 0.75, 65.0)
+        signal_delay_mins = min(num_turns * 0.12, 4.0)
+    elif raw_speed_kmh >= 45.0:
+        # Major arterial corridor (e.g., Gachibowli-Miyapur, NH-65, Inner Ring Road)
+        # City arterial speeds ~24-28 km/h
+        effective_car_speed = 25.5 / time_factor
+        signal_delay_mins = min(num_turns * 0.28, 9.0)
+    else:
+        # Dense city core / market / interior roads (e.g., Ameerpet, Koti, Begumpet)
+        # City core speeds ~18-22 km/h
+        effective_car_speed = 21.0 / time_factor
+        signal_delay_mins = min(num_turns * 0.32, 11.0)
+
+    # Base car travel time = moving time + intersection/signal queues
+    moving_time_mins = (dist_km / effective_car_speed) * 60.0
+    car_total_mins = moving_time_mins + signal_delay_mins
+
+    # 5. Vehicle Mode Adjustment
+    if mode == "bike":
+        # Two-wheelers in India filter through lane queues, avoid car bottlenecks,
+        # and wait less at signals (~30-34 km/h effective speed, ~0.15 min signal delay)
+        effective_bike_speed = min(effective_car_speed * 1.35, 34.0)
+        bike_signal_delay = min(num_turns * 0.14, 4.0)
+        bike_total_mins = ((dist_km / effective_bike_speed) * 60.0) + bike_signal_delay
+        # Ensure bike is always faster than car in city traffic, but bounded realistically
+        return round(max(min(bike_total_mins, car_total_mins * 0.75), 1.0), 1)
+
+    # Car mode
+    return round(max(car_total_mins, 1.0), 1)
+
+
 def get_driving_route(
     start_lat: float,
     start_lng: float,
     end_lat: float,
-    end_lng: float
+    end_lng: float,
+    mode: str = "driving"
 ) -> Dict[str, Any]:
     """
-    Fetches the real-world street driving route geometry between start and destination coordinates.
-    Uses Open Source Routing Machine (OSRM) to trace actual turns, curved roads, and highways.
-    Returns:
-      {
-        "coordinates": [[lat, lng], [lat, lng], ...],
-        "distance_km": float,
-        "duration_minutes": float,
-        "is_real_route": bool
-      }
+    Fetches the real-world street route geometry and distance between start and destination coordinates
+    according to the selected vehicle type:
+      - 'driving' (Car / Cab / Auto)
+      - 'bike' (Bicycle / Two-Wheeler)
+      - 'foot' (Walking / Pedestrian)
+    Uses Open Source Routing Machine (OSRM) with profile-specific turn-by-turn guidance and speed models.
     """
-    cache_key = f"{round(start_lat, 4)}_{round(start_lng, 4)}_{round(end_lat, 4)}_{round(end_lng, 4)}"
+    norm_mode = (mode or "driving").strip().lower()
+    if norm_mode in ["car", "auto", "cab", "drive", "driving"]:
+        normalized_mode_name = "driving"
+    elif norm_mode in ["bike", "bicycle", "cycling", "cycle", "motorcycle", "two_wheeler"]:
+        normalized_mode_name = "bike"
+    elif norm_mode in ["foot", "walk", "walking", "pedestrian"]:
+        normalized_mode_name = "foot"
+    else:
+        normalized_mode_name = "driving"
+
+    cache_key = f"{round(start_lat, 4)}_{round(start_lng, 4)}_{round(end_lat, 4)}_{round(end_lng, 4)}_{normalized_mode_name}"
     if cache_key in _ROUTE_CACHE:
         return _ROUTE_CACHE[cache_key]
 
-    # Call OSRM public routing API (OSRM expects lng,lat format)
-    url = (
-        f"https://router.project-osrm.org/route/v1/driving/"
-        f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
-    )
+    # Select dedicated routing service endpoints per vehicle profile:
+    # - 'foot': dedicated OpenStreetMap pedestrian routing engine (sidewalks, footways, crosswalks, pedestrian paths)
+    # - 'bike': dedicated OpenStreetMap bicycle & two-wheeler routing engine (cycleways, residential streets, quiet roads)
+    # - 'driving': primary OSRM motorway/arterial car routing engine
+    urls_to_try = []
+    if normalized_mode_name == "foot":
+        urls_to_try.append(
+            f"https://routing.openstreetmap.de/routed-foot/route/v1/driving/"
+            f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+        )
+        urls_to_try.append(
+            f"https://router.project-osrm.org/route/v1/driving/"
+            f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+        )
+    elif normalized_mode_name == "bike":
+        # Two-wheelers (motorcycle / scooter / bike) in India have full access to motorable city roads,
+        # flyovers, and arterial roads, and can filter through traffic bottlenecks and service roads.
+        urls_to_try.append(
+            f"https://router.project-osrm.org/route/v1/driving/"
+            f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+        )
+        urls_to_try.append(
+            f"https://routing.openstreetmap.de/routed-bike/route/v1/driving/"
+            f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+        )
+    else:
+        urls_to_try.append(
+            f"https://router.project-osrm.org/route/v1/driving/"
+            f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+        )
+        urls_to_try.append(
+            f"https://routing.openstreetmap.de/routed-car/route/v1/driving/"
+            f"{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+        )
 
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+    for url in urls_to_try:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
 
-        if data.get("code") == "Ok" and data.get("routes"):
-            primary_route = data["routes"][0]
-            # OSRM geometry is GeoJSON coordinates: [[lng, lat], ...]
-            # Leaflet Polyline expects: [[lat, lng], ...]
-            raw_coords = primary_route["geometry"]["coordinates"]
-            leaflet_coords = [[round(pt[1], 6), round(pt[0], 6)] for pt in raw_coords]
-            dist_km = round(primary_route["distance"] / 1000.0, 2)
-            dur_mins = round(primary_route["duration"] / 60.0, 1)
-            steps = _extract_route_steps(primary_route)
+            if data.get("code") == "Ok" and data.get("routes"):
+                primary_route = data["routes"][0]
+                # OSRM geometry is GeoJSON coordinates: [[lng, lat], ...]
+                # Leaflet Polyline expects: [[lat, lng], ...]
+                raw_coords = primary_route["geometry"]["coordinates"]
+                leaflet_coords = [[round(pt[1], 6), round(pt[0], 6)] for pt in raw_coords]
+                dist_km = round(primary_route["distance"] / 1000.0, 2)
+                raw_dur_secs = primary_route.get("duration", 0)
+                steps = _extract_route_steps(primary_route)
 
-            res = {
-                "coordinates": leaflet_coords,
-                "distance_km": dist_km,
-                "duration_minutes": dur_mins,
-                "is_real_route": True,
-                "steps": steps,
-            }
-            _ROUTE_CACHE[cache_key] = res
-            return res
-    except Exception as err:
-        logger.warning("OSRM driving route request failed (%s): %s", url, err)
+                # Dynamically calculate realistic urban travel duration (Google Maps calibrated)
+                dur_mins = _calculate_realistic_urban_duration(
+                    dist_km=dist_km,
+                    raw_dur_secs=raw_dur_secs,
+                    num_steps=len(steps),
+                    mode=normalized_mode_name
+                )
+
+                res = {
+                    "coordinates": leaflet_coords,
+                    "distance_km": dist_km,
+                    "duration_minutes": dur_mins,
+                    "is_real_route": True,
+                    "steps": steps,
+                    "mode": normalized_mode_name,
+                }
+                _ROUTE_CACHE[cache_key] = res
+                return res
+        except Exception as err:
+            logger.warning("Routing engine failed for %s (%s): %s", normalized_mode_name, url, err)
+            continue
 
     # Fallback to straight line if external routing fails
     import math
@@ -651,12 +652,20 @@ def get_driving_route(
     )
     dist_km = round(6371.0 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)), 2)
 
+    if normalized_mode_name == "bike":
+        fallback_dur = round(max(dist_km * 1.8, 1.0), 1)
+    elif normalized_mode_name == "foot":
+        fallback_dur = round(max((dist_km / 4.8) * 60.0, 1.0), 1)
+    else:
+        fallback_dur = round(max(dist_km * 2.2, 1.0), 1)
+
     fallback_res = {
         "coordinates": [[round(start_lat, 6), round(start_lng, 6)], [round(end_lat, 6), round(end_lng, 6)]],
         "distance_km": dist_km,
-        "duration_minutes": round(dist_km * 2.5, 1),
+        "duration_minutes": fallback_dur,
         "is_real_route": False,
         "steps": [],
+        "mode": normalized_mode_name,
     }
     return fallback_res
 

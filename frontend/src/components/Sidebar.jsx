@@ -93,14 +93,15 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="border-b border-slate-200 px-5 py-5 dark:border-asphalt-700">
-          <p className="text-sm font-black tracking-tight text-slate-900 dark:text-asphalt-100">
-            Metrivon
-          </p>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-asphalt-400">
-            Prediction &amp; Monitoring
-          </p>
-        </div>
+        <div className="border-b border-slate-200 px-4 py-4 dark:border-asphalt-700">
+  <div className="flex items-center justify-center">
+    <img
+      src="images\Merivon_logo.png"
+      alt="Metrivon"
+      className="h-20 w-20 0-w-[120px] object-contain"
+    />
+  </div>
+</div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
           {visibleItems.map((item) => (
