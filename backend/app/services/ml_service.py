@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
 from app.database.connection import SessionLocal
 from app.database.models import Road, TrafficRecord
@@ -6,6 +7,16 @@ from app.schemas.ml import (
     AnomalyPredictionRequest,
     AnomalyPredictionResponse,
 )
+
+
+def _request_or_database_value(request_value, database_value, field_name):
+    value = request_value if request_value is not None else database_value
+    if value is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be provided or available from a shared database traffic record.",
+        )
+    return value
 
 
 class MLService:
@@ -26,7 +37,7 @@ class MLService:
             record = (
                 db.query(TrafficRecord)
                 .filter(TrafficRecord.road_id == road_id)
-                .order_by(TrafficRecord.timestamp.desc())
+                .order_by(TrafficRecord.timestamp.desc(), TrafficRecord.traffic_id.desc())
                 .first()
             )
             if record is None:
@@ -88,30 +99,36 @@ class MLService:
             finally:
                 db_bundle.close()
 
-        vehicle_count = request.vehicle_count
-        if vehicle_count is None:
-            vehicle_count = int(traffic.vehicle_count) if (traffic and traffic.vehicle_count is not None) else 800
-
-        average_speed = request.average_speed
-        if average_speed is None:
-            average_speed = float(traffic.average_speed) if (traffic and traffic.average_speed is not None) else 35.0
-
-        traffic_density = request.traffic_density
-        if traffic_density is None:
-            traffic_density = float(traffic.traffic_density) if (traffic and traffic.traffic_density is not None) else 45.0
-
-        road_capacity = request.road_capacity
-        if road_capacity is None:
-            road_capacity = int(road.road_capacity) if (road and road.road_capacity is not None) else 1500
-
-        previous_traffic = request.previous_traffic
-        if previous_traffic is None:
-            previous_traffic = int(traffic.vehicle_count * 0.95) if (traffic and traffic.vehicle_count is not None) else 750
+        vehicle_count = _request_or_database_value(
+            request.vehicle_count,
+            traffic.vehicle_count if traffic else None,
+            "vehicle_count",
+        )
+        average_speed = _request_or_database_value(
+            request.average_speed,
+            traffic.average_speed if traffic else None,
+            "average_speed",
+        )
+        traffic_density = _request_or_database_value(
+            request.traffic_density,
+            traffic.traffic_density if traffic else None,
+            "traffic_density",
+        )
+        road_capacity = _request_or_database_value(
+            request.road_capacity,
+            road.road_capacity if road else None,
+            "road_capacity",
+        )
+        previous_traffic = _request_or_database_value(
+            request.previous_traffic,
+            int(traffic.vehicle_count * 0.95) if traffic and traffic.vehicle_count is not None else None,
+            "previous_traffic",
+        )
 
         hour = request.hour
         if hour is None:
-            from datetime import datetime
-            hour = traffic.timestamp.hour if (traffic and traffic.timestamp) else datetime.now().hour
+            from datetime import datetime, timezone
+            hour = traffic.timestamp.hour if (traffic and traffic.timestamp) else datetime.now(timezone.utc).hour
 
         features = {
             "vehicle_count": vehicle_count,

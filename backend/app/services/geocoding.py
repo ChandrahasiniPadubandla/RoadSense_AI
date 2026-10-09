@@ -1,6 +1,6 @@
 import json
+import hashlib
 import logging
-import os
 import socket
 import urllib.error
 import urllib.parse
@@ -13,22 +13,17 @@ from geoalchemy2.functions import ST_SetSRID, ST_MakePoint
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
 
-from app.database.models import Road
+from app.database.models import Road, GeocodeSuggestionCache
 
 logger = logging.getLogger("Metrivon.geocoding")
 
-# Simple in-memory cache to avoid redundant external network calls
-_GEOCODE_CACHE: Dict[str, List[Dict[str, Any]]] = {}
 _REVERSE_CACHE: Dict[str, Dict[str, Any]] = {}
 USER_AGENT = "MetrivonAI-Backend/1.0 (contact@Metrivon.ai)"
 
 # -----------------------------------------------------------------------------
 # Geocoding provider configuration (backend-only).
 #
-# The project's existing provider is Komoot Photon (OpenStreetMap). Photon is
-# free and needs NO API key, so no secret is required for the default setup.
-# For providers that require a key, set GEOCODING_API_KEY in backend/.env — it
-# is read here on the server only and is never sent to or read by the frontend.
+# The project uses Komoot Photon (OpenStreetMap). It is free and needs no key.
 # -----------------------------------------------------------------------------
 DEFAULT_GEOCODING_BASE_URL = "https://photon.komoot.io/api"
 _CITY_BIAS_COORDS: Dict[str, Tuple[float, float]] = {
@@ -48,20 +43,13 @@ class GeocodingError(Exception):
 
 
 def _geocoding_settings() -> Dict[str, Any]:
-    def _as_float(value: Optional[str], fallback: float) -> float:
-        try:
-            return float(value) if value not in (None, "") else fallback
-        except (TypeError, ValueError):
-            return fallback
-
     return {
-        "provider": (os.getenv("GEOCODING_PROVIDER", "photon") or "photon").strip().lower(),
-        "base_url": (os.getenv("GEOCODING_BASE_URL", DEFAULT_GEOCODING_BASE_URL) or DEFAULT_GEOCODING_BASE_URL).strip().rstrip("/"),
-        "api_key": (os.getenv("GEOCODING_API_KEY", "") or "").strip(),
-        "timeout": _as_float(os.getenv("GEOCODING_TIMEOUT_SECONDS"), 6.0),
-        "city": (os.getenv("GEOCODING_DEFAULT_CITY", "Hyderabad") or "Hyderabad").strip(),
-        "language": (os.getenv("GEOCODING_LANGUAGE", "en") or "en").strip(),
-        "bbox": get_geocoding_bbox(),
+        "provider": "photon",
+        "base_url": DEFAULT_GEOCODING_BASE_URL,
+        "timeout": 6.0,
+        "city": "Hyderabad",
+        "language": "en",
+        "bbox": DEFAULT_HYDERABAD_BBOX,
     }
 
 
@@ -76,33 +64,14 @@ def _city_bias_coords(city: Optional[str]) -> Tuple[float, float]:
 #
 # Suggestions and voice geocoding are limited to Hyderabad so every developer
 # gets identical results regardless of network or machine. The bounding box is
-# (min_lon, min_lat, max_lon, max_lat) in WGS84 degrees and can be overridden
-# with the GEOCODING_BBOX environment variable (e.g. for another deployment).
+# (min_lon, min_lat, max_lon, max_lat) in WGS84 degrees and is deliberately fixed.
 # -----------------------------------------------------------------------------
 DEFAULT_HYDERABAD_BBOX: Tuple[float, float, float, float] = (78.20, 17.20, 78.65, 17.60)
 
 
-def _parse_bbox(value: Optional[str]) -> Optional[Tuple[float, float, float, float]]:
-    if not value:
-        return None
-    parts = [part.strip() for part in value.split(",")]
-    if len(parts) != 4:
-        logger.warning("Ignoring GEOCODING_BBOX=%r; expected 'min_lon,min_lat,max_lon,max_lat'.", value)
-        return None
-    try:
-        min_lon, min_lat, max_lon, max_lat = (float(part) for part in parts)
-    except (TypeError, ValueError):
-        logger.warning("Ignoring GEOCODING_BBOX=%r; values must be numeric.", value)
-        return None
-    if not (min_lon < max_lon and min_lat < max_lat):
-        logger.warning("Ignoring GEOCODING_BBOX=%r; min values must be less than max values.", value)
-        return None
-    return (min_lon, min_lat, max_lon, max_lat)
-
-
 def get_geocoding_bbox() -> Tuple[float, float, float, float]:
     """Active (min_lon, min_lat, max_lon, max_lat) used to limit suggestions."""
-    return _parse_bbox(os.getenv("GEOCODING_BBOX")) or DEFAULT_HYDERABAD_BBOX
+    return DEFAULT_HYDERABAD_BBOX
 
 
 def is_within_geocoding_boundary(
@@ -180,6 +149,8 @@ def search_geocoding_candidates(
         return []
 
     settings = _geocoding_settings()
+    if settings["provider"] != "photon":
+        raise GeocodingError("error", "Only the documented Photon geocoding provider is supported.")
     bias_city = city_bias or settings["city"]
     latitude, longitude = _city_bias_coords(bias_city)
 
@@ -191,14 +162,10 @@ def search_geocoding_candidates(
         "lang": settings["language"],
         "bbox": ",".join(str(value) for value in settings["bbox"]),
     }
-    effective_key = settings["api_key"] if api_key is None else api_key
-    if effective_key:
-        params["api_key"] = effective_key
+    # Photon is the documented no-key provider; no key is sent to it.
 
     url = f"{(base_url or settings['base_url'])}/?{urllib.parse.urlencode(params)}"
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    if effective_key:
-        request.add_header("X-API-Key", effective_key)
 
     try:
         with urllib.request.urlopen(request, timeout=timeout or settings["timeout"]) as response:
@@ -298,11 +265,18 @@ def geocode_location(
     if not clean_query:
         return []
 
-    bbox = get_geocoding_bbox()
+    settings = _geocoding_settings()
+    if settings["provider"] != "photon":
+        raise GeocodingError("error", "Only the documented Photon geocoding provider is supported.")
+    bbox = DEFAULT_HYDERABAD_BBOX
     bbox_key = ",".join(str(value) for value in bbox)
-    cache_key = f"{clean_query.lower()}_{city_bias.lower()}_{limit}_{bool(db)}_{bbox_key}"
-    if cache_key in _GEOCODE_CACHE:
-        return _GEOCODE_CACHE[cache_key]
+    # Keep the existing city parameter for API compatibility, but make it
+    # impossible for a caller to change Hyderabad's provider bias or boundary.
+    city_bias = "Hyderabad"
+    normalized_query = " ".join(clean_query.casefold().split())
+    provider_key = hashlib.sha256(
+        f"photon|{settings['base_url']}|{settings['language']}|{bbox_key}|{limit}|{normalized_query}".encode("utf-8")
+    ).hexdigest()
 
     results: List[Dict[str, Any]] = []
     seen_coords: set = set()
@@ -316,12 +290,13 @@ def geocode_location(
             q_lower = clean_query.lower()
             is_generic_road = q_lower in ["road", "roads", "main road", "main roads", "corridor"]
             if is_generic_road:
-                db_roads = db.query(Road).limit(limit).all()
+                db_roads = db.query(Road).order_by(Road.road_name.asc(), Road.road_id.asc()).limit(limit).all()
             else:
                 road_keyword = q_lower.replace("road", "").strip() or q_lower
                 db_roads = (
                     db.query(Road)
                     .filter(Road.road_name.ilike(f"%{road_keyword}%"))
+                    .order_by(Road.road_name.asc(), Road.road_id.asc())
                     .limit(limit)
                     .all()
                 )
@@ -373,20 +348,56 @@ def geocode_location(
             "lon": 78.4867,
             "bbox": bbox_key
         }
-        url = f"https://photon.komoot.io/api/?{urllib.parse.urlencode(params)}"
+        if settings["language"]:
+            params["lang"] = settings["language"]
+        url = f"{settings['base_url']}/?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=settings["timeout"]) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             return data.get("features", [])
 
     try:
-        raw_features = _fetch_photon(clean_query)
-        # If the user specified a transit or POI descriptor, also fetch core name to discover exact nodes (e.g. Moosapet station node)
-        if distinctive_tokens:
-            core_query = " ".join(distinctive_tokens)
-            if core_query != clean_query.lower():
-                core_features = _fetch_photon(core_query)
-                raw_features = raw_features + core_features
+        raw_features = None
+        if db is not None:
+            try:
+                cached = db.query(GeocodeSuggestionCache).filter(
+                    GeocodeSuggestionCache.cache_key == provider_key
+                ).first()
+                if cached is not None:
+                    raw_features = cached.payload
+            except Exception as err:
+                db.rollback()
+                raise GeocodingError(
+                    "error",
+                    "The shared geocoding cache is unavailable. Apply database/migrations/001_geocode_suggestion_cache.sql.",
+                ) from err
+
+        if raw_features is None:
+            raw_features = _fetch_photon(clean_query)
+            # Search the distinctive place phrase as well when descriptors such
+            # as "metro station" are present.
+            if distinctive_tokens:
+                core_query = " ".join(distinctive_tokens)
+                if core_query != clean_query.lower():
+                    raw_features.extend(_fetch_photon(core_query))
+            if db is not None:
+                try:
+                    db.add(GeocodeSuggestionCache(cache_key=provider_key, payload=raw_features))
+                    db.commit()
+                except Exception as err:
+                    db.rollback()
+                    # If another backend instance filled the shared key at the
+                    # same time, use its committed payload to keep responses
+                    # consistent across all instances.
+                    cached = db.query(GeocodeSuggestionCache).filter(
+                        GeocodeSuggestionCache.cache_key == provider_key
+                    ).first()
+                    if cached is None:
+                        raise GeocodingError(
+                            "error",
+                            "The shared geocoding cache could not store provider results.",
+                        ) from err
+                    raw_features = cached.payload
 
         # Score and rank features by relevance to user query
         scored_features: List[Tuple[float, Dict[str, Any]]] = []
@@ -519,12 +530,12 @@ def geocode_location(
             if len(results) >= limit:
                 break
 
+    except GeocodingError:
+        raise
     except Exception as err:
         logger.warning("Dynamic Photon geocoding failed for '%s': %s", clean_query, err)
 
-    final_results = results[:limit]
-    _GEOCODE_CACHE[cache_key] = final_results
-    return final_results
+    return results[:limit]
 
 
 

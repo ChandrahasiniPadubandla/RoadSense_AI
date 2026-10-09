@@ -78,7 +78,7 @@ def predict_accident_hotspots(
     db: Session = Depends(get_db),
 ) -> HotspotResponse:
     """
-    Computes top accident hotspots from empirical datasets / ML service,
+    Computes top accident hotspots from database accident and prediction records,
     stores them into the `accident_hotspots` database table with their resolved
     geography point and traffic zones, and returns the persisted hotspot list.
     """

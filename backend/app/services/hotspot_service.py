@@ -1,9 +1,7 @@
-import os
 import logging
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-import pandas as pd
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
 from sqlalchemy.orm import Session
@@ -116,9 +114,8 @@ def upsert_accident_hotspot(
 def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspot]:
     """
     Computes top accident hotspots strictly from REAL database accident records
-    (`accidents`, `accident_predictions`, `roads`, and `traffic_zones`), combined with
-    empirical incident telemetry from the model training dataset.
-    Zero synthetic or dummy fallback data.
+    (`accidents`, `accident_predictions`, `roads`, and `traffic_zones`).
+    No local CSV, machine-specific file, or synthetic data is used.
     """
     persisted = []
     now = datetime.utcnow()
@@ -132,43 +129,13 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
             func.count(Accident.accident_id).label("acc_count"),
         )
         .join(Road, Road.zone_id == TrafficZone.zone_id)
-        .join(Accident, Accident.road_id == Road.road_id)
+        .outerjoin(Accident, Accident.road_id == Road.road_id)
         .group_by(TrafficZone.zone_id, TrafficZone.zone_name, TrafficZone.location)
         .order_by(func.count(Accident.accident_id).desc())
         .all()
     )
 
-    # 2. Read empirical telemetry from accident_hotspots.csv
-    csv_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..", "..", "..",
-            "predict_accident_risk",
-            "accident_hotspots.csv"
-        )
-    )
-    empirical_records = {}
-    if os.path.exists(csv_path):
-        try:
-            df_csv = pd.read_csv(csv_path)
-            for _, row in df_csv.iterrows():
-                s_loc = str(row.get("start_location", "")).strip().lower()
-                e_loc = str(row.get("end_location", "")).strip().lower()
-                accs = int(row.get("accidents", 0))
-                avg_r = float(row.get("average_risk", 0.0))
-                r_lvl = str(row.get("risk", "HIGH")).upper()
-
-                for loc in [s_loc, e_loc]:
-                    if loc not in empirical_records or avg_r > empirical_records[loc]["average_risk"]:
-                        empirical_records[loc] = {
-                            "accidents": accs,
-                            "average_risk": avg_r,
-                            "risk_level": r_lvl,
-                        }
-        except Exception as e:
-            logger.warning("Could not read empirical accident_hotspots.csv: %s", e)
-
-    # 3. Process each real zone with recorded accidents
+    # 2. Process each real zone with recorded accidents
     for zone_id, zone_name, loc_geo, db_acc_count in real_zone_accidents:
         lat, lon = None, None
         if loc_geo is not None:
@@ -186,20 +153,17 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
             .scalar()
         )
 
-        emp_info = empirical_records.get(zone_name.strip().lower())
-
-        # Determine real risk score from actual predictions or empirical telemetry
+        # Determine the score from database-backed predictions or the observed
+        # accident count when no prediction has been stored yet.
         if avg_pred_risk is not None:
             calc_risk_score = float(avg_pred_risk)
-        elif emp_info and emp_info["average_risk"] > 0:
-            calc_risk_score = emp_info["average_risk"]
         else:
             calc_risk_score = min(90.0, 35.0 + db_acc_count * 5.0)
 
         # Standardized risk level threshold matching prediction_engine.py
         calc_risk_level = resolve_risk_level(calc_risk_score)
 
-        total_accidents = max(db_acc_count, emp_info["accidents"] if emp_info else 0)
+        total_accidents = db_acc_count
 
         hotspot = upsert_accident_hotspot(
             db=db,
@@ -211,6 +175,11 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
             zone_id=zone_id,
             calculated_at=now,
         )
+        # This synchronization is authoritative: older versions could have
+        # folded checkout-local CSV values into these persisted columns.
+        hotspot.accident_count = int(db_acc_count)
+        hotspot.risk_score = round(float(calc_risk_score), 2)
+        hotspot.risk_level = calc_risk_level
         persisted.append(hotspot)
 
     db.commit()

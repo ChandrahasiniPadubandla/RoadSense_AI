@@ -11,6 +11,7 @@ from app.schemas.geocoding import (
     DrivingRouteResult
 )
 from app.services.geocoding import (
+    GeocodingError,
     geocode_location,
     reverse_geocode,
     find_nearest_road_by_coordinates,
@@ -41,7 +42,10 @@ def search_location(
     Integrates Metrivon AI monitored corridors, curated Hyderabad transit hubs,
     and Komoot Photon API (Elasticsearch + OSM) with local in-memory caching.
     """
-    results = geocode_location(query=query, city_bias=city or "", limit=limit, db=db)
+    try:
+        results = geocode_location(query=query, city_bias="Hyderabad", limit=limit, db=db)
+    except GeocodingError as exc:
+        raise HTTPException(status_code=503, detail=exc.message) from exc
     return results
 
 

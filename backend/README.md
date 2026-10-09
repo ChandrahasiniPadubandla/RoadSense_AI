@@ -2,9 +2,33 @@
 
 This backend exposes the real Metrivon AI APIs and integrates the trained accident-risk model with the existing PostgreSQL database.
 
+## Reproducible team setup
+
+All teammates must set `DATABASE_URL` to the same project-owned PostgreSQL
+database. The owner/data steward supplies that URL securely and provisions the
+shared roads, traffic observations, accidents, zones, and hotspot records; none
+of those private operational records are committed here. Setup and migration
+commands are in [`../database/README.md`](../database/README.md).
+
+Place suggestions are requested by the frontend from `GET /api/geo/search` and
+resolved by the backend against Photon plus monitored road records from that
+database. Results are restricted to the fixed Hyderabad boundary and Photon
+candidates are cached in the shared database, not in a per-process cache.
+Photon is free and needs no API key. The readiness check is
+`GET /api/public/readiness`; it reports a safe host/database identifier,
+required shared-data counts, geocoder settings, and cache migration state.
+
+Traffic observations and accident counts come from the shared
+`traffic_records` and `accidents` tables. Hotspot generation and route-risk
+context use database records; checkout-local `accident_hotspots.csv` values
+are not used as operational data. Prediction model artifacts are versioned in
+`predict_accident_risk/` and `traffic_congestion/`, with repository-relative
+paths. No API key is required for geocoding or traffic inputs.
+
 ## Real database architecture used for prediction
 
-The accident-risk prediction pipeline uses the real application database only:
+The accident-risk prediction pipeline reads road, traffic, and historical
+accident inputs from the configured project database:
 
 - roads: road metadata and coordinates
   - road_id
@@ -30,16 +54,18 @@ The accident-risk prediction pipeline uses the real application database only:
   - accident_datetime
 - weather is fetched from the existing live weather service when needed and validated against the road coordinates
 
-No fake or hardcoded road, weather, traffic, or accident values are used in the prediction flow.
+Weather is an external enrichment. Traffic observations and accident history
+come from the shared database; hotspot outputs are persisted there.
 
 ## Model files required
 
-The service expects these files in the backend model directory:
+The service expects these versioned files in the repository's
+`predict_accident_risk/` directory (not `backend/app/ml/models/`):
 
-- backend/app/ml/models/accident_risk_classifier.json
-- backend/app/ml/models/accident_risk_regressor.json
-- backend/app/ml/models/accident_preprocessor.pkl
-- backend/app/ml/models/accident_label_encoder.pkl
+- predict_accident_risk/accident_risk_classifier.json
+- predict_accident_risk/accident_risk_regressor.json
+- predict_accident_risk/accident_preprocessor.pkl
+- predict_accident_risk/accident_label_encoder.pkl
 
 These are loaded once and reused for all prediction requests.
 
@@ -94,9 +120,10 @@ template and fill in the values you have access to:
 copy backend\.env.example backend\.env   # Windows
 ```
 
-Required values: `DATABASE_URL` (get it from the project owner / Supabase) and
-`JWT_SECRET_KEY`. The voice NER model itself needs no credentials — it is
-committed to the repository.
+Required values: the shared `DATABASE_URL` (get it from the project owner) and
+`JWT_SECRET_KEY`. Keep database credentials, chatbot keys, SMTP credentials,
+and all other private values out of frontend environment files and Git.
+Photon geocoding requires no API key.
 
 ## Start backend
 
@@ -109,17 +136,23 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-After installing dependencies, confirm the voice model resolves (expected:
-`True`):
+Confirm the intended shared database and required records before using
+suggestions or predictions:
 
-```bash
-python -c "from app.services.voice_service import get_nlp_model; print(get_nlp_model() is not None)"
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/public/readiness | ConvertTo-Json -Depth 6
 ```
 
-Run the voice model tests:
+Expected: `status` is `READY`, `database.connected` and `database.schema_ready`
+are true, the target matches the team's shared database, roads/traffic/accident
+counts are non-zero, and both migration checks are true. The database owner
+applies both SQL files under `database/migrations/`
+to existing databases. Migration 002 corrects previously stored hotspot values
+that may have included checkout-local CSV data.
+Run the focused provider and boundary checks with:
 
 ```bash
-python -m pytest tests/test_voice_location_resolution.py -q
+python -m pytest tests/test_suggestion_reproducibility.py -q
 ```
 
 ## Swagger docs
