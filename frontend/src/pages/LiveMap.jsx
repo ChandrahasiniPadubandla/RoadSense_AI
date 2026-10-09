@@ -54,6 +54,13 @@ const SEVERITY_COLOR = {
 
 const HYDERABAD_CENTER = [17.43, 78.43];
 
+const TRAVEL_MODES = {
+  bike: { id: 'bike', label: '2-Wheeler', shortLabel: 'Bike', icon: '🏍️', description: 'Motorcycle / scooter route' },
+  car: { id: 'car', label: 'Car', shortLabel: 'Car', icon: '🚗', description: 'Car route' },
+  foot: { id: 'foot', label: 'Walk', shortLabel: 'Walk', icon: '🚶', description: 'Walking route' },
+};
+function getTravelModeInfo(mode) { return TRAVEL_MODES[mode] || TRAVEL_MODES.car; }
+
 function formatClockTime(date) {
   if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -194,12 +201,16 @@ export default function LiveMap() {
   const [endQuery, setEndQuery] = useState('');
   const [startPoint, setStartPoint] = useState(null); // { lat, lng, label }
   const [endPoint, setEndPoint] = useState(null);
+  const [destinationDragEnabled, setDestinationDragEnabled] = useState(false);
+const [destinationUpdating, setDestinationUpdating] = useState(false);
   const [startSuggestions, setStartSuggestions] = useState([]);
   const [endSuggestions, setEndSuggestions] = useState([]);
   const [activeField, setActiveField] = useState(null); // 'search' | 'start' | 'end' | null
 
   const [routeGeometry, setRouteGeometry] = useState(null); // [[lat,lng], ...]
   const [routeInfo, setRouteInfo] = useState(null); // { distance_km, duration_minutes, is_real_route, steps }
+  const [travelMode, setTravelMode] = useState('car');
+  const [modeSwitching, setModeSwitching] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [routeError, setRouteError] = useState('');
@@ -252,11 +263,39 @@ export default function LiveMap() {
     return new Date(d.getTime() + 30 * 60 * 1000);
   }, [departureOption, customTime]);
 
-  // Estimated arrival time calculated from target time + route duration
+  // Adjust the route estimate when the traffic prediction changes. The API's
+  // congestion level is used as a delay floor; predicted road speed provides a
+  // route-distance estimate when available. Walking keeps its pedestrian ETA.
+  const displayDurationMinutes = useMemo(() => {
+    const routeDuration = Number(routeInfo?.duration_minutes);
+    if (!Number.isFinite(routeDuration) || routeDuration <= 0) return null;
+    if (travelMode === 'foot') return Math.max(1, Math.round(routeDuration));
+
+    const congestionLevel = String(routeTraffic?.congestion_level || 'LOW').toUpperCase();
+    const congestionFactors = { LOW: 1, MEDIUM: 1.2, HIGH: 1.6, SEVERE: 2 };
+    const congestionAdjusted = routeDuration * (congestionFactors[congestionLevel] || 1);
+
+    const distanceKm = Number(routeInfo?.distance_km);
+    const predictedSpeed = Number(
+      routeTraffic?.previous_records?.average_speed ??
+      routeTraffic?.previous_traffic?.average_speed
+    );
+    if (!Number.isFinite(distanceKm) || distanceKm <= 0 || !Number.isFinite(predictedSpeed) || predictedSpeed <= 0) {
+      return Math.max(1, Math.round(congestionAdjusted));
+    }
+
+    // The traffic prediction is car-speed based; keep the existing 2-wheeler
+    // duration relationship when estimating a bike trip.
+    const modeFactor = travelMode === 'bike' ? 0.78 : 1;
+    const speedAdjusted = (distanceKm / predictedSpeed) * 60 * modeFactor;
+    return Math.max(1, Math.round(Math.max(speedAdjusted, congestionAdjusted)));
+  }, [routeInfo?.duration_minutes, routeInfo?.distance_km, routeTraffic, travelMode]);
+
+  // Estimated arrival time calculated from the traffic-adjusted route duration.
   const estimatedArrivalTime = useMemo(() => {
-    if (!resolvedTargetDate || !routeInfo?.duration_minutes) return null;
-    return new Date(resolvedTargetDate.getTime() + routeInfo.duration_minutes * 60 * 1000);
-  }, [resolvedTargetDate, routeInfo?.duration_minutes]);
+    if (!resolvedTargetDate || !displayDurationMinutes) return null;
+    return new Date(resolvedTargetDate.getTime() + displayDurationMinutes * 60 * 1000);
+  }, [resolvedTargetDate, displayDurationMinutes]);
 
   // Builds the prediction request payload for a specific target date
   function buildPredictionPayload(targetDate, sp = startPoint, ep = endPoint) {
@@ -480,6 +519,7 @@ export default function LiveMap() {
   }, [endQuery]);
 
   function selectSuggestion(field, suggestion) {
+
     const label = suggestion.primary_name
       ? (suggestion.secondary_name ? `${suggestion.primary_name}, ${suggestion.secondary_name}` : suggestion.primary_name)
       : suggestion.display_name;
@@ -505,6 +545,58 @@ export default function LiveMap() {
     }
     setActiveField(null);
   }
+  async function handleDestinationDragEnd(e) {
+  const marker = e.target;
+  const position = marker.getLatLng();
+
+  const lat = Number(position.lat);
+  const lng = Number(position.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return;
+  }
+
+  setDestinationUpdating(true);
+  setRouteError('');
+
+  try {
+    // Fallback label if reverse geocoding fails.
+    let label = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+    try {
+      const place = await reverseGeocode(lat, lng);
+
+      if (place?.display_name) {
+        label = place.display_name;
+      }
+    } catch (reverseError) {
+      console.warn('Reverse geocoding dragged destination failed:', reverseError);
+    }
+
+    const updatedDestination = {
+      lat,
+      lng,
+      label,
+      category: 'location',
+    };
+
+    // Update the destination shown in the UI.
+    setEndPoint(updatedDestination);
+    setEndQuery(label);
+    setEndSuggestions([]);
+    setActiveField(null);
+
+    // Automatically recalculate the route using the new destination.
+    if (startPoint) {
+      await runRoute(startPoint, updatedDestination, travelMode);
+    }
+  } catch (error) {
+    console.error('Failed to update dragged destination:', error);
+    setRouteError('Could not update the destination. Please try again.');
+  } finally {
+    setDestinationUpdating(false);
+  }
+}
 
   function openDirections(prefillStart) {
     setDirectionsMode(true);
@@ -565,7 +657,7 @@ export default function LiveMap() {
 
   // Fetches the live route + ML predictions for an explicit start/end pair.
   // (Voice input calls this directly because React state hasn't updated yet.)
-  async function runRoute(sp, ep) {
+  async function runRoute(sp, ep, selectedMode = travelMode) {
     if (!sp || !ep) {
       setRouteError('Pick both a start and an end location from the suggestions first.');
       return;
@@ -579,10 +671,14 @@ export default function LiveMap() {
     setStepsExpanded(true);
 
     try {
-      // Live OSRM routing - real street-level geometry + turn-by-turn steps.
-      const route = await getDrivingRoute(sp.lat, sp.lng, ep.lat, ep.lng);
+      // Request geometry and duration for the selected routing mode.
+      const route = await getDrivingRoute(sp.lat, sp.lng, ep.lat, ep.lng, selectedMode);
       setRouteGeometry(route.coordinates);
-      setRouteInfo(route);
+      setRouteInfo({
+        ...route,
+        travel_mode: selectedMode,
+        travel_mode_label: getTravelModeInfo(selectedMode).label,
+      });
     } catch (err) {
       setRouteError('Could not fetch a live route from the routing API. Please try again.');
       setRouteLoading(false);
@@ -612,8 +708,17 @@ export default function LiveMap() {
     setPredictionsLoading(false);
   }
 
+  async function handleTravelModeChange(nextMode) {
+    if (nextMode === travelMode) return;
+    setTravelMode(nextMode);
+    if (!startPoint || !endPoint) return;
+    setModeSwitching(true);
+    try { await runRoute(startPoint, endPoint, nextMode); }
+    finally { setModeSwitching(false); }
+  }
+
   function handleFindRoute() {
-    return runRoute(startPoint, endPoint);
+    return runRoute(startPoint, endPoint, travelMode);
   }
 
   // Turns a geocoder suggestion into the { lat, lng, label } shape used above
@@ -718,6 +823,9 @@ export default function LiveMap() {
     setRouteError('');
     setRouteTraffic(null);
     setRouteAccidentRisk(null);
+    setDestinationDragEnabled(false);
+    setDestinationUpdating(false);
+    setNavError('');
     setDirectionsMode(false);
   }
 
@@ -809,7 +917,7 @@ export default function LiveMap() {
     for (const pt of mlPoints) {
       const lat = pt.latitude || pt.lat;
       const lng = pt.longitude || pt.lng;
-      if (lat && lng) {
+      if (lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
         const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -1010,9 +1118,14 @@ export default function LiveMap() {
             {showRouteAccidents &&
               routeAccidents.map((pt) => {
                 const isPredicted = pt.type === 'predicted_risk_zone';
+                const normalizedSeverity = String(pt.severity || 'HIGH').toUpperCase();
                 const markerColor = isPredicted
-                  ? (pt.severity === 'CRITICAL' || pt.severity === 'SEVERE' ? '#DC2626' : (pt.severity === 'HIGH' ? '#EA580C' : '#F59E0B'))
-                  : (SEVERITY_COLOR[pt.severity?.toUpperCase()] || '#DC2626');
+                  ? (['CRITICAL', 'SEVERE'].includes(normalizedSeverity)
+                      ? '#DC2626'
+                      : normalizedSeverity === 'HIGH'
+                        ? '#EA580C'
+                        : '#F59E0B')
+                  : (SEVERITY_COLOR[normalizedSeverity] || '#DC2626');
 
                 return (
                   <React.Fragment key={`route-acc-${pt.id}`}>
@@ -1161,17 +1274,6 @@ export default function LiveMap() {
                 >
                   <Tooltip sticky>
                     <div className="p-0.5 text-xs leading-snug">
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <span
-                          className="h-2 w-2 rounded-full inline-block"
-                          style={{
-                            backgroundColor: showRouteTraffic
-                              ? (ROUTE_CONGESTION_COLOR[routeTraffic?.congestion_level || 'LOW'] || '#10B981')
-                              : '#3B82F6',
-                          }}
-                        />
-                        {showRouteTraffic ? `${routeTraffic?.congestion_level || 'LOW'} Congestion` : 'Selected Route'}
-                      </div>
                       {routeTraffic?.road_name && (
                         <div className="mt-0.5 font-medium text-slate-700">{routeTraffic.road_name}</div>
                       )}
@@ -1197,7 +1299,12 @@ export default function LiveMap() {
           </Marker>
         )}
         {endPoint && (
-          <Marker position={[endPoint.lat, endPoint.lng]} icon={END_PIN}>
+          <Marker
+            position={[endPoint.lat, endPoint.lng]}
+            icon={END_PIN}
+            draggable={destinationDragEnabled && !destinationUpdating}
+            eventHandlers={{ dragend: handleDestinationDragEnd }}
+          >
             <Popup>Destination: {endPoint.label}</Popup>
           </Marker>
         )}
@@ -1270,7 +1377,7 @@ export default function LiveMap() {
               <>
                 <span className="hidden md:inline-block h-3 w-px bg-slate-200 dark:bg-asphalt-700" />
                 <div className="text-slate-600 dark:text-asphalt-300">
-                  🏁 Arrival: <span className="font-semibold text-slate-900 dark:text-asphalt-100">~{formatClockTime(estimatedArrivalTime)}</span> ({routeInfo.duration_minutes}m)
+                  🏁 Arrival: <span className="font-semibold text-slate-900 dark:text-asphalt-100">~{formatClockTime(estimatedArrivalTime)}</span> ({displayDurationMinutes}m)
                 </div>
               </>
             )}
@@ -1553,6 +1660,22 @@ export default function LiveMap() {
                 </button>
               </div>
 
+              {/* Google-Maps-style travel mode selector */}
+              <div className="mt-2 rounded-lg border border-slate-200 bg-white p-1.5 dark:border-asphalt-700 dark:bg-asphalt-900">
+                <div className="grid grid-cols-3 gap-1">
+                  {Object.values(TRAVEL_MODES).map((mode) => {
+                    const active = travelMode === mode.id;
+                    return (
+                      <button key={mode.id} type="button" onClick={() => handleTravelModeChange(mode.id)} disabled={modeSwitching || routeLoading} title={mode.description}
+                        className={`flex min-w-0 flex-col items-center justify-center rounded-md px-1 py-1.5 text-[10px] transition-all ${active ? 'bg-signal-blue/10 text-signal-blue ring-1 ring-signal-blue/40' : 'text-slate-600 hover:bg-slate-100 dark:text-asphalt-300 dark:hover:bg-asphalt-800'} disabled:opacity-50`}>
+                        <span className="text-base leading-none">{mode.icon}</span>
+                        <span className="mt-1 truncate font-semibold">{mode.shortLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* ----------------------------------------------------------- */}
               {/* Prediction & Departure Time Controls (Present by default)    */}
               {/* ----------------------------------------------------------- */}
@@ -1623,7 +1746,7 @@ export default function LiveMap() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between px-1 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-2">
                 <button
                   onClick={() => locateMe(true)}
                   disabled={locating}
@@ -1631,14 +1754,37 @@ export default function LiveMap() {
                 >
                   {locating ? 'Finding you...' : 'Use my current location'}
                 </button>
-                <button
-                  onClick={handleFindRoute}
-                  disabled={routeLoading || !startPoint || !endPoint}
-                  className="rounded-md bg-signal-blue px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  {routeLoading ? 'Routing...' : 'Get Directions'}
-                </button>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {endPoint && (
+                    <button
+                      type="button"
+                      disabled={destinationUpdating}
+                      onClick={() => setDestinationDragEnabled((current) => !current)}
+                      aria-pressed={destinationDragEnabled}
+                      className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                        destinationDragEnabled
+                          ? 'bg-amber-500 text-white'
+                          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-asphalt-700 dark:bg-asphalt-800 dark:text-asphalt-200'
+                      } disabled:opacity-50`}
+                    >
+                      {destinationDragEnabled ? '🔓 Pin Unlocked' : '📍 Move Destination'}
+                    </button>
+                  )}
+                  <button
+                    onClick={handleFindRoute}
+                    disabled={routeLoading || !startPoint || !endPoint}
+                    className="rounded-md bg-signal-blue px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {routeLoading ? 'Routing...' : 'Get Directions'}
+                  </button>
+                </div>
               </div>
+              {destinationDragEnabled && endPoint && (
+                <p className="mt-1 px-1 text-[11px] text-amber-600 dark:text-amber-400">
+                  Pin unlocked: drag the red destination marker on the map to update your route.
+                </p>
+              )}
 
               {(routeError || locateError) && (
                 <p className="mt-1 px-1 text-xs text-signal-red">{routeError || locateError}</p>
@@ -1648,17 +1794,16 @@ export default function LiveMap() {
                 <div className="mt-2 border-t border-slate-200 pt-2 dark:border-asphalt-800">
                   <div className="flex flex-wrap items-center gap-2 px-1 text-xs">
                     <span className="text-lg font-bold text-slate-900 dark:text-asphalt-100">
-                      {routeInfo.duration_minutes} min
+                      {displayDurationMinutes} min
                     </span>
                     <span className="text-slate-500 dark:text-asphalt-400">({routeInfo.distance_km} km)</span>
-                    <span
-                      className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        routeInfo.is_real_route
-                          ? 'bg-signal-blue/10 text-signal-blue'
-                          : 'bg-signal-amber/10 text-signal-amber'
-                      }`}
-                    >
-                      {routeInfo.is_real_route ? 'Live route via OSRM' : 'Approximate route'}
+                    <span className="rounded-full bg-signal-blue/10 px-2 py-0.5 text-[10px] font-semibold text-signal-blue">
+                      {getTravelModeInfo(travelMode).icon} {getTravelModeInfo(travelMode).label}
+                    </span>
+                    <span className="ml-auto rounded-full bg-signal-blue/10 px-2 py-0.5 text-[10px] font-medium text-signal-blue">
+                      {travelMode !== 'foot' && routeTraffic?.congestion_level
+                        ? 'Traffic-adjusted ETA'
+                        : 'Route estimate'}
                     </span>
                   </div>
 
@@ -1682,6 +1827,12 @@ export default function LiveMap() {
                         </span>
                       </div>
                     </div>
+
+                    <div className="mt-1.5 border-t border-slate-200/70 pt-1.5 text-[11px] flex items-center justify-between text-slate-600 dark:border-asphalt-700 dark:text-asphalt-300">
+                      <span>{getTravelModeInfo(travelMode).icon} {getTravelModeInfo(travelMode).label} travel time</span>
+                      <span className="font-semibold text-slate-900 dark:text-asphalt-100">{displayDurationMinutes} min</span>
+                    </div>
+
 
                     {routeTraffic?.estimated_time && (
                       <div className="mt-1.5 pt-1.5 border-t border-slate-200/70 dark:border-asphalt-700 text-[11px] flex items-center justify-between text-slate-600 dark:text-asphalt-300">
