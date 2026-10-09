@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import useSpeechRecognition, { speak, cancelSpeech } from '../hooks/useSpeechRecognition';
 import { extractRouteFromVoice, getVoiceStatus } from '../api_services';
 
-<<<<<<< HEAD
-=======
 /**
  * Voice assistant for route queries.
  *
@@ -21,7 +19,7 @@ import { extractRouteFromVoice, getVoiceStatus } from '../api_services';
  *   disabled         disable the mic (e.g. while a request is running)
  */
 
->>>>>>> 61c305ecb93a2dd800e5d24c387631df6eef7d89
+
 const ERROR_MESSAGES = {
   'no-speech': "I didn't hear anything. Tap the mic and try again.",
   'audio-capture': 'No microphone was found on this device.',

@@ -43,6 +43,33 @@ The service expects these files in the backend model directory:
 
 These are loaded once and reused for all prediction requests.
 
+## Voice location NER model
+
+The voice route extractor loads a trained spaCy NER model (labels
+`START_LOCATION` / `END_LOCATION`). The model is committed to this repository so
+every clone uses the identical artifact — there is nothing to download and no
+credentials are required.
+
+- Committed location: `voice.zip/location_ner_model`
+- Legacy fallback checked as well: `voice_extractor/location_ner_model`
+- spaCy version recorded by the model: `>=3.8.16,<3.9.0`
+- `ner/model` SHA-256: `ee1db62316747d3965a434daab93b09d4b7e2c20d776142e7260ebcf2490c751`
+
+The resolver picks the first of those directories that contains a `meta.json`.
+You can override it for advanced setups with the `VOICE_NER_MODEL_PATH`
+environment variable. Do not commit a different model without updating
+`backend/tests/test_voice_location_resolution.py` and this section.
+
+Verify the model is present and loaded:
+
+```bash
+python -c "from app.services.voice_service import get_nlp_model; print('loaded:', get_nlp_model() is not None)"
+```
+
+`GET /api/voice/status` returns `model_loaded` plus the resolved `model_path`.
+If `model_loaded` is `false`, the backend is running from a partial checkout
+without the committed `voice.zip/location_ner_model` directory.
+
 ## Dependencies
 
 The backend requires these packages from backend/requirements.txt:
@@ -55,7 +82,21 @@ The backend requires these packages from backend/requirements.txt:
 - pandas
 - numpy
 - xgboost
+- spacy (required to load the committed voice location NER model)
 - uvicorn
+
+## Environment configuration
+
+`backend/.env` is git-ignored and is not part of the repository. Copy the
+template and fill in the values you have access to:
+
+```bash
+copy backend\.env.example backend\.env   # Windows
+```
+
+Required values: `DATABASE_URL` (get it from the project owner / Supabase) and
+`JWT_SECRET_KEY`. The voice NER model itself needs no credentials — it is
+committed to the repository.
 
 ## Start backend
 
@@ -66,6 +107,19 @@ python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+After installing dependencies, confirm the voice model resolves (expected:
+`True`):
+
+```bash
+python -c "from app.services.voice_service import get_nlp_model; print(get_nlp_model() is not None)"
+```
+
+Run the voice model tests:
+
+```bash
+python -m pytest tests/test_voice_location_resolution.py -q
 ```
 
 ## Swagger docs
