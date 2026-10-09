@@ -87,7 +87,7 @@ def predict_route_traffic(
     end_name = req.end_location
     if req.voice_text and (not start_name or not end_name):
         from app.services.voice_service import extract_route_from_text
-        extracted = extract_route_from_text(req.voice_text)
+        extracted = extract_route_from_text(req.voice_text, db)
         if not start_name and extracted.get("start_location"):
             start_name = extracted["start_location"]
         if not end_name and extracted.get("end_location"):

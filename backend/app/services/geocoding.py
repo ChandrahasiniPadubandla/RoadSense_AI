@@ -1,5 +1,8 @@
 import json
 import logging
+import os
+import socket
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -18,6 +21,148 @@ logger = logging.getLogger("Metrivon.geocoding")
 _GEOCODE_CACHE: Dict[str, List[Dict[str, Any]]] = {}
 _REVERSE_CACHE: Dict[str, Dict[str, Any]] = {}
 USER_AGENT = "MetrivonAI-Backend/1.0 (contact@Metrivon.ai)"
+
+# -----------------------------------------------------------------------------
+# Geocoding provider configuration (backend-only).
+#
+# The project's existing provider is Komoot Photon (OpenStreetMap). Photon is
+# free and needs NO API key, so no secret is required for the default setup.
+# For providers that require a key, set GEOCODING_API_KEY in backend/.env — it
+# is read here on the server only and is never sent to or read by the frontend.
+# -----------------------------------------------------------------------------
+DEFAULT_GEOCODING_BASE_URL = "https://photon.komoot.io/api"
+_CITY_BIAS_COORDS: Dict[str, Tuple[float, float]] = {
+    "hyderabad": (17.3850, 78.4867),
+    "secunderabad": (17.4399, 78.4983),
+}
+
+
+class GeocodingError(Exception):
+    """Structured geocoding failure so callers can react to the exact cause."""
+
+    def __init__(self, status: str, message: str):
+        super().__init__(message)
+        # One of: "timeout", "rate_limited", "error"
+        self.status = status
+        self.message = message
+
+
+def _geocoding_settings() -> Dict[str, Any]:
+    def _as_float(value: Optional[str], fallback: float) -> float:
+        try:
+            return float(value) if value not in (None, "") else fallback
+        except (TypeError, ValueError):
+            return fallback
+
+    return {
+        "provider": (os.getenv("GEOCODING_PROVIDER", "photon") or "photon").strip().lower(),
+        "base_url": (os.getenv("GEOCODING_BASE_URL", DEFAULT_GEOCODING_BASE_URL) or DEFAULT_GEOCODING_BASE_URL).strip().rstrip("/"),
+        "api_key": (os.getenv("GEOCODING_API_KEY", "") or "").strip(),
+        "timeout": _as_float(os.getenv("GEOCODING_TIMEOUT_SECONDS"), 6.0),
+        "city": (os.getenv("GEOCODING_DEFAULT_CITY", "Hyderabad") or "Hyderabad").strip(),
+        "language": (os.getenv("GEOCODING_LANGUAGE", "en") or "en").strip(),
+    }
+
+
+def _city_bias_coords(city: Optional[str]) -> Tuple[float, float]:
+    if city and city.strip().lower() in _CITY_BIAS_COORDS:
+        return _CITY_BIAS_COORDS[city.strip().lower()]
+    return _CITY_BIAS_COORDS["hyderabad"]
+
+
+def _normalize_feature(feature: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    props = feature.get("properties") or {}
+    geometry = feature.get("geometry") or {}
+    coords = geometry.get("coordinates") or []
+    if not isinstance(coords, (list, tuple)) or len(coords) < 2:
+        return None
+
+    name = (props.get("name") or props.get("street") or props.get("city") or "").strip()
+    if not name:
+        return None
+
+    city = (props.get("city") or props.get("district") or props.get("county") or "").strip()
+    locality = (props.get("locality") or props.get("suburb") or props.get("neighbourhood") or "").strip()
+    extras = [part for part in (locality, city) if part and part.lower() not in name.lower()]
+    display_name = f"{name}, {', '.join(extras)}" if extras else name
+
+    return {
+        "name": name,
+        "display_name": display_name,
+        "primary_name": name,
+        "secondary_name": ", ".join(extras) if extras else (city or None),
+        "latitude": float(coords[1]),
+        "longitude": float(coords[0]),
+        "type": (props.get("osm_value") or props.get("type") or "location"),
+        "category": (props.get("osm_key") or "place"),
+        "address": props,
+    }
+
+
+def search_geocoding_candidates(
+    query: str,
+    *,
+    city_bias: Optional[str] = None,
+    limit: int = 5,
+    timeout: Optional[float] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Resolve a complete place phrase through the configured geocoding provider.
+
+    Returns a ranked list of normalized candidate places. Raises ``GeocodingError``
+    with a specific ``status`` ("timeout", "rate_limited", "error") so the caller
+    can surface a clear validation message instead of silently substituting a
+    different or shorter place.
+    """
+    clean_query = (query or "").strip()
+    if not clean_query:
+        return []
+
+    settings = _geocoding_settings()
+    bias_city = city_bias or settings["city"]
+    latitude, longitude = _city_bias_coords(bias_city)
+
+    params = {
+        "q": clean_query,
+        "limit": max(1, min(int(limit), 20)),
+        "lat": latitude,
+        "lon": longitude,
+        "lang": settings["language"],
+    }
+    effective_key = settings["api_key"] if api_key is None else api_key
+    if effective_key:
+        params["api_key"] = effective_key
+
+    url = f"{(base_url or settings['base_url'])}/?{urllib.parse.urlencode(params)}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    if effective_key:
+        request.add_header("X-API-Key", effective_key)
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout or settings["timeout"]) as response:
+            payload = json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as err:
+        if err.code == 429:
+            raise GeocodingError("rate_limited", "The location service is rate limited. Please try again shortly.")
+        raise GeocodingError("error", f"The location service returned an unexpected response (HTTP {err.code}).")
+    except (socket.timeout, TimeoutError):
+        raise GeocodingError("timeout", "The location service timed out. Please try again.")
+    except urllib.error.URLError as err:
+        if isinstance(err.reason, (socket.timeout, TimeoutError)):
+            raise GeocodingError("timeout", "The location service timed out. Please try again.")
+        raise GeocodingError("error", "The location service is unreachable. Please try again.")
+    except ValueError:
+        raise GeocodingError("error", "The location service returned an invalid response.")
+
+    features = payload.get("features") or []
+    candidates: List[Dict[str, Any]] = []
+    for feature in features:
+        normalized = _normalize_feature(feature)
+        if normalized:
+            candidates.append(normalized)
+    return candidates
+
 
 ADMIN_TERMS_TO_FILTER = [
     "greater hyderabad municipal corporation",

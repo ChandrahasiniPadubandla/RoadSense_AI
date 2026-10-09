@@ -32,3 +32,6 @@ certs/
 # Environment variables
 .env
 .env.local
+
+# Stray nested clone of this repository
+RoadSense_AI/
