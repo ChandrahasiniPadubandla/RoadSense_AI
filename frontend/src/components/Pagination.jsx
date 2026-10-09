@@ -2,10 +2,7 @@ import React from 'react';
 
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
-/**
- * Builds the visible page list, e.g. [1, '…', 4, 5, 6, '…', 20].
- * Always shows first/last page and a window around the current page.
- */
+
 export function getPageItems(page, totalPages, siblings = 1) {
   const maxNoEllipsis = siblings * 2 + 5;
   if (totalPages <= maxNoEllipsis) {
@@ -39,15 +36,7 @@ const btnIdle =
 const btnActive = 'bg-signal-blue text-white';
 const btnDisabled = 'cursor-not-allowed text-slate-300 dark:text-asphalt-600';
 
-/**
- * Controlled pagination footer.
- *
- *   page        current page (1-based)
- *   pageSize    rows per page
- *   total       total number of records across ALL pages
- *   onPageChange(page)
- *   onPageSizeChange(size)   optional – hides the selector when omitted
- */
+
 export default function Pagination({
   page,
   pageSize,

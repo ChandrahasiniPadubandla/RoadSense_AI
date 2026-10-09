@@ -1,19 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * Thin, defensive wrapper around the browser Web Speech API
- * (SpeechRecognition / webkitSpeechRecognition).
- *
- *  - Works in Chrome, Edge and Safari. Firefox has no SpeechRecognition, so
- *    `supported` is false there and the UI falls back to typed input.
- *  - Needs a secure context (https:// or http://localhost) AND microphone
- *    permission. Opening the app through a plain-http LAN address such as
- *    http://192.168.x.x:5173 makes Chrome reject it with "not-allowed".
- *
- * The final transcript is delivered exactly once per session through
- * `onFinal(text)`; problems are reported through `onError(code)` using the
- * browser's own error codes ('not-allowed', 'no-speech', 'network', ...).
- */
+
 
 function getRecognitionCtor() {
   if (typeof window === 'undefined') return null;

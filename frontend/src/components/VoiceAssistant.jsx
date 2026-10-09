@@ -2,23 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import useSpeechRecognition, { speak, cancelSpeech } from '../hooks/useSpeechRecognition';
 import { extractRouteFromVoice, getVoiceStatus } from '../api_services';
 
-/**
- * Voice assistant for route queries.
- *
- *   mic  ->  browser speech-to-text  ->  POST /api/voice/extract-route
- *        ->  onRoute({ success, start_location, end_location, ... })
- *
- * The parent page decides what to do with the result (fill its form, draw a
- * route, run a prediction...). `onRoute` is called whenever at least one
- * location was understood; check `result.success` to know if BOTH were found.
- *
- * Props
- *   onRoute(result)  required – receives the VoiceRouteExtractResponse
- *   hint             example phrase shown while idle
- *   compact          tighter layout (used inside the Live Map panel)
- *   disabled         disable the mic (e.g. while a request is running)
- */
-
 const ERROR_MESSAGES = {
   'no-speech': "I didn't hear anything. Tap the mic and try again.",
   'audio-capture': 'No microphone was found on this device.',
