@@ -80,7 +80,7 @@ export default function useSpeechRecognition({ lang = 'en-IN', onFinal, onError 
     const recognition = new Ctor();
     recognition.lang = lang;
     recognition.interimResults = true;
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.maxAlternatives = 1;
 
     latestTextRef.current = '';
@@ -90,17 +90,23 @@ export default function useSpeechRecognition({ lang = 'en-IN', onFinal, onError 
     recognition.onstart = () => setListening(true);
 
     recognition.onresult = (event) => {
-      let finalText = '';
-      let interimText = '';
-      for (let i = 0; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        if (result.isFinal) finalText += `${result[0].transcript} `;
-        else interimText += result[0].transcript;
-      }
-      const combined = `${finalText}${interimText}`.trim();
-      latestTextRef.current = combined;
-      setInterim(combined);
-    };
+  let finalText = '';
+  let interimText = '';
+
+  for (let i = 0; i < event.results.length; i += 1) {
+    const result = event.results[i];
+
+    if (result.isFinal) {
+      finalText += `${result[0].transcript} `;
+    } else {
+      interimText += result[0].transcript;
+    }
+  }
+
+  const combined = `${finalText}${interimText}`.trim();
+  latestTextRef.current = combined;
+  setInterim(combined);
+};
 
     recognition.onerror = (event) => {
       // 'aborted' is what we cause ourselves when cancelling — not a problem.
