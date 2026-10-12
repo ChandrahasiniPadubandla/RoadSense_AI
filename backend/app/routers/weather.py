@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape

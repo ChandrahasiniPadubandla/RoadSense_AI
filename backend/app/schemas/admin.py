@@ -15,7 +15,6 @@ class RoleResponse(BaseModel):
 
 class UserAdminResponse(BaseModel):
     user_id: UUID
-    username: str
     role_id: UUID
     role_name: Optional[str] = None
     name: str

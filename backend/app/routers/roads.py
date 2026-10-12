@@ -27,7 +27,7 @@ def fetch_osrm_linestring(
     import urllib.request
 
     url = f"https://router.project-osrm.org/route/v1/driving/{start_lon},{start_lat};{end_lon},{end_lat}?overview=full&geometries=geojson"
-    req = urllib.request.Request(url, headers={"User-Agent": "Metrivon-AI/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "RoadSense-AI/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))

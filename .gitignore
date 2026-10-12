@@ -7,8 +7,6 @@ __pycache__/
 # Environment variables
 .env
 *.env
-.env.local
-.env.*.local
 
 # IDE
 .vscode/
@@ -27,13 +25,3 @@ ac/
 node_modules/
 dist/
 .vite/
-# Local SSL certificates
-certs/
-*.pem
-
-# A separate nested checkout present only in this workspace.
-/RoadSense_AI/
-
-# Environment variables
-.env
-.env.local

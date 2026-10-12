@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 from uuid import UUID
-from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 
 PHONE_REGEX = re.compile(r"^(\+91[\-\s]?|0)?[6-9]\d{9}$|^[0-9]{10}$")
 
@@ -55,45 +55,23 @@ class RegisterRequest(BaseModel):
         return validate_password_strength(value, min_len=6, field_name="Password")
 
 
-class UserProfileUpdate(BaseModel):
-    """Fields account owners and Super Admins may edit through profile routes."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    username: str | None = Field(
-        default=None,
-        min_length=3,
-        max_length=50,
-        pattern=r"^[a-zA-Z0-9_.-]+$",
-    )
-    name: str | None = Field(default=None, min_length=1, max_length=100)
+class UserUpdateRequest(BaseModel):
+    name: str | None = None
+    email: EmailStr | None = None
+    password: str | None = None
     phone: str | None = None
-
-    @field_validator("username", mode="before")
-    @classmethod
-    def normalize_username(cls, value: str | None) -> str | None:
-        if value is None:
-            raise ValueError("Username cannot be null.")
-        if not isinstance(value, str):
-            raise ValueError("Username must be text.")
-        value = value.strip().lower()
-        if not value:
-            raise ValueError("Username cannot be blank.")
-        return value
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def normalize_name(cls, value: str | None) -> str | None:
-        if value is None:
-            raise ValueError("Name cannot be null.")
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError("Name cannot be blank.")
-        return value.strip()
 
     @field_validator("phone", mode="before")
     @classmethod
     def validate_optional_phone(cls, value: str | None) -> str | None:
         return validate_phone_number(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_optional_password(cls, value: str | None) -> str | None:
+        if value is not None:
+            return validate_password_strength(value, min_len=6, field_name="Password")
+        return None
 
 
 class LoginRequest(BaseModel):
@@ -103,7 +81,6 @@ class LoginRequest(BaseModel):
 
 class UserResponse(BaseModel):
     user_id: UUID
-    username: str | None = None
     name: str
     email: EmailStr
     phone: str | None = None
@@ -111,7 +88,6 @@ class UserResponse(BaseModel):
     role_name: str | None = None
     is_active: bool
     is_email_verified: bool
-    created_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -153,14 +129,3 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def validate_new_password(cls, value: str) -> str:
         return validate_password_strength(value, min_len=8, field_name="New password")
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(validation_alias=AliasChoices("current_password", "currentPassword"))
-    new_password: str = Field(validation_alias=AliasChoices("new_password", "newPassword"))
-
-    @field_validator("new_password")
-    @classmethod
-    def validate_new_password(cls, value: str) -> str:
-        return validate_password_strength(value, min_len=8, field_name="New password")
-

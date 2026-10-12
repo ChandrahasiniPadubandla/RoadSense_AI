@@ -66,10 +66,7 @@ class AccidentResponse(BaseModel):
 
     road_id: UUID
 
-    road_name: Optional[str] = None
-
     latitude: Optional[float] = None
-
 
     longitude: Optional[float] = None
 

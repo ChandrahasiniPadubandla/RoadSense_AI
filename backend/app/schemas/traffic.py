@@ -180,8 +180,6 @@ class TrafficResponse(BaseModel):
 
     road_id: UUID
 
-    road_name: Optional[str] = None
-
     timestamp: datetime
 
     vehicle_count: int

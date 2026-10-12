@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 const ThemeContext = createContext(null);
-const STORAGE_KEY = 'Metrivon_theme';
+const STORAGE_KEY = 'roadsense_theme';
 
 /**
  * Global light/dark theme provider.

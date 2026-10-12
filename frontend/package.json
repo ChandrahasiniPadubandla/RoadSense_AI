@@ -10,7 +10,6 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@tailwindcss/cli": "^4.3.3",
     "axios": "^1.7.7",
     "framer-motion": "^13.2.0",
     "leaflet": "^1.9.4",
@@ -18,7 +17,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1",
-    "react-router-dom": "^7.18.4",
+    "react-router-dom": "^6.26.2",
     "recharts": "^2.12.7"
   },
   "devDependencies": {
@@ -27,7 +26,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.45",
-    "tailwindcss": "^3.4.19",
-    "vite": "^7.3.6"
+    "tailwindcss": "^3.4.10",
+    "vite": "^5.4.2"
   }
 }

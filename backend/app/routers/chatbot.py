@@ -1,5 +1,5 @@
 """
-Metrivon AI Chatbot endpoint.
+RoadSense AI Chatbot endpoint.
 
     React ChatWidget
         v  POST /api/chatbot/message  { message, history }
@@ -11,7 +11,7 @@ Metrivon AI Chatbot endpoint.
         v
     Groq (openai/gpt-oss-120b)
         v
-    Metrivon tools (app.chatbot.tools) -> existing ML/DB services
+    RoadSense tools (app.chatbot.tools) -> existing ML/DB services
         v
     natural-language reply, grounded only in real tool results
 

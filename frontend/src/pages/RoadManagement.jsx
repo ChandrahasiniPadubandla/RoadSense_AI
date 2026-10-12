@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import DataTable from '../components/DataTable';
-import ActionMenu from '../components/ActionMenu';
 import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../utils/constants';
 import {
@@ -147,7 +146,7 @@ export default function RoadManagement() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4 dark:border-asphalt-800">
         <div>
-          <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">Road Management</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">Road Management</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
             Real road records from the database. {canWrite ? 'You can add, edit, and remove roads.' : 'Read-only for your role.'}
           </p>
@@ -206,15 +205,15 @@ export default function RoadManagement() {
               ? [
                   {
                     key: 'actions',
-                    header: '',
+                    header: 'Actions',
                     render: (r) => (
-                      <div className="flex justify-end">
-                        <ActionMenu
-                          items={[
-                            { label: 'Edit', onClick: () => openEditModal(r) },
-                            { label: 'Delete', danger: true, onClick: () => handleDelete(r) },
-                          ]}
-                        />
+                      <div className="flex gap-3">
+                        <button onClick={() => openEditModal(r)} className="text-signal-blue hover:underline">
+                          Edit
+                        </button>
+                        <button onClick={() => handleDelete(r)} className="text-signal-red hover:underline">
+                          Delete
+                        </button>
                       </div>
                     ),
                   },

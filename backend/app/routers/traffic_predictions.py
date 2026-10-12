@@ -9,12 +9,17 @@ from sqlalchemy import func, and_
 from app.database.connection import get_db
 from app.database.models import (
     Road,
+    TrafficRecord,
     TrafficPrediction,
     Alert,
     AccidentPrediction
 )
 from app.schemas.prediction import (
+    TrafficPredictionRunRequest,
+    TrafficPredictionRunResponse,
+    TrafficPredictionCreate,
     TrafficPredictionResponse,
+    TrafficPipelineRunResponse,
     RoadRiskSummary,
     RoutePredictionRequest,
     RouteTrafficPredictionResponse
@@ -22,9 +27,9 @@ from app.schemas.prediction import (
 from app.ml.prediction_engine import (
     resolve_route_bundle,
     trigger_ml_traffic_model,
-    trigger_ml_anomaly_model,
     format_estimated_time
 )
+from app.security import require_roles
 
 router = APIRouter(
     tags=["AI Traffic Predictions"]
@@ -35,7 +40,7 @@ def _format_traffic_response(p: TrafficPrediction, road_name: Optional[str] = No
     r_name = road_name or (p.road.road_name if p.road else None)
     target_dt = p.target_time or datetime.utcnow()
     est_time = format_estimated_time(target_dt)
-    cong = p.predicted_congestion.upper() if p.predicted_congestion else None
+    cong = p.predicted_congestion or "LOW"
 
     return TrafficPredictionResponse(
         prediction_id=p.prediction_id,
@@ -80,18 +85,6 @@ def predict_route_traffic(
     """
     now = datetime.now()
     target_time = req.target_time or (now + timedelta(minutes=req.target_minutes_ahead or 30))
-    if target_time.tzinfo is not None:
-        target_time = target_time.astimezone().replace(tzinfo=None)
-
-    start_name = req.start_location
-    end_name = req.end_location
-    if req.voice_text and (not start_name or not end_name):
-        from app.services.voice_service import extract_route_from_text
-        extracted = extract_route_from_text(req.voice_text)
-        if not start_name and extracted.get("start_location"):
-            start_name = extracted["start_location"]
-        if not end_name and extracted.get("end_location"):
-            end_name = extracted["end_location"]
 
     # 1. Resolve all required data for the ML model
     bundle = resolve_route_bundle(
@@ -100,8 +93,8 @@ def predict_route_traffic(
         start_lng=req.start_longitude,
         end_lat=req.end_latitude,
         end_lng=req.end_longitude,
-        start_name=start_name,
-        end_name=end_name,
+        start_name=req.start_location,
+        end_name=req.end_location,
         road_id=req.road_id,
         target_time=target_time
     )
@@ -110,7 +103,7 @@ def predict_route_traffic(
     ml_result = trigger_ml_traffic_model(bundle)
     pred_record = None
 
-    if req.persist and bundle["road"] and getattr(bundle["road"], "road_id", None) is not None:
+    if req.persist and bundle["road"]:
         pred_record = TrafficPrediction(
             road_id=bundle["road"].road_id,
             prediction_time=now,
@@ -137,56 +130,10 @@ def predict_route_traffic(
         db.commit()
         db.refresh(pred_record)
 
-    # 3. Evaluate Traffic Anomaly Detection in the same call
-    anomaly_result = None
-    try:
-        live_traf = bundle.get("live_traffic") or {}
-        is_road_closed = bool(
-            live_traf.get("road_closure") or
-            live_traf.get("traffic_condition") == "Road Closed / Blocked"
-        )
-        anomaly_features = {
-            "vehicle_count": float(bundle["previous_records"]["vehicle_count"]),
-            "average_speed": float(bundle["previous_records"]["average_speed"]),
-            "traffic_density": float(bundle["previous_records"]["traffic_density"]),
-            "road_capacity": float(bundle["road_conditions"]["road_capacity"]),
-            "speed_limit": float(bundle["road_conditions"].get("speed_limit") or 50.0),
-            "previous_traffic": float(bundle["previous_records"]["vehicle_count"]),
-            "hour": float(target_time.hour),
-            "rainfall": float(bundle.get("weather_conditions", {}).get("rainfall") or 0.0),
-            "slowdown_percentage": float(live_traf.get("slowdown_percentage") or 0.0),
-            "delay_seconds": float(live_traf.get("delay_seconds") or 0.0),
-            "road_closure": is_road_closed,
-            "historical_accidents": float(bundle["road_conditions"].get("historical_accidents") or bundle["previous_records"].get("historical_accidents") or bundle.get("historical_accidents_count") or 0),
-        }
-        res_anom = trigger_ml_anomaly_model(anomaly_features)
-        anomaly_result = {
-            "prediction": res_anom.get("prediction", "NORMAL"),
-            "is_anomaly": res_anom.get("is_anomaly", False),
-            "anomaly_score": res_anom.get("anomaly_score", 0.0),
-            "confidence_score": res_anom.get("confidence_score", 55.0),
-            "model_status": res_anom.get("model_status", "trained-isolation-forest"),
-            "reason": res_anom.get("anomaly_reason"),
-            "features_used": anomaly_features,
-        }
-    except Exception:
-        anomaly_features = {
-            "vehicle_count": float(bundle["previous_records"].get("vehicle_count") or 800),
-            "average_speed": float(bundle["previous_records"].get("average_speed") or 35.0),
-            "traffic_density": float(bundle["previous_records"].get("traffic_density") or 50.0),
-            "road_capacity": float(bundle["road_conditions"].get("road_capacity") or 1500),
-            "previous_traffic": float(bundle["previous_records"].get("previous_traffic") or bundle["previous_records"].get("vehicle_count") or 800),
-            "hour": float(target_time.hour),
-            "historical_accidents": float(bundle["road_conditions"].get("historical_accidents") or bundle["previous_records"].get("historical_accidents") or bundle.get("historical_accidents_count") or 0),
-        }
-        anomaly_result = None
-
     return RouteTrafficPredictionResponse(
         prediction_id=pred_record.prediction_id if pred_record else None,
         road_id=bundle["road"].road_id if bundle["road"] else None,
         road_name=bundle["road_conditions"]["road_name"],
-        created_new_road=bundle.get("created_new_road", False),
-        newly_created_roads=bundle.get("newly_created_roads", []),
         start_location=bundle["start_label"],
         end_location=bundle["end_label"],
         start_latitude=bundle["start_latitude"],
@@ -203,16 +150,214 @@ def predict_route_traffic(
         previous_records=bundle["previous_records"],
         route_geometry=bundle.get("route_geometry") or ml_result.get("route_geometry"),
         accident_points=ml_result.get("accident_points", []),
-        anomaly_detection=anomaly_result,
-        telemetry_features=anomaly_features,
-        live_traffic=bundle.get("live_traffic") or ml_result.get("live_traffic"),
         ml_features=bundle["ml_features"],
         ml_source=ml_result.get("ml_source", "backend-feature-engine"),
         created_at=now
     )
 
+
 # =========================================================
-# 2. QUERY ENDPOINTS (LATEST & ROAD HISTORY)
+# 2. RUN TRAFFIC PREDICTION MODEL (SINGLE ROAD ON-DEMAND)
+# =========================================================
+
+@router.post(
+    "/predictions/traffic/predict",
+    response_model=TrafficPredictionRunResponse,
+    summary="Run Traffic Congestion Prediction Model"
+)
+def run_traffic_prediction(
+    req: TrafficPredictionRunRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Executes the ML model for traffic congestion prediction on a specific road.
+    Returns:
+      - congestion_level (LOW, MEDIUM, HIGH, SEVERE)
+      - estimated_time window (e.g. '4:00 PM - 5:00 PM (4pm to 5pm)')
+    """
+    road = db.query(Road).filter(Road.road_id == req.road_id).first()
+    if not road:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot predict traffic: Road with ID '{req.road_id}' does not exist."
+        )
+
+    now = datetime.now()
+    target_time = req.target_time or (now + timedelta(minutes=req.target_minutes_ahead or 30))
+
+    bundle = resolve_route_bundle(
+        db=db,
+        road_id=road.road_id,
+        target_time=target_time
+    )
+
+    # Apply any request overrides if provided by caller / ML people
+    if req.predicted_congestion:
+        ml_result = {
+            "congestion_level": req.predicted_congestion.upper(),
+            "estimated_time": format_estimated_time(target_time),
+            "confidence_score": req.confidence_score if req.confidence_score is not None else None,
+            "ml_source": "caller-override"
+        }
+    else:
+        ml_result = trigger_ml_traffic_model(bundle)
+
+    pred_record = None
+    if req.persist:
+        pred_record = TrafficPrediction(
+            road_id=req.road_id,
+            prediction_time=now,
+            target_time=target_time,
+            predicted_congestion=ml_result["congestion_level"],
+            predicted_vehicle_count=int(req.predicted_vehicle_count if req.predicted_vehicle_count is not None else bundle["previous_records"]["vehicle_count"]),
+            confidence_score=ml_result.get("confidence_score"),
+            created_at=now
+        )
+        db.add(pred_record)
+
+        if ml_result["congestion_level"] == "SEVERE":
+            alert = Alert(
+                road_id=road.road_id,
+                prediction_id=pred_record.prediction_id,
+                alert_type="PREDICTED_CONGESTION",
+                severity="CRITICAL",
+                message=f"Severe congestion predicted on {road.road_name} for {ml_result['estimated_time']}.",
+                status="ACTIVE",
+                created_at=now
+            )
+            db.add(alert)
+
+        db.commit()
+        db.refresh(pred_record)
+
+    return TrafficPredictionRunResponse(
+        prediction_id=pred_record.prediction_id if pred_record else None,
+        road_id=road.road_id,
+        road_name=road.road_name,
+        congestion_level=ml_result["congestion_level"],
+        estimated_time=ml_result["estimated_time"],
+        target_time=target_time,
+        predicted_congestion=ml_result["congestion_level"],
+        predicted_vehicle_count=int(req.predicted_vehicle_count if req.predicted_vehicle_count is not None else bundle["previous_records"]["vehicle_count"]),
+        confidence_score=ml_result.get("confidence_score"),
+        class_probabilities={ml_result["congestion_level"]: ml_result.get("confidence_score")},
+        created_at=now
+    )
+
+
+# =========================================================
+# 3. INGESTION & PIPELINE APIS (FOR ML TEAM PIPELINES)
+# =========================================================
+
+@router.post(
+    "/predictions/traffic",
+    response_model=TrafficPredictionResponse,
+    summary="Ingest Traffic Congestion Prediction (ML Pipeline)",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
+)
+def store_traffic_prediction(
+    pred_in: TrafficPredictionCreate,
+    db: Session = Depends(get_db)
+):
+    road = db.query(Road).filter(Road.road_id == pred_in.road_id).first()
+    if not road:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot record prediction: Road with ID '{pred_in.road_id}' does not exist."
+        )
+
+    now = datetime.now()
+    cong = pred_in.predicted_congestion.upper()
+
+    pred = TrafficPrediction(
+        road_id=pred_in.road_id,
+        prediction_time=now,
+        target_time=pred_in.target_time,
+        predicted_congestion=cong,
+        predicted_vehicle_count=pred_in.predicted_vehicle_count,
+        confidence_score=pred_in.confidence_score,
+        model_version_id=pred_in.model_version_id,
+        created_at=now
+    )
+    db.add(pred)
+
+    if cong == "SEVERE":
+        est_time = format_estimated_time(pred_in.target_time)
+        alert = Alert(
+            road_id=road.road_id,
+            prediction_id=pred.prediction_id,
+            alert_type="PREDICTED_CONGESTION",
+            severity="CRITICAL",
+            message=f"Severe congestion predicted on {road.road_name} for {est_time}.",
+            status="ACTIVE",
+            created_at=now
+        )
+        db.add(alert)
+
+    db.commit()
+    db.refresh(pred)
+
+    return _format_traffic_response(pred, road.road_name)
+
+
+@router.post(
+    "/ai/traffic/run-pipeline",
+    response_model=TrafficPipelineRunResponse,
+    summary="Run Traffic Congestion Pipeline across All Active Roads",
+    dependencies=[Depends(require_roles("SUPER_ADMIN", "TRAFFIC_AUTHORITY"))]
+)
+def run_traffic_pipeline(
+    db: Session = Depends(get_db)
+):
+    roads = db.query(Road).filter(Road.is_active == True).all()
+    now = datetime.now()
+    target_time = now + timedelta(minutes=30)
+
+    predictions_count = 0
+    alerts_count = 0
+
+    for road in roads:
+        bundle = resolve_route_bundle(db=db, road_id=road.road_id, target_time=target_time)
+        ml_result = trigger_ml_traffic_model(bundle)
+
+        pred = TrafficPrediction(
+            road_id=road.road_id,
+            prediction_time=now,
+            target_time=target_time,
+            predicted_congestion=ml_result["congestion_level"],
+            predicted_vehicle_count=int(bundle["previous_records"]["vehicle_count"]),
+            confidence_score=ml_result.get("confidence_score"),
+            created_at=now
+        )
+        db.add(pred)
+        predictions_count += 1
+
+        if ml_result["congestion_level"] == "SEVERE":
+            alert = Alert(
+                road_id=road.road_id,
+                prediction_id=pred.prediction_id,
+                alert_type="PREDICTED_CONGESTION",
+                severity="CRITICAL",
+                message=f"Severe congestion predicted on {road.road_name} for {ml_result['estimated_time']}.",
+                status="ACTIVE",
+                created_at=now
+            )
+            db.add(alert)
+            alerts_count += 1
+
+    db.commit()
+
+    return TrafficPipelineRunResponse(
+        status="SUCCESS",
+        scanned_roads=len(roads),
+        predictions_generated=predictions_count,
+        severe_alerts_raised=alerts_count,
+        timestamp=now
+    )
+
+
+# =========================================================
+# 4. QUERY ENDPOINTS (LATEST & ROAD HISTORY)
 # =========================================================
 
 @router.get(
@@ -278,7 +423,7 @@ def get_road_traffic_predictions(
 
 
 # =========================================================
-# 3. INTEGRATED SUMMARY (FOR DASHBOARD & LIVE MAP)
+# 5. INTEGRATED SUMMARY (FOR DASHBOARD & LIVE MAP)
 # =========================================================
 
 @router.get(

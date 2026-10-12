@@ -8,14 +8,8 @@ from geoalchemy2.shape import to_shape
 
 from app.database.models import Accident, Road, TrafficRecord
 from app.services.weather import get_live_weather
-from app.ml.prediction_engine import (
-    compute_temporal_traffic_projection,
-    normalize_model_road_type,
-    normalize_model_road_condition,
-    normalize_model_weather,
-)
 
-logger = logging.getLogger("Metrivon.accident_risk_features")
+logger = logging.getLogger("roadsense.accident_risk_features")
 
 
 class AccidentRiskFeatureService:
@@ -58,6 +52,30 @@ class AccidentRiskFeatureService:
         except Exception:
             return None
 
+    def _get_latest_traffic(self, db: Session, road_id: UUID) -> TrafficRecord:
+        record = (
+            db.query(TrafficRecord)
+            .filter(TrafficRecord.road_id == road_id)
+            .order_by(TrafficRecord.timestamp.desc())
+            .first()
+        )
+        if record is None:
+            raise ValueError(f"No traffic_records row exists for road_id '{road_id}'. Cannot derive traffic features.")
+        return record
+
+    def _get_previous_traffic_count(self, db: Session, road_id: UUID, current_record: TrafficRecord) -> int:
+        previous = (
+            db.query(TrafficRecord)
+            .filter(TrafficRecord.road_id == road_id)
+            .filter(TrafficRecord.traffic_id != current_record.traffic_id)
+            .filter(TrafficRecord.timestamp < current_record.timestamp)
+            .order_by(TrafficRecord.timestamp.desc())
+            .first()
+        )
+        if previous is None:
+            return int(current_record.vehicle_count)
+        return int(previous.vehicle_count)
+
     def _get_weather(self, latitude: float, longitude: float, road_name: str) -> Dict[str, Any]:
         try:
             return get_live_weather(latitude=latitude, longitude=longitude)
@@ -85,79 +103,97 @@ class AccidentRiskFeatureService:
         end_lat, end_lon = end_point
 
         road_type = self._require(road.road_type, "road_type", road_name)
-        road_capacity = int(self._require(road.road_capacity, "road_capacity", road_name))
+        road_capacity = self._require(road.road_capacity, "road_capacity", road_name)
         road_condition = self._require(road.road_condition, "road_condition", road_name)
-        speed_limit = float(self._require(road.speed_limit, "speed_limit", road_name))
+
+        traffic_record = self._get_latest_traffic(db, road_id)
+
+        vehicle_count = self._require(traffic_record.vehicle_count, "vehicle_count", road_name)
+        average_speed = self._require(traffic_record.average_speed, "average_speed", road_name)
+        traffic_density = self._require(traffic_record.traffic_density, "traffic_density", road_name)
+        congestion_level = self._require(traffic_record.congestion_level, "congestion_level", road_name)
 
         if prediction_time is None:
-            prediction_time = datetime.now()
+            prediction_time = traffic_record.timestamp or datetime.utcnow()
 
-        # 1. Live Meteorological Telemetry (strictly real, NO fake fallbacks)
         weather = self._get_weather(start_lat, start_lon, road_name)
-        rainfall = float(self._require(weather.get("rainfall"), "rainfall", road_name))
-        temperature = float(self._require(weather.get("temperature"), "temperature", road_name))
-        visibility = float(self._require(weather.get("visibility"), "visibility", road_name))
-        weather_name = str(self._require(weather.get("weather_condition"), "weather", road_name))
+        rainfall = self._require(weather.get("rainfall"), "rainfall", road_name)
+        temperature = self._require(weather.get("temperature"), "temperature", road_name)
+        visibility = self._require(weather.get("visibility"), "visibility", road_name)
+        weather_name = self._require(weather.get("weather_condition"), "weather", road_name)
 
-        # 2. Historical Incident Statistics
         historical_accidents = (
             db.query(Accident)
             .filter(Accident.road_id == road_id)
             .count()
         )
 
-        # 3. Latest shared traffic observation for this road. No developer-local
-        # API key or external provider changes the prediction inputs.
-        latest_traffic = (
-            db.query(TrafficRecord)
-            .filter(TrafficRecord.road_id == road_id)
-            .order_by(TrafficRecord.timestamp.desc(), TrafficRecord.traffic_id.desc())
-            .first()
-        )
-        live_traffic = None
-        if latest_traffic is not None:
-            live_traffic = {
-                "is_live": True,
-                "source": "shared_database",
-                "current_speed_kmh": float(latest_traffic.average_speed)
-                if latest_traffic.average_speed is not None else None,
-                "traffic_density": float(latest_traffic.traffic_density)
-                if latest_traffic.traffic_density is not None else None,
-                "vehicle_count": int(latest_traffic.vehicle_count)
-                if latest_traffic.vehicle_count is not None else None,
-                "slowdown_percentage": max(
-                    0.0,
-                    min(
-                        100.0,
-                        ((speed_limit - float(latest_traffic.average_speed)) / speed_limit) * 100.0,
-                    ),
-                ) if latest_traffic.average_speed is not None and speed_limit > 0 else 0.0,
-            }
-
-        # 4. Centralized Dynamic Temporal Traffic Projection
-        proj = compute_temporal_traffic_projection(
-            target_time=prediction_time,
-            road_capacity=road_capacity,
-            speed_limit=speed_limit,
-            rainfall=rainfall,
-            accident_count=historical_accidents,
-            live_traffic=live_traffic
+        from app.ml.prediction_engine import (
+            match_known_location,
+            normalize_model_road_type,
+            normalize_model_road_condition,
+            normalize_model_weather,
+            KNOWN_START_LOCS,
+            KNOWN_END_LOCS,
         )
 
         hour_val = int(prediction_time.hour)
         day_val = prediction_time.strftime("%A")
-        is_hol = 1 if prediction_time.weekday() >= 5 else 0
+        is_hol = 1 if (traffic_record.is_holiday is True or prediction_time.weekday() >= 5) else 0
 
-        calibrated_vehicles = proj["vehicle_count"]
-        calibrated_speed = proj["average_speed"]
-        calibrated_density = proj["traffic_density"]
-        std_capacity = proj["std_capacity"]
-        cong_level = proj["predicted_congestion"]
-        rf = rainfall
+        # 1. Rush Hour Factor
+        if (8 <= hour_val <= 11) or (17 <= hour_val <= 21):
+            rush_factor = 1.45 if (17 <= hour_val <= 20) else 1.35
+        elif 12 <= hour_val <= 16:
+            rush_factor = 0.95
+        elif 23 <= hour_val or hour_val <= 5:
+            rush_factor = 0.28
+        else:
+            rush_factor = 0.70
+
+        if is_hol:
+            rush_factor *= 0.75
+
+        # 2. Environmental & Accident Factors
+        rf = float(rainfall)
+        weather_factor = 1.30 if rf > 5.0 else (1.15 if rf > 0.5 else 1.0)
+        accident_factor = 1.0 + min(historical_accidents * 0.05, 0.35)
+
+        # 3. Standardized Capacity matching Model Scale (Mean: 1470)
+        raw_cap = int(road_capacity or 1500)
+        std_capacity = max(1000, min(int(raw_cap * 0.55), 1800))
+
+        # 4. Realistic Dynamic Density & Vehicles
+        base_vol = std_capacity * 0.50
+        effective_vol = base_vol * rush_factor * weather_factor * accident_factor
+        calibrated_vehicles = int(min(max(effective_vol, 120), std_capacity * 1.35))
+        calibrated_density = round(min(max((calibrated_vehicles / std_capacity) * 100.0, 15.0), 125.0), 2)
+
+        # 5. Speed Inversely Proportional to Congestion
+        speed_limit = float(road.speed_limit or 50.0)
+        if calibrated_density > 85.0:
+            calc_speed = max(12.0, speed_limit * 0.35 - (calibrated_density - 85) * 0.3)
+        elif calibrated_density > 60.0:
+            calc_speed = max(20.0, speed_limit * 0.60 - (calibrated_density - 60) * 0.4)
+        elif calibrated_density > 40.0:
+            calc_speed = max(32.0, speed_limit * 0.80 - (calibrated_density - 40) * 0.3)
+        else:
+            calc_speed = min(speed_limit, speed_limit * 0.95 + (40 - calibrated_density) * 0.2)
+        calibrated_speed = round(calc_speed, 2)
+
+        # 6. Congestion Level Mapping
+        if calibrated_density > 80.0:
+            cong_level = "SEVERE"
+        elif calibrated_density > 55.0:
+            cong_level = "HIGH"
+        elif calibrated_density > 35.0:
+            cong_level = "MEDIUM"
+        else:
+            cong_level = "LOW"
 
         payload = {
-            "start_location": str(road_name),
-            "end_location": str(road_name),
+            "start_location": match_known_location(road_name, KNOWN_START_LOCS),
+            "end_location": match_known_location(road_name, KNOWN_END_LOCS),
             "start_latitude": float(start_lat),
             "start_longitude": float(start_lon),
             "end_latitude": float(end_lat),

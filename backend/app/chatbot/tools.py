@@ -1,5 +1,5 @@
 """
-LangChain tools for the Metrivon AI chatbot.
+LangChain tools for the RoadSense AI chatbot.
 
 Every tool below is a thin wrapper around a service that ALREADY exists in
 this repository:
@@ -17,6 +17,7 @@ data is unavailable, matching the project's no-mock-data requirement.
 Each tool opens its own short-lived DB session (SessionLocal) since
 LangChain tool functions run outside FastAPI's request/Depends lifecycle.
 """
+from datetime import datetime
 from typing import Optional
 
 from langchain_core.tools import tool
@@ -27,6 +28,7 @@ from app.ml.prediction_engine import (
     resolve_route_bundle,
     trigger_ml_traffic_model,
     trigger_ml_accident_model,
+    format_estimated_time,
 )
 from app.routers.dashboard import get_dashboard_stats
 
@@ -39,14 +41,14 @@ def _find_road(db, name: str) -> Optional[Road]:
 
 @tool
 def list_roads() -> str:
-    """List the road names known to Metrivon AI, so you know what exact
+    """List the road names known to RoadSense AI, so you know what exact
     names to use in other tools. Use this if you're unsure whether a road
     the user mentioned actually exists in the system."""
     db = SessionLocal()
     try:
         roads = db.query(Road).filter(Road.is_active.is_(True)).limit(30).all()
         if not roads:
-            return "No roads are currently registered in Metrivon AI."
+            return "No roads are currently registered in RoadSense AI."
         return "Known roads: " + ", ".join(r.road_name for r in roads)
     finally:
         db.close()
@@ -62,7 +64,7 @@ def get_current_traffic_condition(road_name: str) -> str:
     try:
         road = _find_road(db, road_name)
         if not road:
-            return f"'{road_name}' does not match any road in Metrivon AI. Try list_roads to see known road names."
+            return f"'{road_name}' does not match any road in RoadSense AI. Try list_roads to see known road names."
 
         record = (
             db.query(TrafficRecord)
@@ -92,7 +94,7 @@ def get_road_traffic_prediction(road_name: str) -> str:
     try:
         road = _find_road(db, road_name)
         if not road:
-            return f"'{road_name}' does not match any road in Metrivon AI. Try list_roads to see known road names."
+            return f"'{road_name}' does not match any road in RoadSense AI. Try list_roads to see known road names."
 
         bundle = resolve_route_bundle(db=db, road_id=road.road_id)
         result = trigger_ml_traffic_model(bundle)
@@ -102,7 +104,7 @@ def get_road_traffic_prediction(road_name: str) -> str:
             f"(model confidence {result.get('confidence_score', 'n/a')}%, source: {result.get('ml_source')})."
         )
     except Exception as exc:
-        return f"I couldn't retrieve the required Metrivon traffic prediction right now ({exc.__class__.__name__})."
+        return f"I couldn't retrieve the required RoadSense traffic prediction right now ({exc.__class__.__name__})."
     finally:
         db.close()
 
@@ -117,7 +119,7 @@ def get_road_accident_risk(road_name: str) -> str:
     try:
         road = _find_road(db, road_name)
         if not road:
-            return f"'{road_name}' does not match any road in Metrivon AI. Try list_roads to see known road names."
+            return f"'{road_name}' does not match any road in RoadSense AI. Try list_roads to see known road names."
 
         bundle = resolve_route_bundle(db=db, road_id=road.road_id)
         result = trigger_ml_accident_model(bundle)
@@ -127,7 +129,7 @@ def get_road_accident_risk(road_name: str) -> str:
             f"model confidence {result.get('confidence_score', 'n/a')}%, source: {result.get('ml_source')}."
         )
     except Exception as exc:
-        return f"I couldn't retrieve the required Metrivon accident-risk prediction right now ({exc.__class__.__name__})."
+        return f"I couldn't retrieve the required RoadSense accident-risk prediction right now ({exc.__class__.__name__})."
     finally:
         db.close()
 
@@ -148,7 +150,7 @@ def get_route_traffic_prediction(start_location: str, end_location: str) -> str:
             f"(confidence {result.get('confidence_score', 'n/a')}%)."
         )
     except Exception as exc:
-        return f"I couldn't retrieve the required Metrivon route traffic prediction right now ({exc.__class__.__name__})."
+        return f"I couldn't retrieve the required RoadSense route traffic prediction right now ({exc.__class__.__name__})."
     finally:
         db.close()
 
@@ -170,7 +172,7 @@ def get_route_accident_risk(start_location: str, end_location: str) -> str:
             f"confidence {result.get('confidence_score', 'n/a')}%."
         )
     except Exception as exc:
-        return f"I couldn't retrieve the required Metrivon route accident-risk prediction right now ({exc.__class__.__name__})."
+        return f"I couldn't retrieve the required RoadSense route accident-risk prediction right now ({exc.__class__.__name__})."
     finally:
         db.close()
 
@@ -191,7 +193,7 @@ def get_accident_hotspots(limit: int = 5) -> str:
             .all()
         )
         if not rows:
-            return "No accident hotspot data has been calculated yet in Metrivon AI."
+            return "No accident hotspot data has been calculated yet in RoadSense AI."
         lines = [
             f"- {zone_name or 'Unnamed zone'}: {h.accident_count or 0} recorded accidents, risk level {h.risk_level or 'unknown'}"
             for h, zone_name in rows
@@ -211,11 +213,11 @@ def get_historical_accident_data(road_name: str) -> str:
     try:
         road = _find_road(db, road_name)
         if not road:
-            return f"'{road_name}' does not match any road in Metrivon AI. Try list_roads to see known road names."
+            return f"'{road_name}' does not match any road in RoadSense AI. Try list_roads to see known road names."
 
         records = db.query(Accident).filter(Accident.road_id == road.road_id).all()
         if not records:
-            return f"No historical accident records exist for {road.road_name} in Metrivon AI."
+            return f"No historical accident records exist for {road.road_name} in RoadSense AI."
 
         severities = {}
         for a in records:
@@ -241,7 +243,7 @@ def get_active_alerts(road_name: Optional[str] = None, limit: int = 10) -> str:
         if road_name:
             road = _find_road(db, road_name)
             if not road:
-                return f"'{road_name}' does not match any road in Metrivon AI. Try list_roads to see known road names."
+                return f"'{road_name}' does not match any road in RoadSense AI. Try list_roads to see known road names."
             query = query.filter(Alert.road_id == road.road_id)
 
         alerts = (
@@ -252,7 +254,7 @@ def get_active_alerts(road_name: Optional[str] = None, limit: int = 10) -> str:
         )
         if not alerts:
             scope = f" for {road_name}" if road_name else ""
-            return f"There are no active alerts{scope} in Metrivon AI right now."
+            return f"There are no active alerts{scope} in RoadSense AI right now."
 
         lines = []
         for a in alerts:
@@ -276,7 +278,7 @@ def get_traffic_statistics() -> str:
     try:
         stats = get_dashboard_stats(db=db)
         return (
-            f"Metrivon system statistics — active roads: {stats.active_roads}/{stats.total_roads}, "
+            f"RoadSense system statistics — active roads: {stats.active_roads}/{stats.total_roads}, "
             f"roads with high/severe traffic: {stats.high_traffic_roads}, "
             f"accident alerts needing attention: {stats.accident_alerts}, "
             f"high-risk zones: {stats.high_risk_zones}, "
@@ -284,7 +286,7 @@ def get_traffic_statistics() -> str:
             f"average system speed: {stats.average_system_speed} km/h."
         )
     except Exception as exc:
-        return f"Metrivon data could not be retrieved right now ({exc.__class__.__name__})."
+        return f"RoadSense data could not be retrieved right now ({exc.__class__.__name__})."
     finally:
         db.close()
 

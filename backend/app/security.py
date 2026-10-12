@@ -14,8 +14,7 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-DEFAULT_JWT_SECRET = "Metrivon-ai-jwt-secret-key-change-in-production"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30
+DEFAULT_JWT_SECRET = "roadsense-ai-jwt-secret-key-change-in-production"
 password_hash = PasswordHash.recommended()
 
 
@@ -35,17 +34,8 @@ def get_jwt_settings() -> tuple[str, str]:
 
 def create_access_token(user_id: UUID | str | int) -> str:
     secret_key, algorithm = get_jwt_settings()
-    configured_expire_minutes = int(
-        os.getenv(
-            "ACCESS_TOKEN_EXPIRE_MINUTES",
-            str(ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
-    )
-    if configured_expire_minutes <= 0:
-        raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be positive.")
-    expire_minutes = min(
-        configured_expire_minutes,
-        ACCESS_TOKEN_EXPIRE_MINUTES
+    expire_minutes = int(
+        os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
     )
 
     expire = datetime.now(timezone.utc) + timedelta(
@@ -108,6 +98,24 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token. Please log in to continue."
         )
+
+
+def create_password_reset_token(user_id: UUID | str | int) -> str:
+    secret_key, algorithm = get_jwt_settings()
+
+    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    payload = {
+        "user_id": str(user_id),
+        "purpose": "password_reset",
+        "exp": expire
+    }
+
+    return jwt.encode(
+        payload,
+        secret_key,
+        algorithm=algorithm
+    )
 
 
 def create_otp() -> str:
@@ -178,3 +186,4 @@ def require_roles(*allowed_roles: str):
         return current_user
 
     return role_checker
+

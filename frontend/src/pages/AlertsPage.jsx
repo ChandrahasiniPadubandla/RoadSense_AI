@@ -55,7 +55,7 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4 dark:border-asphalt-800">
-        <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-asphalt-100">Alerts</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-asphalt-100">Alerts</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-asphalt-400">
           Real alerts raised by the system — accident, congestion, road, and emergency notifications from the database.
         </p>

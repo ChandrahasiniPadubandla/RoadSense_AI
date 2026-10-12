@@ -1,19 +1,20 @@
 import json
 import logging
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import HTTPException
 
-logger = logging.getLogger("Metrivon.weather_service")
+logger = logging.getLogger("roadsense.weather_service")
 
 # Cache to prevent repetitive external API calls
 # Key: (round(lat, 2), round(lng, 2)), Value: (timestamp, weather_dict)
 _WEATHER_CACHE: Dict[tuple, tuple[float, Dict[str, Any]]] = {}
 CACHE_TTL_SECONDS = 600  # 10 minutes cache
 
-USER_AGENT = "MetrivonAI-Backend/1.0 (contact@Metrivon.ai)"
+USER_AGENT = "RoadSenseAI-Backend/1.0 (contact@roadsense.ai)"
 
 
 def map_wmo_code_to_condition(code: int, rain: float = 0.0) -> str:

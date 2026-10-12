@@ -72,7 +72,6 @@ class TrafficPredictionRunResponse(BaseModel):
     predicted_vehicle_count: Optional[int] = None
     confidence_score: Optional[float] = None
     class_probabilities: Optional[Dict[str, float]] = None
-    anomaly_detection: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
 
 
@@ -93,9 +92,9 @@ class TrafficPredictionResponse(BaseModel):
     road_name: Optional[str] = None
     prediction_time: datetime
     target_time: datetime
-    congestion_level: Optional[str] = None
-    estimated_time: Optional[str] = None
-    predicted_congestion: Optional[str] = None
+    congestion_level: str
+    estimated_time: str
+    predicted_congestion: str
     predicted_vehicle_count: Optional[int] = None
     confidence_score: Optional[float] = None
     model_version_id: Optional[UUID] = None
@@ -125,11 +124,7 @@ class AccidentPredictionRunRequest(BaseModel):
     Request model to run accident risk prediction on-demand.
     ML teams can pass pre-computed risk metrics or telemetry features.
     """
-    road_id: Optional[UUID] = None
-    road_name: Optional[str] = Field(
-        default=None,
-        description="Searched road name to resolve via geocoding and create if not in DB"
-    )
+    road_id: UUID
 
     # Direct ML Output overrides
     risk_percentage: Optional[float] = Field(
@@ -174,7 +169,6 @@ class AccidentPredictionRunResponse(BaseModel):
     risk_percentage: float = Field(..., description="Estimated accident risk percentage (0.0 - 100.0%)")
     risk_level: str = Field(..., description="Categorical risk level: LOW, MEDIUM, HIGH, CRITICAL")
     confidence_score: Optional[float] = None
-    created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
     prediction_time: datetime
     created_at: Optional[datetime] = None
 
@@ -271,7 +265,6 @@ class RoutePredictionRequest(BaseModel):
     end_latitude: Optional[float] = Field(default=None, description="End latitude, e.g. 17.4435")
     end_longitude: Optional[float] = Field(default=None, description="End longitude, e.g. 78.3772")
     road_id: Optional[UUID] = Field(default=None, description="Optional road_id if user selected a known road")
-    voice_text: Optional[str] = Field(default=None, description="Optional spoken natural query or voice transcript, e.g. 'Traffic from Ameerpet to Secunderabad'")
     target_time: Optional[datetime] = Field(default=None, description="Target prediction time")
     target_minutes_ahead: Optional[int] = Field(default=30, ge=5, le=1440)
     persist: bool = Field(default=True, description="Whether to record the generated prediction in the database")
@@ -280,8 +273,7 @@ class RoutePredictionRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "start_location": "Banjara Hills",
-                "end_location": "Hitec City",
-                "voice_text": "Traffic from Banjara Hills to Hitec City"
+                "end_location": "Hitec City"
             }
         }
     }
@@ -321,20 +313,6 @@ class RouteTrafficPredictionResponse(BaseModel):
         default=None,
         description="Accident incident points and predicted risk hazard points along the route"
     )
-    anomaly_detection: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Traffic anomaly detection analysis: prediction (NORMAL/ANOMALY), is_anomaly, anomaly_score, confidence_score"
-    )
-    telemetry_features: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Key traffic telemetry parameters: vehicle_count, average_speed, traffic_density, road_capacity, previous_traffic, hour, historical_accidents"
-    )
-    live_traffic: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Real-time live traffic telemetry: current speed, free-flow speed, delay, congestion percentage"
-    )
-    created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
-    newly_created_roads: List[str] = Field(default_factory=list, description="Names of roads newly geocoded and saved to the database")
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 
@@ -374,8 +352,6 @@ class RouteAccidentPredictionResponse(BaseModel):
         default_factory=dict,
         description="Complete feature bundle prepared by the API and passed to the ML model"
     )
-    created_new_road: bool = Field(default=False, description="True if this road was newly geocoded and created in the database")
-    newly_created_roads: List[str] = Field(default_factory=list, description="Names of roads newly geocoded and saved to the database")
     ml_source: str = Field(default="backend-feature-engine")
     created_at: Optional[datetime] = None
 

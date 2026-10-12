@@ -11,14 +11,13 @@ from app.schemas.geocoding import (
     DrivingRouteResult
 )
 from app.services.geocoding import (
-    GeocodingError,
     geocode_location,
     reverse_geocode,
     find_nearest_road_by_coordinates,
     get_driving_route
 )
 
-logger = logging.getLogger("Metrivon.geocoding_router")
+logger = logging.getLogger("roadsense.geocoding_router")
 
 router = APIRouter(
     prefix="/geo",
@@ -34,18 +33,13 @@ router = APIRouter(
 def search_location(
     query: str = Query(..., min_length=2, description="Place name, area, road, or landmark to search"),
     city: Optional[str] = Query("Hyderabad", description="City bias for prioritizing local search results"),
-    limit: int = Query(5, ge=1, le=10, description="Maximum number of results to return"),
-    db: Session = Depends(get_db)
+    limit: int = Query(5, ge=1, le=10, description="Maximum number of results to return")
 ):
     """
-    Geocodes text queries into real GPS latitude & longitude.
-    Integrates Metrivon AI monitored corridors, curated Hyderabad transit hubs,
-    and Komoot Photon API (Elasticsearch + OSM) with local in-memory caching.
+    Geocodes text queries into real GPS latitude & longitude using OpenStreetMap Nominatim.
+    Includes in-memory caching to optimize response times and prevent rate limits.
     """
-    try:
-        results = geocode_location(query=query, city_bias="Hyderabad", limit=limit, db=db)
-    except GeocodingError as exc:
-        raise HTTPException(status_code=503, detail=exc.message) from exc
+    results = geocode_location(query=query, city_bias=city or "", limit=limit)
     return results
 
 
@@ -60,7 +54,7 @@ def reverse_geocode_point(
 ):
     """
     Converts GPS latitude & longitude (from browser GPS or map click) into human-readable road,
-    suburb, and city names using Photon reverse geocoding.
+    suburb, and city names.
     """
     data = reverse_geocode(latitude=lat, longitude=lng)
     if not data:
@@ -100,25 +94,23 @@ def get_nearest_road(
 @router.get(
     "/route",
     response_model=DrivingRouteResult,
-    summary="Get Street-Level Route Geometry by Vehicle Mode (Car, Bike, Walk)"
+    summary="Get Street-Level Driving Route Geometry (OSRM)"
 )
 def get_route(
     start_lat: float = Query(..., ge=-90.0, le=90.0, description="Start Latitude"),
     start_lng: float = Query(..., ge=-180.0, le=180.0, description="Start Longitude"),
     end_lat: float = Query(..., ge=-90.0, le=90.0, description="End Latitude"),
-    end_lng: float = Query(..., ge=-180.0, le=180.0, description="End Longitude"),
-    mode: str = Query("driving", description="Vehicle routing mode: 'driving' (car), 'bike', or 'foot' (walk)")
+    end_lng: float = Query(..., ge=-180.0, le=180.0, description="End Longitude")
 ):
     """
-    Returns actual street route coordinates [[lat, lng], ...], distance in km,
-    turn-by-turn directions, and travel duration tailored to the vehicle profile (driving, bike, foot).
+    Returns actual street driving route coordinates [[lat, lng], ...], distance in km,
+    and travel duration using Open Source Routing Machine (OSRM).
     """
     route_info = get_driving_route(
         start_lat=start_lat,
         start_lng=start_lng,
         end_lat=end_lat,
-        end_lng=end_lng,
-        mode=mode
+        end_lng=end_lng
     )
     return DrivingRouteResult(**route_info)
 

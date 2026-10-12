@@ -10,12 +10,9 @@ from app.database.connection import get_db
 from app.database.models import (
     Road,
     TrafficRecord,
-    TrafficPrediction,
     Accident,
-    AccidentHotspot,
-    TrafficAnomaly
+    AccidentHotspot
 )
-from app.services.hotspot_service import resolve_risk_level
 
 router = APIRouter(
     prefix="/map",
@@ -97,33 +94,7 @@ def get_traffic_layer(
         .all()
     )
 
-    # 2. Get latest AI traffic prediction for each road (primary source)
-    latest_pred_sub = (
-        db.query(
-            TrafficPrediction.road_id,
-            func.max(TrafficPrediction.created_at).label("max_created")
-        )
-        .group_by(TrafficPrediction.road_id)
-        .subquery()
-    )
-
-    latest_predictions = (
-        db.query(TrafficPrediction)
-        .join(
-            latest_pred_sub,
-            and_(
-                TrafficPrediction.road_id == latest_pred_sub.c.road_id,
-                TrafficPrediction.created_at == latest_pred_sub.c.max_created
-            )
-        )
-        .all()
-    )
-
-    pred_by_road: dict[UUID, TrafficPrediction] = {
-        p.road_id: p for p in latest_predictions
-    }
-
-    # 3. Get latest traffic telemetry record for each road (secondary telemetry source)
+    # 2. Get latest traffic record for each road
     latest_traffic_sub = (
         db.query(
             TrafficRecord.road_id,
@@ -170,42 +141,14 @@ def get_traffic_layer(
             except Exception:
                 continue
 
-        pred = pred_by_road.get(road.road_id)
         tr = traffic_by_road.get(road.road_id)
-
-        # Prioritize AI Traffic Prediction over raw record; do NOT fake as LOW
-        if pred and pred.predicted_congestion:
-            congestion = pred.predicted_congestion.upper()
-        elif tr and tr.congestion_level:
-            congestion = tr.congestion_level.upper()
-        else:
-            congestion = None
-
-        # Vehicle Count: Use predicted vehicle count, fallback to telemetry
-        if pred and pred.predicted_vehicle_count is not None:
-            vehicle_count = pred.predicted_vehicle_count
-        elif tr and tr.vehicle_count is not None:
-            vehicle_count = tr.vehicle_count
-        else:
-            vehicle_count = None
-
-        # Average Speed
-        if tr and tr.average_speed is not None and float(tr.average_speed) > 0:
-            avg_speed = float(tr.average_speed)
-        elif road.speed_limit is not None:
-            avg_speed = float(road.speed_limit)
-        else:
-            avg_speed = 50.0
-
+        congestion = tr.congestion_level if tr else None
         density = float(tr.traffic_density) if tr and tr.traffic_density is not None else None
         color = _get_congestion_color(congestion, density)
 
         capacity_utilization = None
-        if road.road_capacity and road.road_capacity > 0 and vehicle_count is not None:
-            capacity_utilization = round((vehicle_count / road.road_capacity) * 100, 1)
-
-        confidence = float(pred.confidence_score) if pred and pred.confidence_score is not None else None
-        last_updated_dt = (pred.created_at if pred else (tr.timestamp if tr else None))
+        if tr and road.road_capacity and road.road_capacity > 0:
+            capacity_utilization = round((tr.vehicle_count / road.road_capacity) * 100, 1)
 
         road_id_str = str(road.road_id)
 
@@ -222,16 +165,14 @@ def get_traffic_layer(
                 "road_type": road.road_type,
                 "speed_limit": float(road.speed_limit) if road.speed_limit else None,
                 "road_capacity": road.road_capacity,
-                "congestion_level": congestion,
-                "confidence_score": confidence,
+                "congestion_level": congestion or "UNKNOWN",
                 "traffic_density": density,
-                "average_speed": avg_speed,
-                "vehicle_count": vehicle_count,
+                "average_speed": float(tr.average_speed) if tr and tr.average_speed is not None else None,
+                "vehicle_count": tr.vehicle_count if tr else None,
                 "capacity_utilization": capacity_utilization,
-                "weather_condition": (tr.weather_condition if tr else None) or "Clear",
+                "weather_condition": tr.weather_condition if tr else None,
                 "color": color,
-                "is_predicted": pred is not None,
-                "last_updated": last_updated_dt.isoformat() if last_updated_dt else None
+                "last_updated": tr.timestamp.isoformat() if tr else None
             }
         }
         features.append(feature)
@@ -329,8 +270,7 @@ def get_hotspots_layer(
         except Exception:
             continue
 
-        score = float(h.risk_score) if h.risk_score is not None else None
-        risk_level = resolve_risk_level(score) if score is not None else (h.risk_level or "HIGH")
+        risk_level = h.risk_level or "HIGH"
         feature = {
             "type": "Feature",
             "id": str(h.hotspot_id),
@@ -342,71 +282,9 @@ def get_hotspots_layer(
                 "hotspot_id": str(h.hotspot_id),
                 "zone_id": str(h.zone_id) if h.zone_id else None,
                 "accident_count": h.accident_count,
-                "risk_score": score,
+                "risk_score": float(h.risk_score) if h.risk_score is not None else None,
                 "risk_level": risk_level,
-                "color": "#DC2626" if risk_level.upper() in ["HIGH", "SEVERE", "CRITICAL"] else "#F59E0B"
-            }
-        }
-        features.append(feature)
-
-    return {
-        "type": "FeatureCollection",
-        "features": features
-    }
-
-
-@router.get(
-    "/anomalies-layer",
-    summary="Get GeoJSON Traffic Anomaly Layer for Leaflet Map"
-)
-def get_anomalies_layer(
-    limit: int = Query(default=50, ge=1, le=200),
-    db: Session = Depends(get_db)
-) -> dict[str, Any]:
-    """
-    Returns a GeoJSON FeatureCollection of detected traffic anomalies
-    (unusual vehicle-count spikes/drops flagged by the Isolation Forest
-    model), positioned at their road's location, for map display.
-    """
-    rows = (
-        db.query(TrafficAnomaly, Road)
-        .join(Road, TrafficAnomaly.road_id == Road.road_id)
-        .filter(Road.start_location.isnot(None))
-        .order_by(TrafficAnomaly.detected_at.desc())
-        .limit(limit)
-        .all()
-    )
-
-    features = []
-    for anomaly, road in rows:
-        try:
-            pt = to_shape(road.start_location)
-        except Exception:
-            continue
-
-        score = float(anomaly.anomaly_score) if anomaly.anomaly_score is not None else None
-        severity = "HIGH" if score is not None and score >= 70 else "MEDIUM"
-
-        feature = {
-            "type": "Feature",
-            "id": str(anomaly.anomaly_id),
-            "geometry": {
-                "type": "Point",
-                "coordinates": [pt.x, pt.y]
-            },
-            "properties": {
-                "anomaly_id": str(anomaly.anomaly_id),
-                "road_id": str(anomaly.road_id),
-                "road_name": road.road_name,
-                "anomaly_type": anomaly.anomaly_type,
-                "anomaly_score": score,
-                "severity": severity,
-                "normal_vehicle_count": anomaly.normal_vehicle_count,
-                "actual_vehicle_count": anomaly.actual_vehicle_count,
-                "description": anomaly.description,
-                "status": anomaly.status,
-                "detected_at": anomaly.detected_at.isoformat() if anomaly.detected_at else None,
-                "color": "#A855F7" if severity == "HIGH" else "#D8B4FE"
+                "color": "#DC2626" if risk_level.upper() in ["HIGH", "CRITICAL"] else "#F59E0B"
             }
         }
         features.append(feature)

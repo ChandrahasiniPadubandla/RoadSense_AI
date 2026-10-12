@@ -12,7 +12,8 @@ from app.database.models import (
     Road,
     Accident,
     AccidentPrediction,
-    Alert
+    Alert,
+    TrafficRecord
 )
 from app.schemas.prediction import (
     AccidentPredictionRunRequest,
@@ -26,6 +27,7 @@ from app.schemas.prediction import (
 from app.schemas.accident_risk import (
     AccidentRiskPredictionRequest,
     AccidentRiskPredictionResponse,
+    RoadSearchResult,
 )
 from app.services.accident_risk_service import accident_risk_service
 from app.services.accident_risk_feature_service import accident_risk_feature_service
@@ -34,12 +36,33 @@ from app.ml.prediction_engine import (
     trigger_ml_accident_model
 )
 from app.security import require_roles
-from app.services.hotspot_service import upsert_accident_hotspot
-from app.services.geocoding import get_or_create_road_from_geocoding
 
 router = APIRouter(
     tags=["AI Accident Predictions"]
 )
+
+
+@router.get(
+    "/roads",
+    response_model=list[RoadSearchResult],
+    summary="Search roads in the real database by road name"
+)
+def search_roads(
+    search: str = Query(default="", min_length=1),
+    db: Session = Depends(get_db),
+):
+    if not search.strip():
+        return []
+
+    roads = (
+        db.query(Road)
+        .filter(Road.road_name.ilike(f"%{search.strip()}%"))
+        .order_by(Road.road_name.asc())
+        .limit(20)
+        .all()
+    )
+
+    return [RoadSearchResult(road_id=road.road_id, road_name=road.road_name) for road in roads]
 
 
 @router.post(
@@ -51,30 +74,23 @@ def predict_accident_risk_route(
     req: AccidentRiskPredictionRequest,
     db: Session = Depends(get_db),
 ):
-    created_new_road = False
-    road = None
-    if req.road_id is not None:
-        road = db.query(Road).filter(Road.road_id == req.road_id).first()
-    if road is None and req.road_name:
-        road, created_new_road = get_or_create_road_from_geocoding(db=db, road_name=req.road_name)
-
+    road = db.query(Road).filter(Road.road_id == req.road_id).first()
     if road is None:
-        identifier = str(req.road_id) if req.road_id else req.road_name
         raise HTTPException(
             status_code=404,
             detail={
                 "error_code": "ROAD_NOT_FOUND",
-                "message": f"Road '{identifier}' does not exist in the database and could not be geocoded.",
-                "field": "road_id" if req.road_id else "road_name",
+                "message": f"Road with ID '{req.road_id}' does not exist in the database.",
+                "field": "road_id",
             },
         )
 
     try:
-        feature_payload = accident_risk_feature_service.build_feature_payload(db, road.road_id)
+        feature_payload = accident_risk_feature_service.build_feature_payload(db, req.road_id)
         result = accident_risk_service.predict(feature_payload)
     except ValueError as exc:
-        logger = logging.getLogger("Metrivon")
-        logger.exception("Accident-risk feature preparation failed for road_id=%s", road.road_id)
+        logger = logging.getLogger("roadsense")
+        logger.exception("Accident-risk feature preparation failed for road_id=%s", req.road_id)
         raise HTTPException(
             status_code=422,
             detail={
@@ -84,8 +100,8 @@ def predict_accident_risk_route(
             },
         ) from exc
     except RuntimeError as exc:
-        logger = logging.getLogger("Metrivon")
-        logger.exception("Accident-risk prediction failed for road_id=%s", road.road_id)
+        logger = logging.getLogger("roadsense")
+        logger.exception("Accident-risk prediction failed for road_id=%s", req.road_id)
         raise HTTPException(
             status_code=500,
             detail={
@@ -94,46 +110,12 @@ def predict_accident_risk_route(
             },
         ) from exc
 
-    if result.get("accident_risk_level") in ["HIGH", "SEVERE", "CRITICAL"]:
-        h_lat, h_lng = None, None
-        if road.start_location is not None:
-            try:
-                from geoalchemy2.shape import to_shape
-                pt = to_shape(road.start_location)
-                h_lat, h_lng = float(pt.y), float(pt.x)
-            except Exception:
-                pass
-        elif road.zone_id:
-            zone = db.query(TrafficZone).filter(TrafficZone.zone_id == road.zone_id).first()
-            if zone and zone.location is not None:
-                try:
-                    from geoalchemy2.shape import to_shape
-                    pt = to_shape(zone.location)
-                    h_lat, h_lng = float(pt.y), float(pt.x)
-                except Exception:
-                    pass
-
-        real_acc_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
-
-        upsert_accident_hotspot(
-            db=db,
-            latitude=h_lat,
-            longitude=h_lng,
-            risk_level=result["accident_risk_level"],
-            risk_score=float(result.get("accident_risk") or 0.0),
-            accident_count=real_acc_count,
-            zone_id=road.zone_id,
-            calculated_at=datetime.utcnow()
-        )
-        db.commit()
-
     return AccidentRiskPredictionResponse(
         success=True,
         road_id=road.road_id,
         road_name=road.road_name,
         accident_risk=result["accident_risk"],
         accident_risk_level=result["accident_risk_level"],
-        created_new_road=created_new_road,
         model_status="loaded",
     )
 
@@ -181,8 +163,6 @@ def predict_route_accident(
     """
     now = datetime.now()
     target_time = req.target_time or (now + timedelta(minutes=req.target_minutes_ahead or 30))
-    if target_time.tzinfo is not None:
-        target_time = target_time.astimezone().replace(tzinfo=None)
 
     # 1. Resolve all required data for the ML model
     bundle = resolve_route_bundle(
@@ -201,7 +181,7 @@ def predict_route_accident(
     ml_result = trigger_ml_accident_model(bundle)
     pred_record = None
 
-    if req.persist and bundle["road"] and getattr(bundle["road"], "road_id", None) is not None:
+    if req.persist and bundle["road"]:
         pred_record = AccidentPrediction(
             road_id=bundle["road"].road_id,
             prediction_time=now,
@@ -212,38 +192,17 @@ def predict_route_accident(
         )
         db.add(pred_record)
 
-        if ml_result["risk_level"] in ["HIGH", "SEVERE", "CRITICAL"]:
+        if ml_result["risk_level"] in ["HIGH", "CRITICAL"]:
             alert = Alert(
                 road_id=bundle["road"].road_id,
                 prediction_id=pred_record.prediction_id,
                 alert_type="ACCIDENT_RISK_WARNING",
-                severity="CRITICAL" if ml_result["risk_level"] in ["CRITICAL", "SEVERE"] else "HIGH",
+                severity="CRITICAL" if ml_result["risk_level"] == "CRITICAL" else "HIGH",
                 message=f"Elevated accident risk ({ml_result['risk_percentage']}% - {ml_result['risk_level']}) predicted between {bundle['start_label']} and {bundle['end_label']}.",
                 status="ACTIVE",
                 created_at=now
             )
             db.add(alert)
-
-        # Persist / update AccidentHotspot in DB
-        if ml_result["risk_level"] in ["HIGH", "SEVERE", "CRITICAL"] or float(ml_result["risk_percentage"]) >= 50.0:
-            coords = bundle.get("route_geometry")
-            if coords and len(coords) >= 2:
-                mid_idx = len(coords) // 2
-                h_lat, h_lng = coords[mid_idx]
-            else:
-                h_lat = (float(bundle["start_latitude"]) + float(bundle["end_latitude"])) / 2.0
-                h_lng = (float(bundle["start_longitude"]) + float(bundle["end_longitude"])) / 2.0
-
-            upsert_accident_hotspot(
-                db=db,
-                latitude=float(h_lat),
-                longitude=float(h_lng),
-                risk_level=ml_result["risk_level"],
-                risk_score=float(ml_result["risk_percentage"]),
-                accident_count=int(bundle.get("historical_accidents_count") or 1),
-                zone_id=bundle["road"].zone_id,
-                calculated_at=now
-            )
 
         db.commit()
         db.refresh(pred_record)
@@ -252,8 +211,6 @@ def predict_route_accident(
         prediction_id=pred_record.prediction_id if pred_record else None,
         road_id=bundle["road"].road_id if bundle["road"] else None,
         road_name=bundle["road_conditions"]["road_name"],
-        created_new_road=bundle.get("created_new_road", False),
-        newly_created_roads=bundle.get("newly_created_roads", []),
         start_location=bundle["start_label"],
         end_location=bundle["end_label"],
         start_latitude=bundle["start_latitude"],
@@ -296,18 +253,11 @@ def run_accident_prediction(
       - risk_percentage (e.g. 45.8%)
       - categorical risk_level (LOW, MEDIUM, HIGH, CRITICAL)
     """
-    road = None
-    created_new_road = False
-    if req.road_id is not None:
-        road = db.query(Road).filter(Road.road_id == req.road_id).first()
-    if road is None and req.road_name:
-        road, created_new_road = get_or_create_road_from_geocoding(db=db, road_name=req.road_name)
-
+    road = db.query(Road).filter(Road.road_id == req.road_id).first()
     if not road:
-        identifier = str(req.road_id) if req.road_id else req.road_name
         raise HTTPException(
             status_code=404,
-            detail=f"Cannot predict accident risk: Road '{identifier}' does not exist and could not be geocoded."
+            detail=f"Cannot predict accident risk: Road with ID '{req.road_id}' does not exist."
         )
 
     now = datetime.now()
@@ -338,44 +288,17 @@ def run_accident_prediction(
         )
         db.add(pred_record)
 
-        if ml_result["risk_level"] in ["HIGH", "SEVERE", "CRITICAL"]:
+        if ml_result["risk_level"] in ["HIGH", "CRITICAL"]:
             alert = Alert(
                 road_id=road.road_id,
                 prediction_id=pred_record.prediction_id,
                 alert_type="ACCIDENT_RISK_WARNING",
-                severity="CRITICAL" if ml_result["risk_level"] in ["CRITICAL", "SEVERE"] else "HIGH",
+                severity="CRITICAL" if ml_result["risk_level"] == "CRITICAL" else "HIGH",
                 message=f"Elevated accident risk ({ml_result['risk_percentage']}% - {ml_result['risk_level']}) predicted on {road.road_name}.",
                 status="ACTIVE",
                 created_at=now
             )
             db.add(alert)
-
-        # Persist / update AccidentHotspot in DB
-        if ml_result["risk_level"] in ["HIGH", "SEVERE", "CRITICAL"] or float(ml_result["risk_percentage"]) >= 50.0:
-            h_lat, h_lng = None, None
-            if road.start_location is not None:
-                try:
-                    from geoalchemy2.shape import to_shape
-                    pt = to_shape(road.start_location)
-                    h_lat, h_lng = float(pt.y), float(pt.x)
-                except Exception:
-                    pass
-            elif bundle.get("start_latitude") and bundle.get("start_longitude"):
-                h_lat = float(bundle["start_latitude"])
-                h_lng = float(bundle["start_longitude"])
-
-            real_acc_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
-
-            upsert_accident_hotspot(
-                db=db,
-                latitude=h_lat,
-                longitude=h_lng,
-                risk_level=ml_result["risk_level"],
-                risk_score=float(ml_result["risk_percentage"]),
-                accident_count=real_acc_count,
-                zone_id=road.zone_id,
-                calculated_at=now
-            )
 
         db.commit()
         db.refresh(pred_record)
@@ -388,7 +311,6 @@ def run_accident_prediction(
         risk_level=ml_result["risk_level"],
         confidence_score=ml_result.get("confidence_score"),
         prediction_time=now,
-        created_new_road=created_new_road,
         created_at=now
     )
 
@@ -428,48 +350,17 @@ def store_accident_prediction(
     )
     db.add(pred)
 
-    if risk_level in ["HIGH", "SEVERE", "CRITICAL"]:
+    if risk_level in ["HIGH", "CRITICAL"]:
         alert = Alert(
             road_id=road.road_id,
             prediction_id=pred.prediction_id,
             alert_type="ACCIDENT_RISK_WARNING",
-            severity="CRITICAL" if risk_level in ["CRITICAL", "SEVERE"] else "HIGH",
+            severity="CRITICAL" if risk_level == "CRITICAL" else "HIGH",
             message=f"Elevated accident risk ({pred_in.risk_percentage:.1f}% - {risk_level}) predicted on {road.road_name}.",
             status="ACTIVE",
             created_at=now
         )
         db.add(alert)
-
-        h_lat, h_lng = None, None
-        if road.start_location is not None:
-            try:
-                from geoalchemy2.shape import to_shape
-                pt = to_shape(road.start_location)
-                h_lat, h_lng = float(pt.y), float(pt.x)
-            except Exception:
-                pass
-        elif road.zone_id:
-            zone = db.query(TrafficZone).filter(TrafficZone.zone_id == road.zone_id).first()
-            if zone and zone.location is not None:
-                try:
-                    from geoalchemy2.shape import to_shape
-                    pt = to_shape(zone.location)
-                    h_lat, h_lng = float(pt.y), float(pt.x)
-                except Exception:
-                    pass
-
-        real_acc_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
-
-        upsert_accident_hotspot(
-            db=db,
-            latitude=h_lat,
-            longitude=h_lng,
-            risk_level=risk_level,
-            risk_score=float(pred_in.risk_percentage),
-            accident_count=real_acc_count,
-            zone_id=road.zone_id,
-            calculated_at=now
-        )
 
     db.commit()
     db.refresh(pred)
@@ -507,43 +398,18 @@ def run_accident_pipeline(
         db.add(pred)
         predictions_count += 1
 
-        if ml_result["risk_level"] in ["HIGH", "SEVERE", "CRITICAL"]:
+        if ml_result["risk_level"] in ["HIGH", "CRITICAL"]:
             alert = Alert(
                 road_id=road.road_id,
                 prediction_id=pred.prediction_id,
                 alert_type="ACCIDENT_RISK_WARNING",
-                severity="CRITICAL" if ml_result["risk_level"] in ["CRITICAL", "SEVERE"] else "HIGH",
+                severity="CRITICAL" if ml_result["risk_level"] == "CRITICAL" else "HIGH",
                 message=f"Elevated accident risk ({ml_result['risk_percentage']}% - {ml_result['risk_level']}) predicted on {road.road_name}.",
                 status="ACTIVE",
                 created_at=now
             )
             db.add(alert)
             alerts_count += 1
-
-            h_lat, h_lng = None, None
-            if road.start_location is not None:
-                try:
-                    from geoalchemy2.shape import to_shape
-                    pt = to_shape(road.start_location)
-                    h_lat, h_lng = float(pt.y), float(pt.x)
-                except Exception:
-                    pass
-            elif bundle.get("start_latitude") and bundle.get("start_longitude"):
-                h_lat = float(bundle["start_latitude"])
-                h_lng = float(bundle["start_longitude"])
-
-            real_acc_count = db.query(Accident).filter(Accident.road_id == road.road_id).count()
-
-            upsert_accident_hotspot(
-                db=db,
-                latitude=h_lat,
-                longitude=h_lng,
-                risk_level=ml_result["risk_level"],
-                risk_score=float(ml_result["risk_percentage"]),
-                accident_count=real_acc_count,
-                zone_id=road.zone_id,
-                calculated_at=now
-            )
 
     db.commit()
 
