@@ -1,82 +1,35 @@
-# Full setup — database → ML → backend → chatbot → frontend
+# Team development setup
 
-Everything below has been written against your real `schema.sql` (UUID
-primary keys, PostGIS `GEOGRAPHY(POINT)` columns), `seed_roles.sql`, and the
-`traffic_accident_master_7000.csv` dataset. Follow the sections in order —
-each one depends on the previous.
+The backend and frontend use the shared project configuration described in
+[`../database/README.md`](../database/README.md). Traffic records and accidents
+are read from the project PostgreSQL database. Do not import the training CSVs
+as operational records or use a developer-specific database.
 
-```
-smart-traffic-dashboard/
-  database/              schema.sql, seed_roles.sql, seed_roads_zones.sql, seed_users.py
-  ml-training/            train_traffic_model.py, train_accident_model.py, data/, models/
-  backend/                FastAPI REST API + chatbot router (app/routers/chatbot.py)
-  chatbot-backend-reference/   standalone chatbot service (optional — see note below)
-  src/, package.json...   the React frontend
-```
+## Prerequisites
 
-**Note on the chatbot**: it now lives inside `backend/app/routers/chatbot.py`
-so the frontend only talks to one base URL. `chatbot-backend-reference/` is
-kept as a reference/fallback if you ever want it as a separate microservice
-instead — you don't need to run both.
+- Node.js 20 or newer.
+- Python 3.12 and the backend requirements.
+- The project owner's shared PostgreSQL `DATABASE_URL` and a private JWT
+  signing key. The owner/data steward also provisions the shared roads,
+  `traffic_records`, and accident data. Photon location search needs no key.
 
----
+## Start from a clone (PowerShell)
 
-## 1. Database
-
-Requires PostgreSQL with the PostGIS extension.
-
-```bash
-createdb smart_traffic
-psql smart_traffic -c "CREATE EXTENSION IF NOT EXISTS postgis;"
-
-cd database
-psql smart_traffic -f schema.sql
-psql smart_traffic -f seed_roles.sql
-psql smart_traffic -f seed_roads_zones.sql
-
-pip install psycopg2-binary passlib[bcrypt] python-dotenv --break-system-packages
-echo "DATABASE_URL=postgresql://YOUR_USER:YOUR_PASSWORD@localhost:5432/smart_traffic" > .env
-python seed_users.py
+```powershell
+Copy-Item backend/.env.example backend/.env
 ```
 
-This gives you: 4 roles, the 12 real roads from the dataset (with zones),
-and 4 demo login accounts (`admin@traffic.gov` / `admin123`, etc. — see
-`database/seed_users.py` for the full list).
+Edit `backend/.env`: set `DATABASE_URL` to the same team URL used by every
+teammate and set a private `JWT_SECRET_KEY`. Do not commit this file. Generate
+a local key with:
 
-**You still need traffic_records rows** for predictions/dashboard stats to
-show real numbers (the ML models predict FROM the latest traffic_records
-row per road). Two options:
-- Quick: load a slice of `ml-training/data/traffic_accident_master_7000.csv`
-  into `traffic_records` yourself (map columns to the table — see
-  `ml-training/train_traffic_model.py`'s feature list for which ones matter), or
-- Proper: build a small ingestion script/IoT feed later per DPR's
-  "extensible architecture for IoT/camera integration" goal — out of scope
-  for this pass, flag if you want it built.
-
----
-
-## 2. Train the two ML models (fully separate, as requested)
-
-```bash
-cd ml-training
-pip install -r requirements.txt --break-system-packages
-python train_traffic_model.py     # -> models/traffic_model.joblib
-python train_accident_model.py    # -> models/accident_risk_regressor.joblib
-                                   # -> models/accident_risk_classifier.joblib
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Both were run against your actual dataset while building this:
-- **Traffic model**: 72.9% accuracy classifying LOW/MEDIUM/HIGH/SEVERE congestion
-- **Accident risk model**: MAE 5.46 / R² 0.75 on risk %, 86% accuracy on risk level
+Install and start the backend:
 
-These numbers are a starting point, not a ceiling — see "Improving the
-models" at the bottom.
-
----
-
-## 3. Backend (REST API + chatbot)
-
-```bash
+```powershell
 cd backend
 python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt

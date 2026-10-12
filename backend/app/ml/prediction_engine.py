@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
 
 from fastapi import HTTPException
-from app.database.models import Road, Accident
+from app.database.models import Road, Accident, AccidentHotspot, TrafficRecord
 from app.services.geocoding import (
     geocode_location,
     reverse_geocode,
@@ -16,7 +16,6 @@ from app.services.geocoding import (
     get_or_create_road_from_geocoding
 )
 from app.services.weather import get_live_weather
-from app.services.live_traffic import get_live_traffic_flow
 
 
 def format_estimated_time(target_time: datetime, duration_minutes: int = 60) -> str:
@@ -55,7 +54,7 @@ def compute_temporal_traffic_projection(
     Dynamically projects traffic metrics (speed, density, vehicle count, congestion tier)
     for any target prediction time window.
     - If target_time is current / near-term (<= 60 mins ahead), smoothly blends with
-      real-time TomTom sensor telemetry using a temporal decay window.
+      the latest shared-database traffic observation using a temporal decay window.
     - If target_time is in the future (> 60 mins ahead, e.g. 330 mins / 5.5 hours),
       forecasts based on Hyderabad urban diurnal rush patterns, target hour, day of week,
       road capacity, and weather forecast without being distorted by the present moment.
@@ -108,12 +107,28 @@ def compute_temporal_traffic_projection(
     temp_speed = round(calc_speed, 2)
 
     # Horizon weight for live telemetry (decay from 1.0 at 0m to 0.0 at 60m)
-    if live_traffic and live_traffic.get("is_live") and live_traffic.get("current_speed_kmh"):
+    if live_traffic and live_traffic.get("is_live") and any(
+        live_traffic.get(field) is not None
+        for field in ("current_speed_kmh", "traffic_density", "vehicle_count")
+    ):
         w_live = max(0.0, min(1.0, 1.0 - (delta_mins / 60.0)))
-        live_speed = float(live_traffic["current_speed_kmh"])
+        observed_speed = live_traffic.get("current_speed_kmh")
+        live_speed = float(observed_speed) if observed_speed is not None else temp_speed
         slowdown_pct = float(live_traffic.get("slowdown_percentage", 0.0))
-        live_density = round(min(120.0, max(15.0, 28.0 + (slowdown_pct * 0.85))), 2)
-        live_vehicles = max(150, int(std_capacity * (live_density / 100.0)))
+        observed_density = live_traffic.get("traffic_density")
+        live_density = round(
+            min(120.0, max(15.0, float(observed_density)))
+            if observed_density is not None
+            else min(120.0, max(15.0, 28.0 + (slowdown_pct * 0.85))),
+            2,
+        )
+        observed_vehicles = live_traffic.get("vehicle_count")
+        live_vehicles = max(
+            0,
+            int(observed_vehicles)
+            if observed_vehicles is not None
+            else int(std_capacity * (live_density / 100.0)),
+        )
 
         final_speed = round(w_live * live_speed + (1.0 - w_live) * temp_speed, 1)
         final_density = round(w_live * live_density + (1.0 - w_live) * temp_density, 1)
@@ -460,39 +475,41 @@ def resolve_route_bundle(
     }
 
     # 3b. Real-Time Live Traffic Telemetry (TomTom Flow API or Calibrated Telemetry)
-    # Query along the corridor midpoint for accurate route flow, fallback to start point
-    query_lat, query_lng = s_lat, s_lng
-    if route_geometry and len(route_geometry) > 1:
-        mid_pt = route_geometry[len(route_geometry) // 2]
-        query_lat, query_lng = mid_pt[0], mid_pt[1]
-
     live_traffic = get_live_traffic_flow(
-        query_lat,
-        query_lng,
+        s_lat,
+        s_lng,
         speed_limit=float(road.speed_limit or 50.0),
         road_type=road.road_type
     )
-    if not live_traffic and (query_lat != s_lat or query_lng != s_lng):
-        live_traffic = get_live_traffic_flow(
-            s_lat,
-            s_lng,
-            speed_limit=float(road.speed_limit or 50.0),
-            road_type=road.road_type
-        )
 
     # 4. Historical Accident Statistics
     accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count() if road.road_id else 0
 
-    # 5. Telemetry Baseline: Dynamic blend between real-time TomTom telemetry (near-term) and temporal forecast (future)
-    raw_cap = int(road.road_capacity or 1500)
+    # 5. Telemetry baseline: blend shared database observations with forecast.
+    raw_cap = int(road.road_capacity)
     baseline = compute_temporal_traffic_projection(
         target_time=target_time,
         road_capacity=raw_cap,
-        speed_limit=float(road.speed_limit or 50.0),
+        speed_limit=float(road.speed_limit),
         rainfall=float(live_weather.get("rainfall", 0.0)),
         accident_count=accidents_count,
         live_traffic=live_traffic
     )
+
+    database_hotspot = None
+    if road.zone_id:
+        hotspot = (
+            db.query(AccidentHotspot)
+            .filter(AccidentHotspot.zone_id == road.zone_id)
+            .order_by(AccidentHotspot.accident_count.desc(), AccidentHotspot.calculated_at.desc())
+            .first()
+        )
+        if hotspot is not None:
+            database_hotspot = {
+                "accident_count": int(hotspot.accident_count or 0),
+                "risk_score": float(hotspot.risk_score) if hotspot.risk_score is not None else None,
+                "risk_level": hotspot.risk_level,
+            }
 
     previous_records = {
         "vehicle_count": baseline["vehicle_count"],
@@ -518,6 +535,7 @@ def resolve_route_bundle(
         "road_conditions": road_conditions,
         "weather_conditions": weather_conditions,
         "previous_records": previous_records,
+        "database_hotspot": database_hotspot,
         "temporal_data": {
             "timestamp": now.isoformat(),
             "target_time": target_time.isoformat(),
@@ -543,6 +561,7 @@ def resolve_route_bundle(
         "weather_conditions": weather_conditions,
         "live_traffic": live_traffic,
         "previous_records": previous_records,
+        "database_hotspot": database_hotspot,
         "historical_accidents_count": accidents_count,
         "target_time": target_time,
         "temporal_data": ml_features["temporal_data"],
@@ -644,8 +663,8 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             # Dynamic temporal forecast projection (balances current live telemetry with future target hour)
             proj = compute_temporal_traffic_projection(
                 target_time=target_time,
-                road_capacity=int(road_data.get("road_capacity") or 1500),
-                speed_limit=float(road_data.get("speed_limit") or 50.0),
+                road_capacity=int(road_data["road_capacity"]),
+                speed_limit=float(road_data["speed_limit"]),
                 rainfall=rf,
                 accident_count=acc_count,
                 live_traffic=bundle.get("live_traffic")
@@ -871,35 +890,15 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             weather_factor = 1.30 if rf > 5.0 else (1.15 if rf > 0.5 else 1.0)
             acc_count = int(bundle.get("historical_accidents_count", 0))
 
-            # Check if this corridor matches an empirical accident hotspot from accident_hotspots.csv
-            hotspot_info = None
-            hotspot_csv = os.path.join(accident_dir, "accident_hotspots.csv")
-            s_raw = str(bundle.get("start_label", "")).lower()
-            e_raw = str(bundle.get("end_label", "")).lower()
-
-            if os.path.exists(hotspot_csv):
-                try:
-                    import pandas as pd
-                    hs_df = pd.read_csv(hotspot_csv)
-                    m = hs_df[
-                        hs_df["start_location"].str.lower().apply(lambda x: x in s_raw or s_raw in x) &
-                        hs_df["end_location"].str.lower().apply(lambda x: x in e_raw or e_raw in x)
-                    ]
-                    if not m.empty:
-                        hotspot_info = m.iloc[0]
-                except Exception:
-                    pass
-
-            if hotspot_info is not None:
-                acc_count = max(acc_count, int(hotspot_info.get("accidents", 0)))
-                hotspot_target_risk = float(hotspot_info.get("average_risk", 50.0))
-                hotspot_target_level = str(hotspot_info.get("risk", "MEDIUM")).upper()
-            else:
-                hotspot_target_risk = None
-                hotspot_target_level = None
+            # Hotspot context comes from the shared database projection in the
+            # resolved route bundle, never from a checkout-local CSV.
+            hotspot_info = bundle.get("database_hotspot") or {}
+            acc_count = max(acc_count, int(hotspot_info.get("accident_count") or 0))
+            hotspot_target_risk = hotspot_info.get("risk_score")
+            hotspot_target_level = str(hotspot_info.get("risk_level") or "").upper() or None
 
             # 3. Standardized Capacity matching Model Scale (Mean: 1470)
-            raw_cap = int(road_data.get("road_capacity") or 1500)
+            raw_cap = int(road_data["road_capacity"])
             std_capacity = max(1000, min(int(raw_cap * 0.55), 1800))
 
             # 4. Realistic Dynamic Vehicles & Density (%)
@@ -921,7 +920,7 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
             calibrated_density = round(min(max((calibrated_vehicles / std_capacity) * 100.0, 15.0), 125.0), 2)
 
             # 5. Speed Inversely Proportional to Congestion
-            speed_limit = float(road_data.get("speed_limit") or 50.0)
+            speed_limit = float(road_data["speed_limit"])
             if calibrated_density > 85.0:
                 calc_speed = max(12.0, speed_limit * 0.35 - (calibrated_density - 85) * 0.3)
             elif calibrated_density > 60.0:

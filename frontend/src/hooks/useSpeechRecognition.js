@@ -1,19 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * Thin, defensive wrapper around the browser Web Speech API
- * (SpeechRecognition / webkitSpeechRecognition).
- *
- *  - Works in Chrome, Edge and Safari. Firefox has no SpeechRecognition, so
- *    `supported` is false there and the UI falls back to typed input.
- *  - Needs a secure context (https:// or http://localhost) AND microphone
- *    permission. Opening the app through a plain-http LAN address such as
- *    http://192.168.x.x:5173 makes Chrome reject it with "not-allowed".
- *
- * The final transcript is delivered exactly once per session through
- * `onFinal(text)`; problems are reported through `onError(code)` using the
- * browser's own error codes ('not-allowed', 'no-speech', 'network', ...).
- */
+
 
 function getRecognitionCtor() {
   if (typeof window === 'undefined') return null;
@@ -93,7 +80,7 @@ export default function useSpeechRecognition({ lang = 'en-IN', onFinal, onError 
     const recognition = new Ctor();
     recognition.lang = lang;
     recognition.interimResults = true;
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.maxAlternatives = 1;
 
     latestTextRef.current = '';
@@ -103,17 +90,23 @@ export default function useSpeechRecognition({ lang = 'en-IN', onFinal, onError 
     recognition.onstart = () => setListening(true);
 
     recognition.onresult = (event) => {
-      let finalText = '';
-      let interimText = '';
-      for (let i = 0; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        if (result.isFinal) finalText += `${result[0].transcript} `;
-        else interimText += result[0].transcript;
-      }
-      const combined = `${finalText}${interimText}`.trim();
-      latestTextRef.current = combined;
-      setInterim(combined);
-    };
+  let finalText = '';
+  let interimText = '';
+
+  for (let i = 0; i < event.results.length; i += 1) {
+    const result = event.results[i];
+
+    if (result.isFinal) {
+      finalText += `${result[0].transcript} `;
+    } else {
+      interimText += result[0].transcript;
+    }
+  }
+
+  const combined = `${finalText}${interimText}`.trim();
+  latestTextRef.current = combined;
+  setInterim(combined);
+};
 
     recognition.onerror = (event) => {
       // 'aborted' is what we cause ourselves when cancelling — not a problem.

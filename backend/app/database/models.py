@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Numeric, Uuid
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Numeric, Uuid, JSON
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 
@@ -72,6 +72,23 @@ class TrafficZone(Base):
     )
 
     created_at = Column(DateTime)
+
+
+class GeocodeSuggestionCache(Base):
+    """Shared Photon results so all app instances return the same suggestions."""
+
+    __tablename__ = "geocode_suggestion_cache"
+
+    cache_key = Column(String(64), primary_key=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class SchemaMigration(Base):
+    __tablename__ = "app_migrations"
+
+    version = Column(String(100), primary_key=True)
+    applied_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class Road(Base):

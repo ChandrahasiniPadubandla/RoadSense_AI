@@ -6,9 +6,8 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
 
-from app.database.models import Accident, Road
+from app.database.models import Accident, Road, TrafficRecord
 from app.services.weather import get_live_weather
-from app.services.live_traffic import get_live_traffic_flow
 from app.ml.prediction_engine import (
     compute_temporal_traffic_projection,
     normalize_model_road_type,
@@ -86,9 +85,9 @@ class AccidentRiskFeatureService:
         end_lat, end_lon = end_point
 
         road_type = self._require(road.road_type, "road_type", road_name)
-        road_capacity = self._require(road.road_capacity, "road_capacity", road_name)
+        road_capacity = int(self._require(road.road_capacity, "road_capacity", road_name))
         road_condition = self._require(road.road_condition, "road_condition", road_name)
-        speed_limit = float(road.speed_limit or 50.0)
+        speed_limit = float(self._require(road.speed_limit, "speed_limit", road_name))
 
         if prediction_time is None:
             prediction_time = datetime.now()
@@ -107,18 +106,38 @@ class AccidentRiskFeatureService:
             .count()
         )
 
-        # 3. Live Real-Time Traffic Telemetry (TomTom Flow API)
-        live_traffic = get_live_traffic_flow(
-            start_lat,
-            start_lon,
-            speed_limit=speed_limit,
-            road_type=road_type
+        # 3. Latest shared traffic observation for this road. No developer-local
+        # API key or external provider changes the prediction inputs.
+        latest_traffic = (
+            db.query(TrafficRecord)
+            .filter(TrafficRecord.road_id == road_id)
+            .order_by(TrafficRecord.timestamp.desc(), TrafficRecord.traffic_id.desc())
+            .first()
         )
+        live_traffic = None
+        if latest_traffic is not None:
+            live_traffic = {
+                "is_live": True,
+                "source": "shared_database",
+                "current_speed_kmh": float(latest_traffic.average_speed)
+                if latest_traffic.average_speed is not None else None,
+                "traffic_density": float(latest_traffic.traffic_density)
+                if latest_traffic.traffic_density is not None else None,
+                "vehicle_count": int(latest_traffic.vehicle_count)
+                if latest_traffic.vehicle_count is not None else None,
+                "slowdown_percentage": max(
+                    0.0,
+                    min(
+                        100.0,
+                        ((speed_limit - float(latest_traffic.average_speed)) / speed_limit) * 100.0,
+                    ),
+                ) if latest_traffic.average_speed is not None and speed_limit > 0 else 0.0,
+            }
 
         # 4. Centralized Dynamic Temporal Traffic Projection
         proj = compute_temporal_traffic_projection(
             target_time=prediction_time,
-            road_capacity=int(road_capacity or 1500),
+            road_capacity=road_capacity,
             speed_limit=speed_limit,
             rainfall=rainfall,
             accident_count=historical_accidents,

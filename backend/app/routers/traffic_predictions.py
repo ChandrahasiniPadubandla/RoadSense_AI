@@ -146,12 +146,12 @@ def predict_route_traffic(
             live_traf.get("traffic_condition") == "Road Closed / Blocked"
         )
         anomaly_features = {
-            "vehicle_count": float(bundle["previous_records"].get("vehicle_count") or 800),
-            "average_speed": float(bundle["previous_records"].get("average_speed") or 35.0),
-            "traffic_density": float(bundle["previous_records"].get("traffic_density") or 50.0),
-            "road_capacity": float(bundle["road_conditions"].get("road_capacity") or 1500),
+            "vehicle_count": float(bundle["previous_records"]["vehicle_count"]),
+            "average_speed": float(bundle["previous_records"]["average_speed"]),
+            "traffic_density": float(bundle["previous_records"]["traffic_density"]),
+            "road_capacity": float(bundle["road_conditions"]["road_capacity"]),
             "speed_limit": float(bundle["road_conditions"].get("speed_limit") or 50.0),
-            "previous_traffic": float(bundle["previous_records"].get("previous_traffic") or bundle["previous_records"].get("vehicle_count") or 800),
+            "previous_traffic": float(bundle["previous_records"]["vehicle_count"]),
             "hour": float(target_time.hour),
             "rainfall": float(bundle.get("weather_conditions", {}).get("rainfall") or 0.0),
             "slowdown_percentage": float(live_traf.get("slowdown_percentage") or 0.0),

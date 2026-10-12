@@ -5,9 +5,9 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8000)
+// Leave the base URL empty in local proxy mode so requests use the current origin.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL;
-export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.62:8000';
+export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
 
 
 
@@ -15,7 +15,7 @@ export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -702,18 +702,23 @@ export async function geocodeSearch(query, city = 'Hyderabad', limit = 5) {
 }
 
 /**
- * Real street-level driving route between two points, via OSRM
- * (Open Source Routing Machine — a live public routing API, not a
- * straight line). Throws on failure so the caller can show a real error
- * instead of silently drawing nothing.
+ * Get a street route between two points for the selected travel mode.
+ * The backend returns mode-specific geometry and duration when its route
+ * endpoint forwards `mode` to the routing service. Throws on failure so
+ * LiveMap can show a route error instead of silently drawing nothing.
+ * Supported modes: 'bike' (2-Wheeler), 'car', and 'foot' (Walk).
  */
-export async function getDrivingRoute(startLat, startLng, endLat, endLng) {
+export async function getDrivingRoute(startLat, startLng, endLat, endLng, mode = 'car') {
+  const supportedModes = ['bike', 'car', 'foot'];
+  const routingMode = supportedModes.includes(mode) ? mode : 'car';
+
   const { data } = await apiClient.get('/api/geo/route', {
     params: {
       start_lat: startLat,
       start_lng: startLng,
       end_lat: endLat,
       end_lng: endLng,
+      mode: routingMode,
     },
   });
   return data;
@@ -729,14 +734,14 @@ export async function reverseGeocode(lat, lng) {
 }
 
 // -----------------------------------------------------------------------------
-// 13. VOICE ASSISTANT (spaCy location NER + regex fallback —
+// 13. VOICE ASSISTANT (database-backed location resolution —
 //     see backend/app/routers/voice.py, schemas/voice.py, services/voice_service.py)
 // -----------------------------------------------------------------------------
 
 /**
  * Health/status of the voice extraction service.
- * GET /api/voice/status -> { status, model_loaded, engine, labels }
- * Never throws: returns { status: 'offline', model_loaded: false } on failure
+ * GET /api/voice/status -> { status, resolver_ready, engine }
+ * Never throws: returns { status: 'offline', resolver_ready: false } on failure
  * so the UI can show a calm "voice service offline" state.
  */
 export async function getVoiceStatus() {
@@ -745,7 +750,7 @@ export async function getVoiceStatus() {
     return data;
   } catch (error) {
     console.warn('Voice status check failed:', error.message);
-    return { status: 'offline', model_loaded: false, engine: null, labels: [] };
+    return { status: 'offline', resolver_ready: false, engine: null, labels: [] };
   }
 }
 
@@ -753,11 +758,10 @@ export async function getVoiceStatus() {
  * Turn a spoken transcript into a start/end pair.
  * POST /api/voice/extract-route  { text }
  * Returns VoiceRouteExtractResponse:
- *   { success, start_location, end_location, raw_text, cleaned_text,
- *     method ('ner' | 'pattern' | 'hybrid' | 'partial' | 'none'),
- *     model_loaded, message }
- * success is true only when BOTH locations were found; for partial matches
- * the one that was found is still returned together with a helpful message.
+ *   { success, start_location, end_location, start_status, end_status,
+ *     start_matches, end_matches, raw_text, cleaned_text, message }
+ * A location is populated only when it matches a current database entity
+ * confidently; uncertain matches are returned as suggestions instead.
  */
 export async function extractRouteFromVoice(text) {
   const { data } = await apiClient.post('/api/voice/extract-route', { text });

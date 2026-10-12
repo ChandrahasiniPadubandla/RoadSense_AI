@@ -3,12 +3,26 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models import Road, TrafficRecord, Accident, Alert
+from app.services.setup_service import build_readiness_report
 from app.services.weather import get_live_weather
 
 router = APIRouter(
     prefix="/public",
     tags=["Public Telemetry"]
 )
+
+
+@router.get(
+    "/readiness",
+    summary="Check that shared database, geocoding scope, and artifacts are configured"
+)
+def get_public_readiness(db: Session = Depends(get_db)):
+    """
+    Startup/configuration check for reproducibility. Confirms the backend can see
+    the shared project database (same roads/traffic/accidents for everyone),
+    reports the Hyderabad suggestion boundary, and flags optional integrations.
+    """
+    return build_readiness_report(db)
 
 
 @router.get(

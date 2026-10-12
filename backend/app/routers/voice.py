@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.schemas.voice import VoiceRouteExtractRequest, VoiceRouteExtractResponse
-from app.services.voice_service import extract_route_from_text, get_nlp_model
+from app.services.voice_service import extract_route_from_text, get_nlp_model, resolve_model_path
 
 router = APIRouter(
     prefix="/voice",
@@ -17,10 +17,12 @@ def get_voice_status():
     Check if the trained spaCy Location NER model is loaded and ready.
     """
     nlp = get_nlp_model()
+    model_path = resolve_model_path()
     return {
         "status": "online",
         "model_loaded": nlp is not None,
         "engine": "spaCy Location NER + Hybrid Regex Fallback",
+        "model_path": str(model_path) if model_path else None,
         "labels": ["START_LOCATION", "END_LOCATION"] if nlp else []
     }
 

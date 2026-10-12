@@ -5,7 +5,7 @@ import { extractRouteFromVoice, getVoiceStatus } from '../api_services';
 /**
  * Voice assistant for route queries.
  *
- *   mic  ->  browser speech-to-text  ->  POST /api/voice/extract-route
+ *   mic  ->  browser speech-to-text  ->  database-backed route resolution
  *        ->  onRoute({ success, start_location, end_location, ... })
  *
  * The parent page decides what to do with the result (fill its form, draw a
@@ -18,6 +18,7 @@ import { extractRouteFromVoice, getVoiceStatus } from '../api_services';
  *   compact          tighter layout (used inside the Live Map panel)
  *   disabled         disable the mic (e.g. while a request is running)
  */
+
 
 const ERROR_MESSAGES = {
   'no-speech': "I didn't hear anything. Tap the mic and try again.",
@@ -85,7 +86,9 @@ export default function VoiceAssistant({
   const [phase, setPhase] = useState('idle'); // 'idle' | 'listening' | 'processing'
   const [heard, setHeard] = useState('');
   const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error' | 'info', text }
-  const [service, setService] = useState(null); // { online, modelLoaded } | null while checking
+  const [service, setService] = useState(null); // { online, resolverReady } | null while checking
+  const [liveResolution, setLiveResolution] = useState(null);
+  const [liveResolutionError, setLiveResolutionError] = useState('');
   const [spokenReplies, setSpokenReplies] = useState(true);
   const [showTyped, setShowTyped] = useState(false);
   const [typed, setTyped] = useState('');
@@ -93,6 +96,8 @@ export default function VoiceAssistant({
   const onRouteRef = useRef(onRoute);
   const spokenRef = useRef(spokenReplies);
   const mountedRef = useRef(true);
+  const requestSequenceRef = useRef(0);
+  const liveRequestTimerRef = useRef(null);
 
   useEffect(() => {
     onRouteRef.current = onRoute;
@@ -106,12 +111,15 @@ export default function VoiceAssistant({
     };
   }, []);
 
-  // Ask the backend (GET /voice/status) whether the NER model is loaded.
+  // Ask the backend whether the database-backed resolver is available.
   useEffect(() => {
     let cancelled = false;
     getVoiceStatus().then((s) => {
       if (cancelled) return;
-      setService({ online: s?.status === 'online', modelLoaded: Boolean(s?.model_loaded) });
+      setService({
+        online: s?.status === 'online',
+        resolverReady: Boolean(s?.resolver_ready),
+      });
     });
     return () => {
       cancelled = true;
@@ -131,20 +139,28 @@ export default function VoiceAssistant({
       setHeard(clean);
       setFeedback(null);
       setPhase('processing');
+      requestSequenceRef.current += 1;
+      clearTimeout(liveRequestTimerRef.current);
+      setLiveResolutionError('');
 
       try {
         const result = await extractRouteFromVoice(clean);
         if (!mountedRef.current) return;
+        setLiveResolution(result);
 
         if (result?.success) {
           const line = `${result.start_location} → ${result.end_location}`;
           setFeedback({ type: 'success', text: `Got it: ${line}` });
           reply(`Got it. From ${result.start_location} to ${result.end_location}.`);
         } else {
-          const msg =
-            result?.message ||
-            "I couldn't find a start and a destination. Try saying “from Uppal to Nagole”.";
-          setFeedback({ type: 'error', text: msg });
+          const hasEmptyOrUnmatchedLocation = [
+            result?.start_status,
+            result?.end_status,
+          ].some((status) => status === 'empty' || status === 'not_found');
+          const msg = hasEmptyOrUnmatchedLocation
+            ? 'Say an origin and destination that match the available locations.'
+            : result?.message || 'Choose the matching locations from the suggestions.';
+          setFeedback({ type: 'info', text: msg });
           reply("Sorry, I couldn't catch both locations. Please try again.");
         }
 
@@ -181,6 +197,28 @@ export default function VoiceAssistant({
     onError: handleSpeechError,
   });
 
+  useEffect(() => {
+    const transcript = interim.trim();
+    if (!listening || !transcript) return undefined;
+
+    const requestSequence = ++requestSequenceRef.current;
+    clearTimeout(liveRequestTimerRef.current);
+    liveRequestTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await extractRouteFromVoice(transcript);
+        if (!mountedRef.current || requestSequence !== requestSequenceRef.current) return;
+        setLiveResolution(result);
+        setLiveResolutionError('');
+      } catch (error) {
+        if (!mountedRef.current || requestSequence !== requestSequenceRef.current) return;
+        console.warn('Live voice location resolution failed:', error);
+        setLiveResolutionError('Live database matching is unavailable. The final transcript will be checked again.');
+      }
+    }, 350);
+
+    return () => clearTimeout(liveRequestTimerRef.current);
+  }, [interim, listening]);
+
   // Keep the visual phase in sync with the recogniser.
   useEffect(() => {
     if (listening) setPhase('listening');
@@ -196,6 +234,9 @@ export default function VoiceAssistant({
     cancelSpeech();
     setFeedback(null);
     setHeard('');
+    setLiveResolution(null);
+    setLiveResolutionError('');
+    requestSequenceRef.current += 1;
     start();
   }
 
@@ -205,6 +246,27 @@ export default function VoiceAssistant({
     if (!text) return;
     processTranscript(text);
     setTyped('');
+  }
+
+  function applySuggestion(field, candidate) {
+    if (!liveResolution || !candidate) return;
+    const isStart = field === 'start_location';
+    const updated = {
+      ...liveResolution,
+      [field]: candidate.name,
+      [isStart ? 'start_status' : 'end_status']: 'matched',
+      [isStart ? 'start_matches' : 'end_matches']: [candidate],
+    };
+    updated.success = Boolean(updated.start_location && updated.end_location);
+    updated.method = 'database';
+    setLiveResolution(updated);
+    setFeedback({
+      type: updated.success ? 'success' : 'info',
+      text: updated.success
+        ? `Verified route: ${updated.start_location} → ${updated.end_location}`
+        : `${isStart ? 'Origin' : 'Destination'} selected from the database: ${candidate.name}`,
+    });
+    onRouteRef.current?.(updated);
   }
 
   const isListening = phase === 'listening';
@@ -221,14 +283,18 @@ export default function VoiceAssistant({
     if (!service.online) {
       serviceDot = 'bg-signal-red';
       serviceTitle = 'Voice service offline';
-    } else if (service.modelLoaded) {
+    } else if (service.resolverReady) {
       serviceDot = 'bg-signal-green';
-      serviceTitle = 'Voice AI ready';
+      serviceTitle = 'Database location resolver ready';
     } else {
       serviceDot = 'bg-signal-amber';
-      serviceTitle = 'Voice service online (pattern mode — NER model not loaded)';
+      serviceTitle = 'Voice service online; database resolver unavailable';
     }
   }
+
+  const hasVisibleLocationResults = liveResolution && ['start', 'end'].some((side) => {
+    return (liveResolution[side === 'start' ? 'start_matches' : 'end_matches'] || []).length > 0;
+  });
 
   const iconBtn =
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-800 dark:text-asphalt-400 dark:hover:bg-asphalt-700 dark:hover:text-asphalt-100';
@@ -314,6 +380,68 @@ export default function VoiceAssistant({
           >
             Go
           </button>
+        </div>
+      )}
+
+      {(hasVisibleLocationResults || liveResolutionError) && (
+        <div className="mt-2 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[11px] dark:border-asphalt-700 dark:bg-asphalt-900">
+          <p className="mb-1 font-semibold text-slate-700 dark:text-asphalt-200">
+            {isListening ? 'Live database matches' : 'Database location results'}
+          </p>
+          {liveResolutionError && (
+            <p role="status" className="mb-1 text-signal-amber">{liveResolutionError}</p>
+          )}
+          {liveResolution && ['start', 'end'].map((side) => {
+            const isStart = side === 'start';
+            const field = isStart ? 'start_location' : 'end_location';
+            const statusField = isStart ? 'start_status' : 'end_status';
+            const matchesField = isStart ? 'start_matches' : 'end_matches';
+            const label = isStart ? 'Origin' : 'Destination';
+            const location = liveResolution[field];
+            const matches = liveResolution[matchesField] || [];
+            const matchStatus = liveResolution[statusField];
+
+            if (!matches.length) {
+              return null;
+            }
+
+            const verifiedMatch =
+              matchStatus === 'matched' &&
+              typeof location === 'string' &&
+              location.trim() !== '' &&
+              matches.some((candidate) => candidate.name === location);
+
+            return (
+              <div key={side} className="mb-1 last:mb-0">
+                {verifiedMatch ? (
+                  <p className="text-signal-green">
+                    {label}: <strong>{location}</strong> <span>(verified in database)</span>
+                  </p>
+                ) : matches.length > 0 ? (
+                  <div>
+                    <p className="text-slate-600 dark:text-asphalt-300">
+                      {matchStatus === 'ambiguous'
+                        ? `Several ${label.toLowerCase()} matches; choose one:`
+                        : `No confident ${label.toLowerCase()} match; suggestions:`}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {matches.map((candidate) => (
+                        <button
+                          key={`${side}-${candidate.name}`}
+                          type="button"
+                          onClick={() => applySuggestion(field, candidate)}
+                          className="rounded border border-signal-blue/40 px-2 py-1 text-signal-blue hover:bg-signal-blue/10"
+                          title={`${candidate.source} · ${Math.round(candidate.score * 100)}% match`}
+                        >
+                          {candidate.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       )}
 

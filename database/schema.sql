@@ -4,6 +4,24 @@
 -- =========================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- Shared geocoder result cache. It keeps suggestion output identical across
+-- backend instances while avoiding a local-machine-only cache.
+CREATE TABLE IF NOT EXISTS geocode_suggestion_cache (
+    cache_key VARCHAR(64) PRIMARY KEY,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS app_migrations (
+    version VARCHAR(100) PRIMARY KEY,
+    applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO app_migrations (version) VALUES
+    ('001_geocode_suggestion_cache'),
+    ('002_rebuild_hotspots_from_shared_records')
+ON CONFLICT (version) DO NOTHING;
 
 -- =========================================================
 -- 1. ROLES

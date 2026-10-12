@@ -8,7 +8,35 @@ logger = logging.getLogger("Metrivon.voice")
 
 # Resolve model path dynamically relative to repository root
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MODEL_PATH = REPO_ROOT / "voice_extractor" / "location_ner_model"
+
+# The trained spaCy location-NER model ships inside this repository, so every
+# clone uses the exact same artifact (no download and no credentials required).
+# It was originally committed under `voice_extractor/location_ner_model` and is
+# now committed under `voice.zip/location_ner_model`. Both are checked so that a
+# fresh clone and an older local checkout resolve to the same model instead of
+# silently falling back to the regex extractor.
+_MODEL_DIR_CANDIDATES = (
+    REPO_ROOT / "voice.zip" / "location_ner_model",
+    REPO_ROOT / "voice_extractor" / "location_ner_model",
+)
+
+
+def resolve_model_path() -> Optional[Path]:
+    """Return the directory holding the location-NER model, or ``None``.
+
+    ``VOICE_NER_MODEL_PATH`` may point at an explicit model directory for
+    advanced setups; otherwise the in-repo copy is used.
+    """
+    override = (os.getenv("VOICE_NER_MODEL_PATH") or "").strip()
+    candidates = ([Path(override)] if override else []) + list(_MODEL_DIR_CANDIDATES)
+    for candidate in candidates:
+        if (candidate / "meta.json").is_file():
+            return candidate
+    return None
+
+
+# Resolved once at import time; used by the loader and reported by /voice/status.
+MODEL_PATH: Optional[Path] = resolve_model_path()
 
 # Lazy-loaded spaCy model
 _nlp = None
@@ -43,17 +71,23 @@ def get_nlp_model():
 
     if not _model_load_attempted:
         _model_load_attempted = True
+        model_path = MODEL_PATH or resolve_model_path()
+        if model_path is None:
+            logger.error(
+                "Location NER model not found. Looked in: %s. "
+                "Run the backend from a normal clone so the committed "
+                "voice.zip/location_ner_model is available.",
+                ", ".join(str(candidate) for candidate in _MODEL_DIR_CANDIDATES),
+            )
+            return None
+
         try:
             import spacy
-            target_path = str(MODEL_PATH)
-            if MODEL_PATH.exists():
-                logger.info("Loading location NER model from: %s", target_path)
-                _nlp = spacy.load(target_path)
-                logger.info("Location NER model loaded successfully.")
-            else:
-                logger.warning("Location NER model directory not found at: %s", target_path)
+            logger.info("Loading location NER model from: %s", model_path)
+            _nlp = spacy.load(str(model_path))
+            logger.info("Location NER model loaded successfully.")
         except Exception as e:
-            logger.error("Failed to load spaCy location NER model: %s", e)
+            logger.error("Failed to load spaCy location NER model from %s: %s", model_path, e)
             _nlp = None
 
     return _nlp
