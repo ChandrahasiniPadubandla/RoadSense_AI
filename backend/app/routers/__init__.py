@@ -23,6 +23,7 @@ from app.routers import (
     accident_predictions,
     accident_hotspots,
     voice,
+    tomtom,
 )
 
 
@@ -49,4 +50,5 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(emergency.router, dependencies=auth_dep)
     app.include_router(maps.router, dependencies=auth_dep)
     app.include_router(reports.router)
+    app.include_router(tomtom.router)
     

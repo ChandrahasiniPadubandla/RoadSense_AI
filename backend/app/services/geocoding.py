@@ -382,12 +382,13 @@ def find_nearest_road_by_coordinates(
     db: Session,
     latitude: float,
     longitude: float,
-    max_distance_meters: float = 3000.0
+    max_distance_meters: float = 3000.0,
+    strict_radius: bool = False
 ) -> Optional[Road]:
     """
     Uses PostGIS spatial indexing to find the closest road segment to given coordinates.
-    Employs progressive radius search (initial max_distance_meters -> 12,000m -> city-wide)
-    to guarantee any point within Hyderabad metropolitan area maps to a monitored road.
+    When strict_radius is False, employs progressive radius search up to 12km.
+    When strict_radius is True, strictly limits search to max_distance_meters to avoid cross-city mismatches.
     """
     point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
 
@@ -419,6 +420,9 @@ def find_nearest_road_by_coordinates(
     except Exception as err:
         logger.debug("PostGIS start_location distance query failed: %s", err)
 
+    if strict_radius:
+        return None
+
     # 3. Progressive expansion: search up to 12,000 meters (12km)
     expanded_radius = max(max_distance_meters * 3, 12000.0)
     try:
@@ -445,7 +449,7 @@ def find_nearest_road_by_coordinates(
         if road:
             return road
     except Exception as err:
-        logger.debug("PostGIS absolute closest road query failed: %s", err)
+        logger.debug("PostGIS all-roads fallback query failed: %s", err)
 
     return None
 

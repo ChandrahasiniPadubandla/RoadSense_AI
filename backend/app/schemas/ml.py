@@ -45,6 +45,7 @@ class AnomalyPredictionRequest(BaseModel):
     road_capacity: Optional[int] = Field(default=None, gt=0)
     previous_traffic: Optional[int] = Field(default=None, ge=0)
     hour: Optional[int] = Field(default=None, ge=0, le=23)
+    historical_accidents: Optional[int] = Field(default=0, ge=0)
     persist: Optional[bool] = False
 
 

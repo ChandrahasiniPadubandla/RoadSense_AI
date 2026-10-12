@@ -325,6 +325,10 @@ class RouteTrafficPredictionResponse(BaseModel):
         default=None,
         description="Traffic anomaly detection analysis: prediction (NORMAL/ANOMALY), is_anomaly, anomaly_score, confidence_score"
     )
+    telemetry_features: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Key traffic telemetry parameters: vehicle_count, average_speed, traffic_density, road_capacity, previous_traffic, hour, historical_accidents"
+    )
     live_traffic: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Real-time live traffic telemetry: current speed, free-flow speed, delay, congestion percentage"
