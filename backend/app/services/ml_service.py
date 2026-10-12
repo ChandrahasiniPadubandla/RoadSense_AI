@@ -130,6 +130,22 @@ class MLService:
             from datetime import datetime, timezone
             hour = traffic.timestamp.hour if (traffic and traffic.timestamp) else datetime.now(timezone.utc).hour
 
+        historical_accidents = getattr(request, "historical_accidents", None)
+        if historical_accidents is None:
+            if road and hasattr(road, "historical_accidents") and road.historical_accidents is not None:
+                historical_accidents = int(road.historical_accidents)
+            elif road:
+                from app.database.models import Accident
+                db_acc = SessionLocal()
+                try:
+                    historical_accidents = db_acc.query(Accident).filter(Accident.road_id == road.road_id).count()
+                except Exception:
+                    historical_accidents = 0
+                finally:
+                    db_acc.close()
+            else:
+                historical_accidents = 0
+
         features = {
             "vehicle_count": vehicle_count,
             "average_speed": average_speed,
@@ -137,6 +153,7 @@ class MLService:
             "road_capacity": road_capacity,
             "previous_traffic": previous_traffic,
             "hour": hour,
+            "historical_accidents": historical_accidents,
         }
 
         ml_result = trigger_ml_anomaly_model(features)
@@ -144,20 +161,19 @@ class MLService:
         is_anomaly = ml_result["is_anomaly"]
 
         if request.persist and road:
-            from datetime import datetime, timezone
+            from datetime import datetime
             from app.database.models import TrafficAnomaly
             db = SessionLocal()
             try:
                 anomaly_record = TrafficAnomaly(
                     road_id=road.road_id,
-                    timestamp=datetime.now(timezone.utc),
-                    is_anomaly=is_anomaly,
+                    detected_at=datetime.utcnow(),
                     anomaly_score=ml_result.get("anomaly_score"),
-                    vehicle_count=vehicle_count,
-                    average_speed=average_speed,
-                    traffic_density=traffic_density,
-                    confidence_score=ml_result.get("confidence_score"),
-                    status="RESOLVED" if not is_anomaly else "DETECTED",
+                    anomaly_type="SPIKE" if is_anomaly else "NORMAL",
+                    normal_vehicle_count=int(previous_traffic),
+                    actual_vehicle_count=int(vehicle_count),
+                    description=f"Predicted {prediction_text} (confidence: {ml_result.get('confidence_score', 0)}%)",
+                    status="ACTIVE" if is_anomaly else "RESOLVED",
                 )
                 db.add(anomaly_record)
                 db.commit()

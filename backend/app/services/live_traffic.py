@@ -90,6 +90,7 @@ def get_live_traffic_flow(
                 result = {
                     "is_live": True,
                     "source": "TomTom Live Traffic Flow API",
+                    "frc": flow.get("frc", "FRC2"),
                     "current_speed_kmh": round(current_speed, 1),
                     "free_flow_speed_kmh": round(free_flow_speed, 1),
                     "delay_minutes": delay_mins,

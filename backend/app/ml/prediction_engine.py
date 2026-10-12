@@ -359,12 +359,29 @@ def resolve_route_bundle(
         if not name or len(name.strip()) < 2:
             return None
         clean = name.strip()
+        # 1. Exact substring match
         r = db.query(Road).filter(Road.road_name.ilike(f"%{clean}%")).first()
-        if not r and "road" in clean.lower():
-            short = clean.lower().replace("road", "").strip()
-            if len(short) >= 3:
-                r = db.query(Road).filter(Road.road_name.ilike(f"%{short}%")).first()
-        return r
+        if r:
+            return r
+        # 2. Check parts split by comma (e.g. "Uppal Main Road, Hyderabad" -> "Uppal Main Road")
+        parts = [p.strip() for p in clean.split(",") if len(p.strip()) >= 3 and p.strip().lower() not in ["hyderabad", "telangana", "india", "medchal-malkajgiri", "medchal", "secunderabad", "rangareddy"]]
+        for p in parts:
+            r = db.query(Road).filter(Road.road_name.ilike(f"%{p}%")).first()
+            if r:
+                return r
+            if "road" in p.lower():
+                short = p.lower().replace("road", "").strip()
+                if len(short) >= 3:
+                    r = db.query(Road).filter(Road.road_name.ilike(f"%{short}%")).first()
+                    if r:
+                        return r
+        # 3. Reverse check: see if any registered DB road is contained within the search query string
+        candidate_roads = db.query(Road).all()
+        for road_obj in candidate_roads:
+            if road_obj.road_name and len(road_obj.road_name.strip()) >= 4:
+                if road_obj.road_name.strip().lower() in clean.lower():
+                    return road_obj
+        return None
 
     start_road = None
     end_road = None
@@ -381,9 +398,9 @@ def resolve_route_bundle(
     if not road:
         road = start_road or end_road
 
-    # If still not resolved, check close proximity (within 200m) to an existing registered road
+    # If still not resolved, check close proximity (within 1500m) to an existing registered road with strict_radius
     if not road and s_lat is not None and s_lng is not None:
-        road = find_nearest_road_by_coordinates(db, s_lat, s_lng, max_distance_meters=200.0)
+        road = find_nearest_road_by_coordinates(db, s_lat, s_lng, max_distance_meters=1500.0, strict_radius=True)
 
     # If still not matching an existing DB road, use a dynamic in-memory corridor without creating fake DB rows
     if not road:
@@ -457,35 +474,13 @@ def resolve_route_bundle(
         "source": live_weather.get("source", "Open-Meteo Live API")
     }
 
-    # 3b. Latest traffic observation from the shared project database.
-    latest_traffic = None
-    if road.road_id:
-        latest_traffic = (
-            db.query(TrafficRecord)
-            .filter(TrafficRecord.road_id == road.road_id)
-            .order_by(TrafficRecord.timestamp.desc(), TrafficRecord.traffic_id.desc())
-            .first()
-        )
-    speed_limit = float(road.speed_limit)
-    live_traffic = None
-    if latest_traffic is not None:
-        live_traffic = {
-            "is_live": True,
-            "source": "shared_database",
-            "current_speed_kmh": float(latest_traffic.average_speed)
-            if latest_traffic.average_speed is not None else None,
-            "traffic_density": float(latest_traffic.traffic_density)
-            if latest_traffic.traffic_density is not None else None,
-            "vehicle_count": int(latest_traffic.vehicle_count)
-            if latest_traffic.vehicle_count is not None else None,
-            "slowdown_percentage": max(
-                0.0,
-                min(
-                    100.0,
-                    ((speed_limit - float(latest_traffic.average_speed)) / speed_limit) * 100.0,
-                ),
-            ) if latest_traffic.average_speed is not None and speed_limit > 0 else 0.0,
-        }
+    # 3b. Real-Time Live Traffic Telemetry (TomTom Flow API or Calibrated Telemetry)
+    live_traffic = get_live_traffic_flow(
+        s_lat,
+        s_lng,
+        speed_limit=float(road.speed_limit or 50.0),
+        road_type=road.road_type
+    )
 
     # 4. Historical Accident Statistics
     accidents_count = db.query(Accident).filter(Accident.road_id == road.road_id).count() if road.road_id else 0
@@ -754,7 +749,7 @@ def trigger_ml_traffic_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
 def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes the trained ML traffic anomaly detection model (Isolation Forest) directly
-    from Metrivon_AI/traffic_congestion/predict_anomaly.py.
+    from traffic_congestion/traffic_anomaly.py.
     """
     traffic_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "traffic_congestion"))
     model_file = os.path.join(traffic_dir, "final_traffic_anomaly_model.pkl")
@@ -765,7 +760,7 @@ def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
             detail={
                 "error": "ML_ANOMALY_MODEL_NOT_FOUND",
                 "issue": f"Trained anomaly model file not found in: {traffic_dir}",
-                "message": "Ensure final_traffic_anomaly_model.pkl exists in Metrivon_AI/traffic_congestion.",
+                "message": "Ensure final_traffic_anomaly_model.pkl exists in traffic_congestion.",
                 "features": features
             }
         )
@@ -781,14 +776,51 @@ def trigger_ml_anomaly_model(features: Dict[str, Any]) -> Dict[str, Any]:
                 pass
             ct._RemainderColsList = _RemainderColsList
 
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            from predict_anomaly import predict_anomaly_detailed
+        model_features = dict(features)
 
-            result = predict_anomaly_detailed(features)
-            result["ml_source"] = "trained-isolation-forest (Metrivon_AI/traffic_congestion)"
-            return result
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(traffic_dir)
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    import importlib
+                    import traffic_anomaly
+                    importlib.reload(traffic_anomaly)
+                    raw_res = traffic_anomaly.predict_anomaly(model_features)
+                except ImportError:
+                    from predict_anomaly import predict_anomaly_detailed
+                    raw_res = predict_anomaly_detailed(model_features)
+        finally:
+            os.chdir(orig_cwd)
+
+        # Standardize result for backend contracts
+        if isinstance(raw_res, dict):
+            status = raw_res.get("status") or raw_res.get("prediction") or "NORMAL"
+            is_anomaly = raw_res.get("is_anomaly", status.upper() == "ANOMALY")
+            anomaly_score = raw_res.get("anomaly_score")
+            confidence_score = raw_res.get("confidence_score")
+        elif isinstance(raw_res, str):
+            status = raw_res
+            is_anomaly = (status.upper() == "ANOMALY")
+            anomaly_score = None
+            confidence_score = None
+        else:
+            status = "NORMAL"
+            is_anomaly = False
+            anomaly_score = None
+            confidence_score = None
+
+        return {
+            "status": status,
+            "prediction": status,
+            "is_anomaly": is_anomaly,
+            "anomaly_score": anomaly_score,
+            "anomaly_reason": raw_res.get("anomaly_reason") if isinstance(raw_res, dict) else None,
+            "confidence_score": confidence_score or (85.0 if is_anomaly else 90.0),
+            "ml_source": "trained-isolation-forest (traffic_congestion)",
+        }
     except Exception as err:
         raise HTTPException(
             status_code=500,

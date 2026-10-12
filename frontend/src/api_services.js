@@ -5,7 +5,7 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to http://127.0.0.1:8000)
+// Leave the base URL empty in local proxy mode so requests use the current origin.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL;
 export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
 
@@ -15,7 +15,7 @@ export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://127.0.0
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },

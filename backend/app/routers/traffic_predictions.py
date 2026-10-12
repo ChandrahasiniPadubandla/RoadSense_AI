@@ -140,13 +140,24 @@ def predict_route_traffic(
     # 3. Evaluate Traffic Anomaly Detection in the same call
     anomaly_result = None
     try:
+        live_traf = bundle.get("live_traffic") or {}
+        is_road_closed = bool(
+            live_traf.get("road_closure") or
+            live_traf.get("traffic_condition") == "Road Closed / Blocked"
+        )
         anomaly_features = {
             "vehicle_count": float(bundle["previous_records"]["vehicle_count"]),
             "average_speed": float(bundle["previous_records"]["average_speed"]),
             "traffic_density": float(bundle["previous_records"]["traffic_density"]),
             "road_capacity": float(bundle["road_conditions"]["road_capacity"]),
+            "speed_limit": float(bundle["road_conditions"].get("speed_limit") or 50.0),
             "previous_traffic": float(bundle["previous_records"]["vehicle_count"]),
-            "hour": float(target_time.hour)
+            "hour": float(target_time.hour),
+            "rainfall": float(bundle.get("weather_conditions", {}).get("rainfall") or 0.0),
+            "slowdown_percentage": float(live_traf.get("slowdown_percentage") or 0.0),
+            "delay_seconds": float(live_traf.get("delay_seconds") or 0.0),
+            "road_closure": is_road_closed,
+            "historical_accidents": float(bundle["road_conditions"].get("historical_accidents") or bundle["previous_records"].get("historical_accidents") or bundle.get("historical_accidents_count") or 0),
         }
         res_anom = trigger_ml_anomaly_model(anomaly_features)
         anomaly_result = {
@@ -154,9 +165,20 @@ def predict_route_traffic(
             "is_anomaly": res_anom.get("is_anomaly", False),
             "anomaly_score": res_anom.get("anomaly_score", 0.0),
             "confidence_score": res_anom.get("confidence_score", 55.0),
-            "model_status": res_anom.get("model_status", "trained-isolation-forest")
+            "model_status": res_anom.get("model_status", "trained-isolation-forest"),
+            "reason": res_anom.get("anomaly_reason"),
+            "features_used": anomaly_features,
         }
     except Exception:
+        anomaly_features = {
+            "vehicle_count": float(bundle["previous_records"].get("vehicle_count") or 800),
+            "average_speed": float(bundle["previous_records"].get("average_speed") or 35.0),
+            "traffic_density": float(bundle["previous_records"].get("traffic_density") or 50.0),
+            "road_capacity": float(bundle["road_conditions"].get("road_capacity") or 1500),
+            "previous_traffic": float(bundle["previous_records"].get("previous_traffic") or bundle["previous_records"].get("vehicle_count") or 800),
+            "hour": float(target_time.hour),
+            "historical_accidents": float(bundle["road_conditions"].get("historical_accidents") or bundle["previous_records"].get("historical_accidents") or bundle.get("historical_accidents_count") or 0),
+        }
         anomaly_result = None
 
     return RouteTrafficPredictionResponse(
@@ -182,6 +204,7 @@ def predict_route_traffic(
         route_geometry=bundle.get("route_geometry") or ml_result.get("route_geometry"),
         accident_points=ml_result.get("accident_points", []),
         anomaly_detection=anomaly_result,
+        telemetry_features=anomaly_features,
         live_traffic=bundle.get("live_traffic") or ml_result.get("live_traffic"),
         ml_features=bundle["ml_features"],
         ml_source=ml_result.get("ml_source", "backend-feature-engine"),

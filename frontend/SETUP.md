@@ -31,43 +31,76 @@ Install and start the backend:
 
 ```powershell
 cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m pytest tests/test_suggestion_reproducibility.py -q
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-The startup log should report `READY`. Confirm the database target, required
-shared data, and the shared geocoder cache at:
+Edit `.env`:
+- `DATABASE_URL` — same one used in step 1
+- `JWT_SECRET_KEY` — any long random string
+- `OPENAI_API_KEY` — for the chatbot router
+- `TRAFFIC_MODEL_PATH` / `ACCIDENT_RISK_*_PATH` — point at the `.joblib`
+  files from step 2 (defaults already match the folder layout above)
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/public/readiness | ConvertTo-Json -Depth 6
+```bash
+uvicorn app.main:app --reload --port 8000
 ```
 
-It must show `status: READY`, `database.connected: true`,
-`database.schema_ready: true`, non-zero `roads`, `traffic_records`, and
-`accidents`, and both migration checks true. If the cache table is missing or
-either migration marker is absent, ask the database administrator to run both
-files in `database/migrations/` against the shared DB.
-If the required record counts are zero, ask the project data steward to load
-the approved shared data; do not seed from local CSV files.
+Test it: open `http://localhost:8000/docs` — FastAPI's auto-generated,
+interactive API explorer. Try `POST /api/auth/login` with
+`admin@traffic.gov` / `admin123` first; copy the `accessToken` and use the
+"Authorize" button for the rest.
 
-In a second terminal:
+---
 
-```powershell
-Copy-Item frontend/.env.example frontend/.env.local
-cd frontend
-npm ci
+## 4. Frontend
+
+```bash
+cd .. # back to smart-traffic-dashboard root
+npm install
+cp .env.example .env
+```
+
+Edit `.env`:
+```
+VITE_API_BASE_URL=http://localhost:8000/api
+VITE_USE_MOCK_DATA=false
+```
+
+```bash
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. `VITE_API_BASE_URL` selects only the backend
-origin; database credentials and provider configuration stay in the backend.
+Open `http://localhost:5173`, log in with a seeded account.
 
-All geocode suggestions are clipped to the fixed Hyderabad boundary. The
-request's `city` parameter remains accepted for compatibility but cannot widen
-the boundary or change the provider bias. Provider results are stored in the
-shared database so all backend instances use the same cached response for a
-query. The exact configuration and migration instructions are in
-[`../database/README.md`](../database/README.md).
+---
+
+## What to click first, to see the whole system work end to end
+
+1. Log in as `admin@traffic.gov`
+2. **Traffic Monitoring** — should show your 12 roads (empty stats until
+   traffic_records has data — see step 1's note)
+3. Once traffic_records has rows: **Congestion Prediction** and **Accident
+   Risk Prediction** — these call the trained models live and write results
+   into `traffic_predictions`/`accident_predictions`
+4. **Traffic & Risk Overview** — the merged view combining both per road
+5. **Accident Management** — record an accident against a real road; if you
+   mark it SEVERE/FATAL, it auto-creates an **Emergency Response** entry
+6. **Emergency Response** — advance PENDING → EN_ROUTE → ON_SCENE → RESOLVED
+7. Chat bubble (bottom-right) — ask "which road has the highest accident risk?"
+
+---
+
+## Improving the models later
+
+- **More/better features**: `historical_accidents` currently comes from a
+  live `COUNT(*)` in `accidents.py` — fine for now, but a rolling window
+  (e.g. accidents in the last 90 days) would match the DPR's intent more
+  precisely.
+- **Anomaly detection** currently uses a simple 2x-average rule
+  (`traffic.py`'s `get_anomalies`), not a trained model — swap in
+  `IsolationForest` or similar if you want it ML-driven per Module 7.
+- **Retraining cadence**: as real `traffic_records`/`accidents` accumulate,
+  periodically re-run the two training scripts against a fresh export and
+  swap the `.joblib` files — no backend code changes needed.
