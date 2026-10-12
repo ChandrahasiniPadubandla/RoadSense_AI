@@ -1,6 +1,6 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime, ForeignKey, Numeric, Uuid
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Numeric, Uuid, JSON
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 
@@ -20,6 +20,12 @@ class User(Base):
 
     user_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     role_id = Column(Uuid, ForeignKey("roles.role_id"), nullable=False)
+    username = Column(
+        String(50),
+        unique=True,
+        nullable=False,
+        default=lambda: f"user_{uuid.uuid4().hex}",
+    )
     name = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False)
     password_hash = Column(Text, nullable=False)
@@ -30,6 +36,10 @@ class User(Base):
     updated_at = Column(DateTime)
 
     role = relationship("Role")
+
+    @property
+    def role_name(self):
+        return self.role.role_name if self.role else None
 
 
 class AuthOTP(Base):
@@ -62,6 +72,23 @@ class TrafficZone(Base):
     )
 
     created_at = Column(DateTime)
+
+
+class GeocodeSuggestionCache(Base):
+    """Shared Photon results so all app instances return the same suggestions."""
+
+    __tablename__ = "geocode_suggestion_cache"
+
+    cache_key = Column(String(64), primary_key=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class SchemaMigration(Base):
+    __tablename__ = "app_migrations"
+
+    version = Column(String(100), primary_key=True)
+    applied_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class Road(Base):
@@ -317,7 +344,7 @@ class AuditLog(Base):
     action = Column(String(50))
     entity_type = Column(String(100))
     entity_id = Column(Uuid)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     ip_address = Column(String(50))
     details = Column(Text)
 

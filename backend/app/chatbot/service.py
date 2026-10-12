@@ -31,7 +31,7 @@ def _history_to_messages(history: List[ChatMessage]):
 def answer(message: str, history: List[ChatMessage]) -> str:
     message = (message or "").strip()
     if not message:
-        raise ChatbotError(400, "Message cannot be empty. Please type a question about RoadSense traffic, routes, or accident risk.")
+        raise ChatbotError(400, "Message cannot be empty. Please type a question about Metrivon traffic, routes, or accident risk.")
     if len(message) > MAX_MESSAGE_LENGTH:
         raise ChatbotError(400, f"Message is too long (max {MAX_MESSAGE_LENGTH} characters). Please shorten your question.")
 

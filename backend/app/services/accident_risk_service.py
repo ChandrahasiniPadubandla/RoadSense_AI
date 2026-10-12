@@ -16,7 +16,7 @@ try:
 except Exception:
     pass
 
-logger = logging.getLogger("roadsense")
+logger = logging.getLogger("Metrivon")
 
 
 class AccidentRiskService:
@@ -28,7 +28,7 @@ class AccidentRiskService:
     }
 
     def __init__(self, model_dir: str | Path | None = None):
-        base_dir = Path(model_dir) if model_dir is not None else Path(__file__).resolve().parents[1] / "ml" / "models"
+        base_dir = Path(model_dir) if model_dir is not None else Path(__file__).resolve().parents[3] / "predict_accident_risk"
         self.model_dir = base_dir
         self.classifier = None
         self.regressor = None
@@ -112,10 +112,14 @@ class AccidentRiskService:
             risk_prediction = self.regressor.predict(processed)[0]
             accident_risk = float(np.clip(float(risk_prediction), 0.0, 100.0))
 
+            # Harmonize classifier level with continuous risk percentage so thresholds never contradict
+            from app.services.hotspot_service import resolve_risk_level
+            calibrated_risk_level = resolve_risk_level(accident_risk)
+
             result = {
                 "success": True,
                 "accident_risk": round(accident_risk, 2),
-                "accident_risk_level": str(risk_level).upper(),
+                "accident_risk_level": calibrated_risk_level,
                 "confidence_score": round(confidence, 1),
                 "probabilities": {cls: round(float(p), 4) for cls, p in zip(self.label_encoder.classes_, probs)}
             }

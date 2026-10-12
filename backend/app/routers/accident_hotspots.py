@@ -1,14 +1,11 @@
-from typing import Optional
-
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from geoalchemy2.shape import to_shape
 from sqlalchemy.orm import Session
-from fastapi import Depends
 
 from app.database.connection import get_db
 from app.database.models import AccidentHotspot, TrafficZone
-from app.schemas.ml import HotspotRequest, HotspotResponse
-from app.services.ml_service import ml_service
+from app.schemas.ml import HotspotRequest, HotspotResponse, HotspotItem
+from app.services.hotspot_service import sync_empirical_hotspots, resolve_risk_level
 
 
 router = APIRouter(
@@ -55,13 +52,15 @@ def list_accident_hotspots(
     results = []
     for hotspot, zone in rows:
         lat, lon = _read_point(hotspot.location if hotspot.location is not None else (zone.location if zone else None))
+        score = float(hotspot.risk_score) if hotspot.risk_score is not None else None
+        level = resolve_risk_level(score) if score is not None else (hotspot.risk_level or "LOW")
         results.append({
             "hotspot_id": str(hotspot.hotspot_id),
             "zone_id": str(hotspot.zone_id) if hotspot.zone_id else None,
             "zone_name": zone.zone_name if zone else None,
             "accident_count": hotspot.accident_count,
-            "risk_score": float(hotspot.risk_score) if hotspot.risk_score is not None else None,
-            "risk_level": hotspot.risk_level,
+            "risk_score": score,
+            "risk_level": level,
             "latitude": lat,
             "longitude": lon,
             "calculated_at": hotspot.calculated_at.isoformat() if hotspot.calculated_at else None,
@@ -72,17 +71,32 @@ def list_accident_hotspots(
 @router.post(
     "/predict",
     response_model=HotspotResponse,
-    summary="[Legacy] Identify hotspots from a static CSV dataset — superseded by GET /hotspots",
-    deprecated=True,
+    summary="Identify and store accident hotspots in the database",
 )
 def predict_accident_hotspots(
     request: HotspotRequest,
+    db: Session = Depends(get_db),
 ) -> HotspotResponse:
     """
-    Kept for backward compatibility only. This computes hotspots from the
-    OLD `ML/dataset/traffic_accident_balanced_10000.csv` file rather than the
-    live `accident_hotspots` database table, so its numbers will not match
-    the rest of the application (which is entirely database-driven). New
-    integrations should use GET /hotspots instead.
+    Computes top accident hotspots from database accident and prediction records,
+    stores them into the `accident_hotspots` database table with their resolved
+    geography point and traffic zones, and returns the persisted hotspot list.
     """
-    return ml_service.get_accident_hotspots(request)
+    persisted_hotspots = sync_empirical_hotspots(db=db, top_n=request.top_n)
+
+    items = []
+    for h in persisted_hotspots:
+        lat, lon = _read_point(h.location)
+        zone = db.query(TrafficZone).filter(TrafficZone.zone_id == h.zone_id).first() if h.zone_id else None
+        items.append(
+            HotspotItem(
+                road_id=str(h.zone_id) if h.zone_id else "N/A",
+                location=zone.zone_name if zone else "Monitored Zone",
+                latitude=lat if lat is not None else 0.0,
+                longitude=lon if lon is not None else 0.0,
+                accident_count=h.accident_count or 0,
+                risk_level=h.risk_level or "MEDIUM",
+            )
+        )
+
+    return HotspotResponse(hotspots=items, model_status="database-persisted")

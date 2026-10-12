@@ -47,11 +47,11 @@ def send_password_reset_otp(recipient: str, otp: str) -> None:
     host, sender, username, password = _get_smtp_settings()
 
     message = EmailMessage()
-    message["Subject"] = "Your RoadSense AI password reset code"
+    message["Subject"] = "Your Metrivon AI password reset code"
     message["From"] = sender
     message["To"] = recipient
     message.set_content(
-        f"Your RoadSense AI password reset code is: {otp}\n\n"
+        f"Your Metrivon AI password reset code is: {otp}\n\n"
         "It expires in 15 minutes. Do not share this code with anyone."
     )
 
@@ -77,11 +77,11 @@ def send_email_verification_otp(recipient: str, otp: str) -> None:
     host, sender, username, password = _get_smtp_settings()
 
     message = EmailMessage()
-    message["Subject"] = "Verify your RoadSense AI email"
+    message["Subject"] = "Verify your Metrivon AI email"
     message["From"] = sender
     message["To"] = recipient
     message.set_content(
-        f"Your RoadSense AI email verification code is: {otp}\n\n"
+        f"Your Metrivon AI email verification code is: {otp}\n\n"
         "It expires in 15 minutes. Do not share this code with anyone."
     )
 

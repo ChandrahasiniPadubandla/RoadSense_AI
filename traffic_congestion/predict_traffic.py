@@ -59,37 +59,3 @@ def predict_traffic(new_data):
         "congestion_level": congestion_level,
         "confidence_score": confidence_score
     }
-
-
-# Test the model
-if __name__ == "__main__":
-
-    new_record = {
-        "start_location": "Uppal Road",
-        "end_location": "Nagole",
-        "start_latitude": 17.405,
-        "start_longitude": 78.559,
-        "end_latitude": 17.371,
-        "end_longitude": 78.568,
-        "road_type": "Arterial Road",
-        "hour": 8,
-        "day_of_week": "Monday",
-        "holiday": 0,
-        "vehicle_count": 1290,
-        "average_speed": 18.45,
-        "traffic_density": 120.0,
-        "road_capacity": 1500,
-        "previous_traffic": 1267,
-        "weather": "Light Rain",
-        "rainfall": 5.0,
-        "temperature": 28.0,
-        "visibility": 5.84,
-        "road_condition": "Wet",
-        "historical_accidents": 17
-    }
-
-    result = predict_traffic(new_record)
-
-    print("\nTraffic Prediction Result")
-    print("-------------------------")
-    print("Congestion Level:", result["congestion_level"])

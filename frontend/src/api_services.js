@@ -1,18 +1,21 @@
 import axios from 'axios';
 
 // -----------------------------------------------------------------------------
-// Unified API Services for RoadSense AI
+// Unified API Services for Metrivon AI
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Base URL: reads from VITE_API_BASE_URL (defaults to the local backend port)
-const RAW_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
-export const API_BASE_URL = RAW_URL.replace(/\/api\/?$/, '');
+// Leave the base URL empty in local proxy mode so requests use the current origin.
+const RAW_URL = import.meta.env.VITE_API_BASE_URL;
+export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
+
+
 
 // Single configured Axios instance
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,6 +37,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('currentUser');
+      window.dispatchEvent(new Event('auth:unauthorized'));
     }
     return Promise.reject(error);
   }
@@ -99,8 +103,8 @@ export async function getDashboardTrend() {
         return data.map((item, idx) => {
           const timeStr = item.timestamp
             ? (item.timestamp.includes('T')
-                ? item.timestamp.split('T')[1].slice(0, 5)
-                : new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))
+              ? item.timestamp.split('T')[1].slice(0, 5)
+              : new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))
             : `T-${idx}`;
           return {
             hour: timeStr,
@@ -135,7 +139,9 @@ export async function getRoads() {
           vehicleCount: p.vehicle_count != null ? p.vehicle_count : '-',
           avgSpeed: p.average_speed != null ? `${Math.round(p.average_speed)} km/h` : (p.speed_limit ? `${p.speed_limit} km/h` : '-'),
           weather: p.weather_condition || 'Clear',
-          trafficLevel: (p.congestion_level || 'LOW').toUpperCase(),
+          trafficLevel: p.congestion_level && p.congestion_level !== 'UNKNOWN' ? p.congestion_level.toUpperCase() : null,
+          confidenceScore: p.confidence_score,
+          isPredicted: p.is_predicted ?? false,
           capacityUtilization: p.capacity_utilization,
           lanes: p.number_of_lanes || 4,
           speedLimit: p.speed_limit,
@@ -158,7 +164,7 @@ export async function getRoads() {
         vehicleCount: '-',
         avgSpeed: road.speed_limit ? `${road.speed_limit} km/h` : '-',
         weather: road.road_condition || 'Clear',
-        trafficLevel: 'LOW',
+        trafficLevel: null,
         lanes: road.number_of_lanes,
         speedLimit: road.speed_limit,
         lat: road.start_latitude,
@@ -170,6 +176,23 @@ export async function getRoads() {
   }
 
   return [];
+}
+
+/** Fetch the newest traffic anomalies recorded by the ML service. */
+export async function getAnomalies(limit = 20) {
+  try {
+    const { data } = await apiClient.get('/api/anomalies', { params: { limit } });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching traffic anomalies:', error);
+    throw error;
+  }
+}
+
+/** Run the trained anomaly model against supplied or road-derived telemetry. */
+export async function predictAnomaly(payload) {
+  const { data } = await apiClient.post('/api/anomalies/predict', payload);
+  return data;
 }
 
 // -----------------------------------------------------------------------------
@@ -218,6 +241,19 @@ export async function getHotspotsLayer() {
   }
 }
 
+/**
+ * Fetch GeoJSON Traffic Anomalies from /api/map/anomalies-layer
+ */
+export async function getAnomaliesLayer() {
+  try {
+    const { data } = await apiClient.get('/api/map/anomalies-layer');
+    return data && Array.isArray(data.features) ? data : { type: 'FeatureCollection', features: [] };
+  } catch (error) {
+    console.error('Error fetching /api/map/anomalies-layer:', error);
+    return { type: 'FeatureCollection', features: [] };
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 3. AUTHENTICATION APIS
 // -----------------------------------------------------------------------------
@@ -229,18 +265,52 @@ export async function loginUser(email, password) {
     if (token) {
       localStorage.setItem('accessToken', token);
     }
-    const user = {
-      id: data.user?.user_id || 'd40e5a7e-4df3-4a19-a271-8d02247b9f9f',
-      email: data.user?.email || email,
-      name: data.user?.name || email.split('@')[0],
-      role: data.user?.role_name || 'SUPER_ADMIN',
-    };
+    const user = normalizeAuthUser(data.user, email);
     localStorage.setItem('currentUser', JSON.stringify(user));
     return { accessToken: token, user };
   } catch (error) {
     const msg = error.response?.data?.detail || error.message || 'Login failed';
     throw new Error(msg);
   }
+}
+
+function normalizeAuthUser(user, fallbackEmail = '') {
+  const rawRole = user?.role_name ?? user?.role ?? '';
+
+  return {
+    id: user?.user_id || user?.id,
+    username: user?.username || '',
+    email: user?.email || fallbackEmail,
+    name: user?.name || fallbackEmail.split('@')[0] || '',
+    phone: user?.phone ?? user?.mobile ?? user?.phone_number ?? '',
+    role:
+      typeof rawRole === 'string'
+        ? rawRole.toUpperCase()
+        : rawRole?.role_name
+          ? rawRole.role_name.toUpperCase()
+          : '',
+  };
+}
+export async function updateMyProfile(payload) {
+  const response = await apiClient.put('/auth/me', payload);
+
+  const updatedUser = normalizeAuthUser(response.data);
+
+  try {
+    localStorage.setItem(
+      'currentUser',
+      JSON.stringify(updatedUser)
+    );
+  } catch {}
+
+  return updatedUser;
+}
+
+export async function getCurrentUser() {
+  const { data } = await apiClient.get('/auth/me');
+  const user = normalizeAuthUser(data);
+  localStorage.setItem('currentUser', JSON.stringify(user));
+  return user;
 }
 
 export async function registerUser({ name, email, password, phone = null }) {
@@ -433,24 +503,24 @@ export async function createAccident(payload) {
   return data;
 }
 
-export async function getEmergencyResponses() {
-  try {
-    const { data } = await apiClient.get('/emergency/responses');
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error('Error fetching /emergency/responses:', error);
-    return [];
-  }
+export async function getEmergencyResponses(params = {}) {
+  const { data } = await apiClient.get('/api/emergency', { params });
+  return Array.isArray(data) ? data : [];
 }
 
 export async function createEmergencyResponse(payload) {
-  const { data } = await apiClient.post('/emergency/responses', payload);
+  const { data } = await apiClient.post('/api/emergency', payload);
+  return data;
+}
+
+export async function updateEmergencyResponse(responseId, payload) {
+  const { data } = await apiClient.patch(`/api/emergency/${responseId}`, payload);
   return data;
 }
 
 export async function getAlerts() {
   try {
-    const { data } = await apiClient.get('/api/alerts');
+    const { data } = await apiClient.get('/api/alerts', { params: { limit: 500 } });
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/alerts:', error);
@@ -487,6 +557,21 @@ export async function updateUserRole(username, roleId) {
   const { data } = await apiClient.patch(`/api/admin/users/${encodeURIComponent(username)}/role`, {
     role_id: roleId,
   });
+  return data;
+}
+
+/**
+ * Update a user's username (and optionally name/phone).
+ * PATCH /api/admin/users/{user_id}/profile  (Super Admin only)
+ * Body matches UserProfileUpdate (backend/app/schemas/auth.py):
+ *   { username?, name?, phone? }  — username: 3-50 chars, letters/numbers/_ . -
+ * Keyed by the stable user_id (not the display name), so it is safe to rename.
+ */
+export async function updateUserProfile(userId, payload) {
+  const { data } = await apiClient.patch(
+    `/api/admin/users/${encodeURIComponent(userId)}/profile`,
+    payload
+  );
   return data;
 }
 
@@ -545,6 +630,26 @@ export async function getTrafficRecords() {
   }
 }
 
+/**
+ * Server-side paginated traffic records.
+ * The backend applies filters + OFFSET/LIMIT and reports the overall match
+ * count in the X-Total-Count header.
+ * Returns { items, total }.
+ */
+export async function getTrafficRecordsPage({ page = 1, pageSize = 20, level = 'ALL', search = '' } = {}) {
+  const { data, headers } = await apiClient.get('/api/traffic', {
+    params: {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      congestion_level: level && level !== 'ALL' ? level : undefined,
+      search: search || undefined,
+    },
+  });
+  const items = Array.isArray(data) ? data : [];
+  const headerTotal = Number(headers?.['x-total-count']);
+  return { items, total: Number.isFinite(headerTotal) ? headerTotal : items.length };
+}
+
 export async function createTrafficRecord(payload) {
   const { data } = await apiClient.post('/api/traffic', payload);
   return data;
@@ -573,12 +678,188 @@ export async function getHotspots(limit = 20) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// 12. LIVE GEOCODING & ROUTING (OpenStreetMap Nominatim + OSRM — real 3rd-party
+//     APIs, not mocked; see backend/app/routers/geocoding.py)
+// -----------------------------------------------------------------------------
+
+/**
+ * Live place-name search. Hits OpenStreetMap Nominatim on the backend.
+ * Returns [] on failure/no matches rather than throwing, since this backs
+ * a type-ahead UI that should degrade gracefully.
+ */
+export async function geocodeSearch(query, city = 'Hyderabad', limit = 5) {
+  if (!query || query.trim().length < 2) return [];
+  try {
+    const { data } = await apiClient.get('/api/geo/search', {
+      params: { query: query.trim(), city, limit },
+    });
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching /api/geo/search:', error);
+    return [];
+  }
+}
+
+/**
+ * Get a street route between two points for the selected travel mode.
+ * The backend returns mode-specific geometry and duration when its route
+ * endpoint forwards `mode` to the routing service. Throws on failure so
+ * LiveMap can show a route error instead of silently drawing nothing.
+ * Supported modes: 'bike' (2-Wheeler), 'car', and 'foot' (Walk).
+ */
+export async function getDrivingRoute(startLat, startLng, endLat, endLng, mode = 'car') {
+  const supportedModes = ['bike', 'car', 'foot'];
+  const routingMode = supportedModes.includes(mode) ? mode : 'car';
+
+  const { data } = await apiClient.get('/api/geo/route', {
+    params: {
+      start_lat: startLat,
+      start_lng: startLng,
+      end_lat: endLat,
+      end_lng: endLng,
+      mode: routingMode,
+    },
+  });
+  return data;
+}
+
+/**
+ * Reverse geocode: turn GPS coordinates (e.g. from the browser's location
+ * API) into a human-readable label. Used by "Use my current location".
+ */
+export async function reverseGeocode(lat, lng) {
+  const { data } = await apiClient.get('/api/geo/reverse', { params: { lat, lng } });
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// 13. VOICE ASSISTANT (database-backed location resolution —
+//     see backend/app/routers/voice.py, schemas/voice.py, services/voice_service.py)
+// -----------------------------------------------------------------------------
+
+/**
+ * Health/status of the voice extraction service.
+ * GET /api/voice/status -> { status, resolver_ready, engine }
+ * Never throws: returns { status: 'offline', resolver_ready: false } on failure
+ * so the UI can show a calm "voice service offline" state.
+ */
+export async function getVoiceStatus() {
+  try {
+    const { data } = await apiClient.get('/api/voice/status', { timeout: 8000 });
+    return data;
+  } catch (error) {
+    console.warn('Voice status check failed:', error.message);
+    return { status: 'offline', resolver_ready: false, engine: null, labels: [] };
+  }
+}
+
+/**
+ * Turn a spoken transcript into a start/end pair.
+ * POST /api/voice/extract-route  { text }
+ * Returns VoiceRouteExtractResponse:
+ *   { success, start_location, end_location, start_status, end_status,
+ *     start_matches, end_matches, raw_text, cleaned_text, message }
+ * A location is populated only when it matches a current database entity
+ * confidently; uncertain matches are returned as suggestions instead.
+ */
+export async function extractRouteFromVoice(text) {
+  const { data } = await apiClient.post('/api/voice/extract-route', { text });
+  return data;
+}
+
+// -----------------------------------------------------------------------------
+// 14. REPORTS & ANALYTICS EXPORT (Super Admin + Traffic Authority)
+// -----------------------------------------------------------------------------
+
+/**
+ * Fetch a report as JSON (for on-screen preview) from /api/reports.
+ * reportType: 'summary' | 'accidents' | 'traffic' | 'hotspots' | 'predictions'
+ */
+// <input type="date"> yields "YYYY-MM-DD"; the API expects datetimes. Make the
+// end date inclusive by pushing it to the end of that day.
+function toStartDateTime(d) {
+  return d ? `${d}T00:00:00` : undefined;
+}
+function toEndDateTime(d) {
+  return d ? `${d}T23:59:59` : undefined;
+}
+
+export async function getReportPreview(reportType, { startDate, endDate, limit = 200 } = {}) {
+  const { data } = await apiClient.get('/api/reports', {
+    params: {
+      report_type: reportType,
+      format: 'json',
+      start_date: toStartDateTime(startDate),
+      end_date: toEndDateTime(endDate),
+      limit,
+    },
+  });
+  return data;
+}
+
+/**
+ * Server-side paginated report preview.
+ * Returns { items, total, page, page_size, total_pages } for accidents /
+ * traffic / hotspots / predictions. (The 'summary' report is a fixed KPI
+ * list and is not paginated — use getReportPreview for it.)
+ */
+export async function getReportPage(reportType, { startDate, endDate, page = 1, pageSize = 20 } = {}) {
+  const { data } = await apiClient.get('/api/reports', {
+    params: {
+      report_type: reportType,
+      format: 'json',
+      start_date: toStartDateTime(startDate),
+      end_date: toEndDateTime(endDate),
+      page,
+      page_size: pageSize,
+    },
+  });
+  return data;
+}
+
+/**
+ * Download a report as a CSV file from /api/reports and trigger a browser
+ * save-as. Returns nothing — the side effect is the download itself.
+ */
+export async function downloadReportCsv(reportType, { startDate, endDate, limit = 1000 } = {}) {
+  const response = await apiClient.get('/api/reports', {
+    params: {
+      report_type: reportType,
+      format: 'csv',
+      start_date: toStartDateTime(startDate),
+      end_date: toEndDateTime(endDate),
+      limit,
+    },
+    responseType: 'blob',
+  });
+
+  const disposition = response.headers['content-disposition'] || '';
+  const match = disposition.match(/filename=([^;]+)/);
+  const filename = match ? match[1].trim() : `Metrivon_${reportType}_report.csv`;
+
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default {
   API_BASE_URL,
   apiClient,
   getDashboardStats,
   getDashboardTrend,
   getRoads,
+  getTrafficRecordsPage,
+  getReportPreview,
+  getReportPage,
+  downloadReportCsv,
+  getAnomalies,
+  predictAnomaly,
   getTrafficLayer,
   getAccidentLayer,
   getHotspotsLayer,
@@ -604,4 +885,20 @@ export default {
   createAlert,
   getAdminUsers,
   getAdminRoles,
+  updateUserRole,
+  updateUserStatus,
+  updateUserProfile,
+  deleteUser,
+  getVoiceStatus,
+  extractRouteFromVoice,
+  updateMyProfile,
 };
+export async function getEmergencyResponders() {
+  try {
+    const { data } = await apiClient.get("/api/emergency/responders");
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Error fetching emergency responders:", error);
+    throw error;
+  }
+}

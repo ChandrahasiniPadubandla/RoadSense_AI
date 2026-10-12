@@ -1,30 +1,25 @@
-from datetime import datetime, timedelta
-from pathlib import Path
-
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
 from app.database.connection import SessionLocal
 from app.database.models import Road, TrafficRecord
 from app.schemas.ml import (
     AnomalyPredictionRequest,
     AnomalyPredictionResponse,
-    CongestionPredictionRequest,
-    CongestionPredictionResponse,
-    HotspotRequest,
-    HotspotResponse,
-    HotspotItem,
 )
 
-DATASET_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "predict_accident_risk"
-    / "dataset"
-    / "hyderabad_traffic_accident_balanced_15000.csv"
-)
+
+def _request_or_database_value(request_value, database_value, field_name):
+    value = request_value if request_value is not None else database_value
+    if value is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be provided or available from a shared database traffic record.",
+        )
+    return value
 
 
 class MLService:
-    """Database-backed ML compatibility service."""
 
     def _get_road_record(self, road_id: str) -> Road:
         db: Session = SessionLocal()
@@ -42,7 +37,7 @@ class MLService:
             record = (
                 db.query(TrafficRecord)
                 .filter(TrafficRecord.road_id == road_id)
-                .order_by(TrafficRecord.timestamp.desc())
+                .order_by(TrafficRecord.timestamp.desc(), TrafficRecord.traffic_id.desc())
                 .first()
             )
             if record is None:
@@ -51,113 +46,152 @@ class MLService:
         finally:
             db.close()
 
-    def predict_congestion(
-        self,
-        request: CongestionPredictionRequest,
-    ) -> CongestionPredictionResponse:
-        road = self._get_road_record(request.road_id)
-        traffic = self._get_latest_traffic(str(road.road_id))
-
-        density = float(request.traffic_density) if request.traffic_density is not None else float(traffic.traffic_density or 0)
-        if density < 30:
-            level = "LOW"
-        elif density < 60:
-            level = "MEDIUM"
-        elif density < 80:
-            level = "HIGH"
-        else:
-            level = "SEVERE"
-
-        hour = int(request.hour) if request.hour is not None else (traffic.timestamp.hour if traffic.timestamp else datetime.now().hour)
-        start = datetime.now().replace(hour=hour, minute=0, second=0, microsecond=0)
-        end = start + timedelta(hours=1)
-        expected_time = f"{start.strftime('%I:%M %p').lstrip('0')} - {end.strftime('%I:%M %p').lstrip('0')}"
-
-        return CongestionPredictionResponse(
-            predicted_congestion=level,
-            expected_congestion_time=expected_time,
-            model_status="database-backed",
-        )
-
     def predict_anomaly(
         self,
         request: AnomalyPredictionRequest,
     ) -> AnomalyPredictionResponse:
-        road = self._get_road_record(request.road_id)
-        traffic = self._get_latest_traffic(str(road.road_id))
+        from app.ml.prediction_engine import trigger_ml_anomaly_model
 
-        vehicle_count = int(request.vehicle_count) if request.vehicle_count is not None else int(traffic.vehicle_count or 0)
-        previous_traffic = int(request.previous_traffic) if request.previous_traffic is not None else int(traffic.vehicle_count or 0)
-        road_capacity = int(request.road_capacity) if request.road_capacity is not None else int(road.road_capacity or 1)
-        density = float(request.traffic_density) if request.traffic_density is not None else float(traffic.traffic_density or 0)
+        road = None
+        traffic = None
+        road_name = None
 
-        capacity_ratio = vehicle_count / max(road_capacity, 1)
-        traffic_change = abs(vehicle_count - previous_traffic) / max(previous_traffic, 1)
-        is_anomaly = (
-            density >= 90
-            or capacity_ratio >= 1.0
-            or traffic_change >= 0.5
+        if request.road_id:
+            try:
+                road = self._get_road_record(request.road_id)
+                road_name = road.road_name
+                try:
+                    traffic = self._get_latest_traffic(str(road.road_id))
+                except Exception:
+                    traffic = None
+            except Exception:
+                road = None
+
+        if not road and (request.start_location or request.end_location or request.start_latitude):
+            from app.ml.prediction_engine import resolve_route_bundle
+            db_bundle = SessionLocal()
+            try:
+                bundle = resolve_route_bundle(
+                    db=db_bundle,
+                    start_name=request.start_location,
+                    end_name=request.end_location,
+                    start_lat=request.start_latitude,
+                    start_lng=request.start_longitude,
+                    end_lat=request.end_latitude,
+                    end_lng=request.end_longitude
+                )
+                road = bundle.get("road")
+                road_name = bundle.get("road_conditions", {}).get("road_name") or bundle.get("start_label")
+                prev = bundle.get("previous_records", {})
+                r_cond = bundle.get("road_conditions", {})
+                if request.vehicle_count is None and prev.get("vehicle_count") is not None:
+                    request.vehicle_count = int(prev["vehicle_count"])
+                if request.average_speed is None and prev.get("average_speed") is not None:
+                    request.average_speed = float(prev["average_speed"])
+                if request.traffic_density is None and prev.get("traffic_density") is not None:
+                    request.traffic_density = float(prev["traffic_density"])
+                if request.previous_traffic is None and prev.get("previous_traffic") is not None:
+                    request.previous_traffic = int(prev["previous_traffic"])
+                if request.road_capacity is None and r_cond.get("road_capacity") is not None:
+                    request.road_capacity = int(r_cond["road_capacity"])
+            except Exception:
+                pass
+            finally:
+                db_bundle.close()
+
+        vehicle_count = _request_or_database_value(
+            request.vehicle_count,
+            traffic.vehicle_count if traffic else None,
+            "vehicle_count",
         )
+        average_speed = _request_or_database_value(
+            request.average_speed,
+            traffic.average_speed if traffic else None,
+            "average_speed",
+        )
+        traffic_density = _request_or_database_value(
+            request.traffic_density,
+            traffic.traffic_density if traffic else None,
+            "traffic_density",
+        )
+        road_capacity = _request_or_database_value(
+            request.road_capacity,
+            road.road_capacity if road else None,
+            "road_capacity",
+        )
+        previous_traffic = _request_or_database_value(
+            request.previous_traffic,
+            int(traffic.vehicle_count * 0.95) if traffic and traffic.vehicle_count is not None else None,
+            "previous_traffic",
+        )
+
+        hour = request.hour
+        if hour is None:
+            from datetime import datetime, timezone
+            hour = traffic.timestamp.hour if (traffic and traffic.timestamp) else datetime.now(timezone.utc).hour
+
+        historical_accidents = getattr(request, "historical_accidents", None)
+        if historical_accidents is None:
+            if road and hasattr(road, "historical_accidents") and road.historical_accidents is not None:
+                historical_accidents = int(road.historical_accidents)
+            elif road:
+                from app.database.models import Accident
+                db_acc = SessionLocal()
+                try:
+                    historical_accidents = db_acc.query(Accident).filter(Accident.road_id == road.road_id).count()
+                except Exception:
+                    historical_accidents = 0
+                finally:
+                    db_acc.close()
+            else:
+                historical_accidents = 0
+
+        features = {
+            "vehicle_count": vehicle_count,
+            "average_speed": average_speed,
+            "traffic_density": traffic_density,
+            "road_capacity": road_capacity,
+            "previous_traffic": previous_traffic,
+            "hour": hour,
+            "historical_accidents": historical_accidents,
+        }
+
+        ml_result = trigger_ml_anomaly_model(features)
+        prediction_text = ml_result["prediction"]
+        is_anomaly = ml_result["is_anomaly"]
+
+        if request.persist and road:
+            from datetime import datetime
+            from app.database.models import TrafficAnomaly
+            db = SessionLocal()
+            try:
+                anomaly_record = TrafficAnomaly(
+                    road_id=road.road_id,
+                    detected_at=datetime.utcnow(),
+                    anomaly_score=ml_result.get("anomaly_score"),
+                    anomaly_type="SPIKE" if is_anomaly else "NORMAL",
+                    normal_vehicle_count=int(previous_traffic),
+                    actual_vehicle_count=int(vehicle_count),
+                    description=f"Predicted {prediction_text} (confidence: {ml_result.get('confidence_score', 0)}%)",
+                    status="ACTIVE" if is_anomaly else "RESOLVED",
+                )
+                db.add(anomaly_record)
+                db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
 
         return AnomalyPredictionResponse(
-            prediction="ANOMALY" if is_anomaly else "NORMAL",
-            model_status="database-backed",
+            prediction=prediction_text,
+            is_anomaly=is_anomaly,
+            anomaly_score=ml_result.get("anomaly_score"),
+            confidence_score=ml_result.get("confidence_score"),
+            road_id=str(road.road_id) if road else request.road_id,
+            road_name=road_name,
+            features_used=features,
+            model_status="trained-isolation-forest",
         )
-
-    def get_accident_hotspots(
-        self,
-        request: HotspotRequest,
-    ) -> HotspotResponse:
-        import pandas as pd
-
-        df = pd.read_csv(DATASET_PATH)
-
-        accident_data = df[df["accident_occurred"] == 1].copy()
-
-        loc_col = "location" if "location" in accident_data.columns else "start_location"
-        lat_col = "latitude" if "latitude" in accident_data.columns else "start_latitude"
-        lng_col = "longitude" if "longitude" in accident_data.columns else "start_longitude"
-
-        hotspots = (
-            accident_data
-            .groupby([loc_col, lat_col, lng_col])
-            .size()
-            .reset_index(name="accident_count")
-            .sort_values("accident_count", ascending=False)
-            .head(request.top_n)
-            .reset_index(drop=True)
-        )
-
-        road_for_location = (
-            accident_data
-            .groupby(loc_col)["road_id"]
-            .agg(lambda ids: ids.mode().iloc[0])
-            .to_dict()
-        )
-        hotspots["road_id"] = hotspots[loc_col].map(road_for_location)
-
-        def _risk_level(count: int) -> str:
-            if count >= 100:
-                return "HIGH"
-            elif count >= 50:
-                return "MEDIUM"
-            return "LOW"
-
-        hotspots["risk_level"] = hotspots["accident_count"].apply(_risk_level)
-
-        items = [
-            HotspotItem(
-                road_id=row["road_id"],
-                location=row[loc_col],
-                latitude=row[lat_col],
-                longitude=row[lng_col],
-                accident_count=int(row["accident_count"]),
-                risk_level=row["risk_level"],
-            )
-            for _, row in hotspots.iterrows()
-        ]
-
-        return HotspotResponse(hotspots=items, model_status="dataset-backed")
 
 
 ml_service = MLService()

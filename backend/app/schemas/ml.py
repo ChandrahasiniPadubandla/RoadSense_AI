@@ -27,22 +27,37 @@ class CongestionPredictionRequest(BaseModel):
 
 class CongestionPredictionResponse(BaseModel):
     predicted_congestion: str
-    expected_congestion_time: str
+    expected_congestion_time: Optional[str] = None
     model_status: str = "database-backed"
 
 
 class AnomalyPredictionRequest(BaseModel):
-    road_id: str = Field(min_length=1)
+    road_id: Optional[str] = None
+    start_location: Optional[str] = None
+    end_location: Optional[str] = None
+    start_latitude: Optional[float] = None
+    start_longitude: Optional[float] = None
+    end_latitude: Optional[float] = None
+    end_longitude: Optional[float] = None
     vehicle_count: Optional[int] = Field(default=None, ge=0)
     average_speed: Optional[float] = Field(default=None, ge=0)
-    traffic_density: Optional[float] = Field(default=None, ge=0, le=100)
+    traffic_density: Optional[float] = Field(default=None, ge=0)
     road_capacity: Optional[int] = Field(default=None, gt=0)
     previous_traffic: Optional[int] = Field(default=None, ge=0)
+    hour: Optional[int] = Field(default=None, ge=0, le=23)
+    historical_accidents: Optional[int] = Field(default=0, ge=0)
+    persist: Optional[bool] = False
 
 
 class AnomalyPredictionResponse(BaseModel):
     prediction: str
-    model_status: str = "database-backed"
+    is_anomaly: bool = False
+    anomaly_score: Optional[float] = None
+    confidence_score: Optional[float] = None
+    road_id: Optional[str] = None
+    road_name: Optional[str] = None
+    features_used: Optional[dict] = None
+    model_status: str = "trained-isolation-forest"
 
 
 class HotspotItem(BaseModel):
