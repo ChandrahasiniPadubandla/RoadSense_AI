@@ -319,28 +319,27 @@ export default function Register() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Brand Identity */}
-          <Link to="/" className="flex items-center gap-3.5 flex-shrink-0 group">
-            <div className="relative flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-br from-signal-blue via-signal-blue to-signal-blue/40 border border-white/25 shadow-xl shadow-signal-blue/30 group-hover:scale-105 transition-transform">
-              <Navigation size={22} className="text-white transform -rotate-45" />
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-signal-green opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-signal-green" />
-              </span>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className={`text-xl font-black tracking-tight transition-colors ${theme.brandText}`}>
-                  Metrivon
-                </span>
-                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-signal-blue/20 text-signal-blue border border-signal-blue/40 tracking-wider">
-                  AI
-                </span>
-              </div>
-              <p className={`text-[10px] tracking-wider font-mono uppercase transition-colors ${theme.brandSub}`}>
-                Smart Traffic &amp; Safety
-              </p>
-            </div>
-          </Link>
+           <Link to="/" className="flex items-center gap-3.5 flex-shrink-0 group">
+                      <img
+                        src="/images/Merivon_logo.png"
+                        alt="Metrivon AI"
+                        className="h-14 w-14 object-contain"
+                      />
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-signal-green" />
+                          <span className={`text-xl font-black tracking-tight transition-colors ${theme.brandText}`}>
+                            Metrivon
+                          </span>
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-signal-blue/20 text-signal-blue border border-signal-blue/40 tracking-wider">
+                            AI
+                          </span>
+                        </div>
+                        <p className={`text-[10px] tracking-wider font-mono uppercase transition-colors ${theme.brandSub}`}>
+                          Smart Traffic &amp; Safety
+                        </p>
+                      </div>
+                    </Link>
 
           {/* Right: Theme Toggle & Sign In Link */}
           <div className="flex items-center gap-3">
