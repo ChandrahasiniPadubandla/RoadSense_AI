@@ -367,10 +367,8 @@ def geocode_location(
                     raw_features = cached.payload
             except Exception as err:
                 db.rollback()
-                raise GeocodingError(
-                    "error",
-                    "The shared geocoding cache is unavailable. Apply database/migrations/001_geocode_suggestion_cache.sql.",
-                ) from err
+                logger.warning("Shared geocoding cache lookup failed: %s", err)
+                raw_features = None
 
         if raw_features is None:
             raw_features = _fetch_photon(clean_query)
@@ -386,18 +384,7 @@ def geocode_location(
                     db.commit()
                 except Exception as err:
                     db.rollback()
-                    # If another backend instance filled the shared key at the
-                    # same time, use its committed payload to keep responses
-                    # consistent across all instances.
-                    cached = db.query(GeocodeSuggestionCache).filter(
-                        GeocodeSuggestionCache.cache_key == provider_key
-                    ).first()
-                    if cached is None:
-                        raise GeocodingError(
-                            "error",
-                            "The shared geocoding cache could not store provider results.",
-                        ) from err
-                    raw_features = cached.payload
+                    logger.warning("Shared geocoding cache store skipped: %s", err)
 
         # Score and rank features by relevance to user query
         scored_features: List[Tuple[float, Dict[str, Any]]] = []

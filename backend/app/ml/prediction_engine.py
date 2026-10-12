@@ -16,6 +16,7 @@ from app.services.geocoding import (
     get_or_create_road_from_geocoding
 )
 from app.services.weather import get_live_weather
+from app.services.live_traffic import get_live_traffic_flow
 
 
 def format_estimated_time(target_time: datetime, duration_minutes: int = 60) -> str:
