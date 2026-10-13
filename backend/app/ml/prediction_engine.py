@@ -13,7 +13,8 @@ from app.services.geocoding import (
     find_nearest_road_by_coordinates,
     get_driving_route,
     get_accidents_along_route,
-    get_or_create_road_from_geocoding
+    get_or_create_road_from_geocoding,
+    is_within_geocoding_boundary
 )
 from app.services.weather import get_live_weather
 from app.services.live_traffic import get_live_traffic_flow
@@ -325,6 +326,28 @@ def resolve_route_bundle(
             detail={
                 "error_code": "IDENTICAL_LOCATIONS",
                 "message": "Start location and destination resolve to the exact same point. Please provide two distinct locations.",
+                "field": "end_location"
+            }
+        )
+
+    # Restrict locations strictly to the Hyderabad metropolitan boundary
+    if not is_within_geocoding_boundary(s_lat, s_lng):
+        start_disp = start_name or f"[{s_lat}, {s_lng}]"
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "LOCATION_OUTSIDE_HYDERABAD",
+                "message": f"Start location '{start_disp}' is outside Hyderabad. RoadSense AI traffic models are restricted exclusively to the Hyderabad metropolitan region.",
+                "field": "start_location"
+            }
+        )
+    if not is_within_geocoding_boundary(e_lat, e_lng):
+        end_disp = end_name or f"[{e_lat}, {e_lng}]"
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "LOCATION_OUTSIDE_HYDERABAD",
+                "message": f"Destination '{end_disp}' is outside Hyderabad. RoadSense AI traffic models are restricted exclusively to the Hyderabad metropolitan region.",
                 "field": "end_location"
             }
         )
