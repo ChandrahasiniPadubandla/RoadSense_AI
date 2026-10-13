@@ -112,7 +112,7 @@ function Kpi({ icon: Icon, label, value, unit, hint, tone = 'neutral', index }) 
 }
 
 /** One 3D block: footprint sits on the floor plane, sides rise along +Z. */
-function Tower({ x, y, h, color, w = 54 }) {
+function Tower({ x, y, h, color, w = 54, active = false, onEnter, onLeave }) {
   const side = (style, dir) => ({
     position: 'absolute',
     background: `linear-gradient(${dir}, ${color}2e, ${color}d9)`,
@@ -120,13 +120,18 @@ function Tower({ x, y, h, color, w = 54 }) {
     ...style,
   });
   return (
-    <div style={{ position: 'absolute', left: x, top: y, width: w, height: w, transformStyle: 'preserve-3d' }}>
-      <div style={{ position: 'absolute', inset: -10, background: `${color}40`, filter: 'blur(12px)' }} />
+    <div
+      onPointerEnter={onEnter}
+      onPointerLeave={onLeave}
+      style={{ position: 'absolute', left: x, top: y, width: w, height: w, transformStyle: 'preserve-3d', cursor: 'pointer' }}
+    >
+      {/* glow must not steal hover from the block itself */}
+      <div style={{ position: 'absolute', inset: -10, background: `${color}${active ? '80' : '40'}`, filter: 'blur(12px)', pointerEvents: 'none' }} />
       <div style={side({ left: 0, top: w, width: w, height: h, transformOrigin: 'top', transform: 'rotateX(90deg)' }, 'to bottom')} />
       <div style={side({ left: 0, top: 0, width: w, height: h, transformOrigin: 'top', transform: 'rotateX(90deg)', opacity: 0.6 }, 'to bottom')} />
       <div style={side({ left: 0, top: 0, width: h, height: w, transformOrigin: 'left', transform: 'rotateY(-90deg)', opacity: 0.75 }, 'to right')} />
       <div style={side({ left: w, top: 0, width: h, height: w, transformOrigin: 'left', transform: 'rotateY(-90deg)' }, 'to right')} />
-      <div style={{ position: 'absolute', inset: 0, background: color, border: '1px solid #fff5', boxShadow: `0 0 22px ${color}`, transform: `translateZ(${h}px)` }} />
+      <div style={{ position: 'absolute', inset: 0, background: color, border: '1px solid #fff5', boxShadow: `0 0 ${active ? 36 : 22}px ${color}`, transform: `translateZ(${h}px)` }} />
     </div>
   );
 }
@@ -136,12 +141,23 @@ function HotspotScene({ hotspots, isDark }) {
   const reduce = useReducedMotion();
   const rz = useMotionValue(-35);
   const dragX = useRef(null);
+  const containerRef = useRef(null);
+  const hoveredRef = useRef(null);
+  const [hovered, setHovered] = useState(null);
+  const [pos, setPos] = useState({ x: 0, y: 0, flip: false });
+
+  const setHover = (i) => {
+    hoveredRef.current = i;
+    setHovered(i);
+  };
+
   useEffect(() => {
     if (reduce) return undefined;
     let raf;
     let last = performance.now();
     const tick = (t) => {
-      if (dragX.current == null) rz.set(rz.get() + (t - last) * 0.006);
+      // pause the auto-rotation while dragging or hovering a block, so it stays under the cursor
+      if (dragX.current == null && hoveredRef.current == null) rz.set(rz.get() + (t - last) * 0.006);
       last = t;
       raf = requestAnimationFrame(tick);
     };
@@ -151,16 +167,33 @@ function HotspotScene({ hotspots, isDark }) {
 
   const max = Math.max(1, ...hotspots.map((h) => h.accident_count || 0));
   const items = hotspots.slice(0, TOWER_SPOTS.length);
+  const hoveredItem = hovered != null ? items[hovered] : null;
+
+  const handleMove = (e) => {
+    if (dragX.current != null) {
+      rz.set(rz.get() + (e.clientX - dragX.current) * 0.4);
+      dragX.current = e.clientX;
+    }
+    const r = containerRef.current?.getBoundingClientRect();
+    if (r) {
+      const x = e.clientX - r.left;
+      setPos({ x, y: e.clientY - r.top, flip: x > r.width - 160 });
+    }
+  };
 
   return (
-    <div className="relative h-full min-h-[380px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.25)] dark:border-asphalt-700 dark:bg-[radial-gradient(ellipse_at_50%_35%,#1b2a3b_0%,#0E1013_70%)] dark:shadow-[0_24px_60px_-20px_rgba(62,124,177,0.45)]">
+    <div
+      ref={containerRef}
+      className="relative h-full min-h-[380px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.25)] dark:border-asphalt-700 dark:bg-[radial-gradient(ellipse_at_50%_35%,#1b2a3b_0%,#0E1013_70%)] dark:shadow-[0_24px_60px_-20px_rgba(62,124,177,0.45)]"
+    >
       <div
         className="absolute inset-0 cursor-grab touch-pan-y active:cursor-grabbing"
         style={{ perspective: 1100 }}
         onPointerDown={(e) => { dragX.current = e.clientX; e.currentTarget.setPointerCapture(e.pointerId); }}
-        onPointerMove={(e) => { if (dragX.current != null) { rz.set(rz.get() + (e.clientX - dragX.current) * 0.4); dragX.current = e.clientX; } }}
+        onPointerMove={handleMove}
         onPointerUp={() => { dragX.current = null; }}
         onPointerCancel={() => { dragX.current = null; }}
+        onPointerLeave={() => setHover(null)}
       >
         <motion.div
           style={{ rotateX: 58, rotateZ: rz, scale: 0.7, y: 25, transformStyle: 'preserve-3d', width: 340, height: 340, marginLeft: -170, marginTop: -170 }}
@@ -179,10 +212,34 @@ function HotspotScene({ hotspots, isDark }) {
             }}
           />
           {items.map((h, i) => (
-            <Tower key={h.hotspot_id ?? i} x={TOWER_SPOTS[i][0]} y={TOWER_SPOTS[i][1]} color={TOWER_COLORS[i]} h={28 + ((h.accident_count || 0) / max) * 130} />
+            <Tower
+              key={h.hotspot_id ?? i}
+              x={TOWER_SPOTS[i][0]}
+              y={TOWER_SPOTS[i][1]}
+              color={TOWER_COLORS[i]}
+              h={28 + ((h.accident_count || 0) / max) * 130}
+              active={hovered === i}
+              onEnter={() => setHover(i)}
+              onLeave={() => setHover(null)}
+            />
           ))}
         </motion.div>
       </div>
+
+      {/* Hover label: a flat 2D overlay, so it never rotates with the scene */}
+      {hoveredItem && (
+        <div
+          className="pointer-events-none absolute z-10 whitespace-nowrap rounded border border-slate-200 bg-white/95 px-1.5 py-0.5 text-[10px] leading-tight text-slate-700 shadow-md dark:border-asphalt-600 dark:bg-asphalt-900/95 dark:text-asphalt-200"
+          style={{
+            left: pos.flip ? pos.x - 12 : pos.x + 12,
+            top: pos.y + 12,
+            transform: pos.flip ? 'translateX(-100%)' : 'none',
+          }}
+        >
+          <span className="font-semibold text-slate-900 dark:text-asphalt-100">{hoveredItem.zone_name || 'Unnamed zone'}</span>
+          <span className="ml-1.5 text-slate-500 dark:text-asphalt-400">{hoveredItem.accident_count} accidents</span>
+        </div>
+      )}
 
       {items.length === 0 && (
         <p className="absolute inset-0 flex items-center justify-center text-sm text-slate-400 dark:text-asphalt-400">No hotspots calculated yet.</p>
@@ -195,7 +252,7 @@ function HotspotScene({ hotspots, isDark }) {
             <span className="data-num font-semibold text-slate-900 dark:text-asphalt-100">{h.accident_count}</span>
           </span>
         ))}
-        <span className="ml-auto text-slate-400 dark:text-asphalt-500">Drag to rotate · taller = more accidents</span>
+        <span className="ml-auto text-slate-400 dark:text-asphalt-500">Drag to rotate · hover a block for details · taller = more accidents</span>
       </div>
     </div>
   );
