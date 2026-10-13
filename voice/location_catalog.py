@@ -55,18 +55,48 @@ VALID_LOCATIONS = (
 _LOCATION_ALIASES = {
     "HITEC City": "Hitech City",
     "Hi Tech City": "Hitech City",
+    "Hitec": "Hitech City",
+    "Hi Tech": "Hitech City",
     "LB Nagar": "LB Nagar",
+    "L B Nagar": "LB Nagar",
+    "El Bee Nagar": "LB Nagar",
+    "Banjara": "Banjara Hills",
+    "Banjara Hill": "Banjara Hills",
+    "Jubilee hi": "Jubilee Hills",
+    "Jubilee Hill": "Jubilee Hills",
+    "Jubilee": "Jubilee Hills",
+    "Jubi Hills": "Jubilee Hills",
+    "Jupi Hills": "Jubilee Hills",
+    "Jubli Hills": "Jubilee Hills",
+    "Jubelee Hills": "Jubilee Hills",
+    "Jubi": "Jubilee Hills",
+    "Jupi": "Jubilee Hills",
+    "KPHB": "Kukatpally",
+    "KPHB Colony": "Kukatpally",
+    "Panjagutta": "Punjagutta",
+    "Secunderabad Station": "Secunderabad",
+    "Secunderabad Railway Station": "Secunderabad",
+    "Dilsukh Nagar": "Dilsukhnagar",
+    "Toli Chowki": "Tolichowki",
+    "Financial Dist": "Financial District",
 }
 
 
 def normalize_location_text(text):
-    text = unicodedata.normalize("NFKC", text).casefold()
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKC", str(text)).casefold()
     text = re.sub(r"[^\w]+", " ", text, flags=re.UNICODE)
     return " ".join(text.split())
 
 
 def canonical_location(text):
+    if not text:
+        return None
     normalized = normalize_location_text(text)
+    if not normalized:
+        return None
+
     for location in VALID_LOCATIONS:
         if normalized == normalize_location_text(location):
             return location
@@ -74,6 +104,18 @@ def canonical_location(text):
     for alias, location in _LOCATION_ALIASES.items():
         if normalized == normalize_location_text(alias):
             return location
+
+    # Fuzzy match for speech-to-text pronunciation variations (cutoff 0.70)
+    import difflib
+    valid_map = {normalize_location_text(loc): loc for loc in VALID_LOCATIONS}
+    close_valid = difflib.get_close_matches(normalized, list(valid_map.keys()), n=1, cutoff=0.70)
+    if close_valid:
+        return valid_map[close_valid[0]]
+
+    alias_map = {normalize_location_text(alias): loc for alias, loc in _LOCATION_ALIASES.items()}
+    close_alias = difflib.get_close_matches(normalized, list(alias_map.keys()), n=1, cutoff=0.70)
+    if close_alias:
+        return alias_map[close_alias[0]]
 
     return None
 
@@ -105,14 +147,14 @@ def find_location_mentions(text, ner_entities=()):
             for alias, location in _NORMALIZED_LOCATIONS + _NORMALIZED_ALIASES:
                 exact = phrase == alias
                 if not exact and (
-                    len(alias) < 5 or abs(len(alias) - len(phrase)) > 1
+                    len(alias) < 4 or abs(len(alias) - len(phrase)) > 3
                 ):
                     continue
                 if not exact and (
                     alias.startswith(phrase) or alias.endswith(phrase)
                 ):
                     continue
-                if not exact and SequenceMatcher(None, alias, phrase).ratio() < 0.86:
+                if not exact and SequenceMatcher(None, alias, phrase).ratio() < 0.75:
                     continue
                 candidates.append(
                     (

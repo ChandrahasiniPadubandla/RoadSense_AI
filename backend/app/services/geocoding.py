@@ -8,7 +8,7 @@ import urllib.request
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from geoalchemy2.functions import ST_SetSRID, ST_MakePoint
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
@@ -296,7 +296,17 @@ def geocode_location(
                 db_roads = (
                     db.query(Road)
                     .filter(Road.road_name.ilike(f"%{road_keyword}%"))
-                    .order_by(Road.road_name.asc(), Road.road_id.asc())
+                    .order_by(
+                        case(
+                            (func.lower(Road.road_name) == q_lower, 0),
+                            (func.lower(Road.road_name) == f"{road_keyword} road", 1),
+                            (func.lower(Road.road_name) == f"{road_keyword} main road", 2),
+                            (Road.road_name.ilike(f"{road_keyword}%"), 3),
+                            else_=4
+                        ),
+                        func.length(Road.road_name).asc(),
+                        Road.road_name.asc()
+                    )
                     .limit(limit)
                     .all()
                 )
@@ -367,10 +377,8 @@ def geocode_location(
                     raw_features = cached.payload
             except Exception as err:
                 db.rollback()
-                raise GeocodingError(
-                    "error",
-                    "The shared geocoding cache is unavailable. Apply database/migrations/001_geocode_suggestion_cache.sql.",
-                ) from err
+                logger.warning("Shared geocoding cache lookup failed: %s", err)
+                raw_features = None
 
         if raw_features is None:
             raw_features = _fetch_photon(clean_query)
@@ -386,18 +394,7 @@ def geocode_location(
                     db.commit()
                 except Exception as err:
                     db.rollback()
-                    # If another backend instance filled the shared key at the
-                    # same time, use its committed payload to keep responses
-                    # consistent across all instances.
-                    cached = db.query(GeocodeSuggestionCache).filter(
-                        GeocodeSuggestionCache.cache_key == provider_key
-                    ).first()
-                    if cached is None:
-                        raise GeocodingError(
-                            "error",
-                            "The shared geocoding cache could not store provider results.",
-                        ) from err
-                    raw_features = cached.payload
+                    logger.warning("Shared geocoding cache store skipped: %s", err)
 
         # Score and rank features by relevance to user query
         scored_features: List[Tuple[float, Dict[str, Any]]] = []
