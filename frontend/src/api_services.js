@@ -7,8 +7,7 @@ import axios from 'axios';
 
 // Leave the base URL empty in local proxy mode so requests use the current origin.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL;
-export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://127.0.0.1:8000';
-
+export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.62:8000';
 
 
 // Single configured Axios instance
