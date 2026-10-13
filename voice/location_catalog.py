@@ -5,19 +5,35 @@ from difflib import SequenceMatcher
 
 VALID_LOCATIONS = (
     "Abids",
+    "Alwal",
+    "Amberpet",
     "Ameerpet",
+    "Aramghar",
     "Attapur",
-    "Begumpet",
+    "Bachupally",
+    "Bahadurpura",
+    "Balanagar",
     "Banjara Hills",
     "Basheerbagh",
-    "Bachupally",
+    "Begumpet",
+    "Boduppal",
+    "Bowenpally",
+    "Chandrayangutta",
     "Charminar",
+    "Cherlapally",
+    "Chintal",
     "Dilsukhnagar",
     "ECIL",
+    "Erragadda",
+    "Falaknuma",
     "Financial District",
     "Gachibowli",
+    "Habsiguda",
+    "Hayathnagar",
     "Himayat Nagar",
     "Hitech City",
+    "IDPL",
+    "Jeedimetla",
     "Jubilee Hills",
     "Khairatabad",
     "Kompally",
@@ -25,6 +41,7 @@ VALID_LOCATIONS = (
     "Kothapet",
     "Koti",
     "Kukatpally",
+    "Kushaiguda",
     "LB Nagar",
     "Lakdikapul",
     "Madhapur",
@@ -34,14 +51,21 @@ VALID_LOCATIONS = (
     "Masab Tank",
     "Mehdipatnam",
     "Miyapur",
+    "Moosapet",
+    "Nacharam",
     "Nagole",
     "Nampally",
     "Nanakramguda",
-    "Nacharam",
-    "Punjagutta",
+    "Nizampet",
     "Paradise",
+    "Punjagutta",
     "Raidurg",
+    "Rajendranagar",
+    "Ramanthapur",
+    "SR Nagar",
     "Saidabad",
+    "Sanath Nagar",
+    "Santosh Nagar",
     "Secunderabad",
     "Shamshabad",
     "Somajiguda",
@@ -50,6 +74,7 @@ VALID_LOCATIONS = (
     "Tolichowki",
     "Uppal",
     "Uppal Road",
+    "Vanasthalipuram",
 )
 
 _LOCATION_ALIASES = {
@@ -74,6 +99,11 @@ _LOCATION_ALIASES = {
     "KPHB": "Kukatpally",
     "KPHB Colony": "Kukatpally",
     "Panjagutta": "Punjagutta",
+    "Bala Nagar": "Balanagar",
+    "Balanagar X Roads": "Balanagar",
+    "Balanagar Cross Roads": "Balanagar",
+    "IDPL Colony": "IDPL",
+    "Sanjeeva Reddy Nagar": "SR Nagar",
     "Secunderabad Station": "Secunderabad",
     "Secunderabad Railway Station": "Secunderabad",
     "Dilsukh Nagar": "Dilsukhnagar",
@@ -105,15 +135,22 @@ def canonical_location(text):
         if normalized == normalize_location_text(alias):
             return location
 
-    # Fuzzy match for speech-to-text pronunciation variations (cutoff 0.70)
+    # Fuzzy match for speech-to-text pronunciation variations (stricter cutoff 0.84)
+    # Must match the first character to prevent cross-locality false matches (e.g. "balanagar" -> "lb nagar")
     import difflib
     valid_map = {normalize_location_text(loc): loc for loc in VALID_LOCATIONS}
-    close_valid = difflib.get_close_matches(normalized, list(valid_map.keys()), n=1, cutoff=0.70)
+    same_initial_candidates = [
+        k for k in valid_map.keys() if k and normalized and k[0] == normalized[0]
+    ]
+    close_valid = difflib.get_close_matches(normalized, same_initial_candidates, n=1, cutoff=0.84)
     if close_valid:
         return valid_map[close_valid[0]]
 
     alias_map = {normalize_location_text(alias): loc for alias, loc in _LOCATION_ALIASES.items()}
-    close_alias = difflib.get_close_matches(normalized, list(alias_map.keys()), n=1, cutoff=0.70)
+    same_initial_aliases = [
+        k for k in alias_map.keys() if k and normalized and k[0] == normalized[0]
+    ]
+    close_alias = difflib.get_close_matches(normalized, same_initial_aliases, n=1, cutoff=0.84)
     if close_alias:
         return alias_map[close_alias[0]]
 

@@ -21,6 +21,10 @@ class VoiceRouteExtractResponse(BaseModel):
     success: bool
     start_location: Optional[str] = None
     end_location: Optional[str] = None
+    extracted_start_words: Optional[str] = None
+    extracted_end_words: Optional[str] = None
+    search_query_origin: Optional[str] = None
+    search_query_destination: Optional[str] = None
     start_latitude: Optional[float] = None
     start_longitude: Optional[float] = None
     end_latitude: Optional[float] = None

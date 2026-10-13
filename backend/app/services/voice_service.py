@@ -66,6 +66,22 @@ _GENERIC_QUERY_WORDS = {
     "traffic status", "traffic congestion", "accident risk",
 }
 
+# Generic infrastructure / facility suffixes that should never be standalone locations.
+_GENERIC_FRAGMENT_WORDS = {
+    "station", "metro station", "metro", "bus station", "bus stand",
+    "bus stop", "stop", "road", "street", "lane", "colony",
+    "junction", "circle", "x roads", "x road", "building", "hospital",
+    "mall", "gate", "phase", "stand", "depot", "point", "hub", "terminal",
+}
+
+
+def is_generic_fragment(text: Optional[str]) -> bool:
+    """True if text is None, empty, or just a generic facility word like 'station'."""
+    if not text:
+        return True
+    cleaned_lower = text.strip().lower()
+    return cleaned_lower in _GENERIC_FRAGMENT_WORDS or len(cleaned_lower) <= 2
+
 # Trailing time / politeness phrases that people tack onto a spoken query
 # ("... to Kondapur right now", "... to Nagole in 30 minutes"). They are not
 # part of the destination and would make the location lookup fail.
@@ -259,6 +275,8 @@ def extract_route_from_text(
     nlp = get_nlp_model()
     start_loc = None
     end_loc = None
+    raw_extracted_start = None
+    raw_extracted_end = None
     method = "none"
 
     # 1. Catalog-assisted extraction using trained NER model ents
@@ -271,6 +289,8 @@ def extract_route_from_text(
                 cat_start, cat_end = catalog_extract_route(raw_text, doc_raw.ents)
 
             if cat_start and cat_end:
+                raw_extracted_start = cat_start
+                raw_extracted_end = cat_end
                 start_loc = format_location_name(cleaned, cat_start)
                 end_loc = format_location_name(cleaned, cat_end)
                 method = "ner"
@@ -285,29 +305,46 @@ def extract_route_from_text(
             ner_start = ner_start or alt_s
             ner_end = ner_end or alt_e
 
+        # Reject generic suffixes like "station", "stop", "road"
+        if is_generic_fragment(ner_start):
+            ner_start = None
+        if is_generic_fragment(ner_end):
+            ner_end = None
+
         if ner_start and not start_loc:
+            raw_extracted_start = ner_start
             start_loc = ner_start
             method = "ner" if not end_loc else "hybrid"
         if ner_end and not end_loc:
+            raw_extracted_end = ner_end
             end_loc = ner_end
             method = "ner" if not start_loc else "hybrid"
 
-    # 3. Linguistic grammar pattern fallback (for landmarks not seen during training)
-    if not start_loc or not end_loc:
-        pat_start, pat_end = extract_locations_pattern(cleaned)
-        if not pat_start or not pat_end:
-            pat_start, pat_end = extract_locations_pattern(raw_text)
+    # 3. Linguistic grammar pattern extraction (captures full compound landmarks like "Moosapet metro station")
+    pat_start, pat_end = extract_locations_pattern(cleaned)
+    if not pat_start or not pat_end:
+        pat_start, pat_end = extract_locations_pattern(raw_text)
 
-        if not start_loc and pat_start:
+    # If pattern found a complete landmark phrase, use it to upgrade fragments or fill missing
+    if pat_start and not is_generic_fragment(pat_start):
+        if not start_loc or is_generic_fragment(start_loc) or (start_loc.lower() in pat_start.lower() and len(pat_start) > len(start_loc)):
+            raw_extracted_start = pat_start
             start_loc = pat_start
             method = "pattern" if not end_loc else "hybrid"
-        if not end_loc and pat_end:
+
+    if pat_end and not is_generic_fragment(pat_end):
+        if not end_loc or is_generic_fragment(end_loc) or (end_loc.lower() in pat_end.lower() and len(pat_end) > len(end_loc)):
+            raw_extracted_end = pat_end
             end_loc = pat_end
             method = "pattern" if not start_loc else "hybrid"
 
     # 4. Clean and normalize
     start_loc = sanitize_location(start_loc)
     end_loc = sanitize_location(end_loc)
+    if not raw_extracted_start and start_loc:
+        raw_extracted_start = start_loc
+    if not raw_extracted_end and end_loc:
+        raw_extracted_end = end_loc
 
     # Canonicalize known aliases from catalog
     if start_loc:
@@ -388,6 +425,10 @@ def extract_route_from_text(
     return {
         "start_location": start_loc,
         "end_location": end_loc,
+        "extracted_start_words": raw_extracted_start,
+        "extracted_end_words": raw_extracted_end,
+        "search_query_origin": start_loc or raw_extracted_start,
+        "search_query_destination": end_loc or raw_extracted_end,
         "start_latitude": start_lat,
         "start_longitude": start_lng,
         "end_latitude": end_lat,
