@@ -5,19 +5,35 @@ from difflib import SequenceMatcher
 
 VALID_LOCATIONS = (
     "Abids",
+    "Alwal",
+    "Amberpet",
     "Ameerpet",
+    "Aramghar",
     "Attapur",
-    "Begumpet",
+    "Bachupally",
+    "Bahadurpura",
+    "Balanagar",
     "Banjara Hills",
     "Basheerbagh",
-    "Bachupally",
+    "Begumpet",
+    "Boduppal",
+    "Bowenpally",
+    "Chandrayangutta",
     "Charminar",
+    "Cherlapally",
+    "Chintal",
     "Dilsukhnagar",
     "ECIL",
+    "Erragadda",
+    "Falaknuma",
     "Financial District",
     "Gachibowli",
+    "Habsiguda",
+    "Hayathnagar",
     "Himayat Nagar",
     "Hitech City",
+    "IDPL",
+    "Jeedimetla",
     "Jubilee Hills",
     "Khairatabad",
     "Kompally",
@@ -25,6 +41,7 @@ VALID_LOCATIONS = (
     "Kothapet",
     "Koti",
     "Kukatpally",
+    "Kushaiguda",
     "LB Nagar",
     "Lakdikapul",
     "Madhapur",
@@ -34,14 +51,21 @@ VALID_LOCATIONS = (
     "Masab Tank",
     "Mehdipatnam",
     "Miyapur",
+    "Moosapet",
+    "Nacharam",
     "Nagole",
     "Nampally",
     "Nanakramguda",
-    "Nacharam",
-    "Punjagutta",
+    "Nizampet",
     "Paradise",
+    "Punjagutta",
     "Raidurg",
+    "Rajendranagar",
+    "Ramanthapur",
+    "SR Nagar",
     "Saidabad",
+    "Sanath Nagar",
+    "Santosh Nagar",
     "Secunderabad",
     "Shamshabad",
     "Somajiguda",
@@ -50,23 +74,59 @@ VALID_LOCATIONS = (
     "Tolichowki",
     "Uppal",
     "Uppal Road",
+    "Vanasthalipuram",
 )
 
 _LOCATION_ALIASES = {
     "HITEC City": "Hitech City",
     "Hi Tech City": "Hitech City",
+    "Hitec": "Hitech City",
+    "Hi Tech": "Hitech City",
     "LB Nagar": "LB Nagar",
+    "L B Nagar": "LB Nagar",
+    "El Bee Nagar": "LB Nagar",
+    "Banjara": "Banjara Hills",
+    "Banjara Hill": "Banjara Hills",
+    "Jubilee hi": "Jubilee Hills",
+    "Jubilee Hill": "Jubilee Hills",
+    "Jubilee": "Jubilee Hills",
+    "Jubi Hills": "Jubilee Hills",
+    "Jupi Hills": "Jubilee Hills",
+    "Jubli Hills": "Jubilee Hills",
+    "Jubelee Hills": "Jubilee Hills",
+    "Jubi": "Jubilee Hills",
+    "Jupi": "Jubilee Hills",
+    "KPHB": "Kukatpally",
+    "KPHB Colony": "Kukatpally",
+    "Panjagutta": "Punjagutta",
+    "Bala Nagar": "Balanagar",
+    "Balanagar X Roads": "Balanagar",
+    "Balanagar Cross Roads": "Balanagar",
+    "IDPL Colony": "IDPL",
+    "Sanjeeva Reddy Nagar": "SR Nagar",
+    "Secunderabad Station": "Secunderabad",
+    "Secunderabad Railway Station": "Secunderabad",
+    "Dilsukh Nagar": "Dilsukhnagar",
+    "Toli Chowki": "Tolichowki",
+    "Financial Dist": "Financial District",
 }
 
 
 def normalize_location_text(text):
-    text = unicodedata.normalize("NFKC", text).casefold()
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKC", str(text)).casefold()
     text = re.sub(r"[^\w]+", " ", text, flags=re.UNICODE)
     return " ".join(text.split())
 
 
 def canonical_location(text):
+    if not text:
+        return None
     normalized = normalize_location_text(text)
+    if not normalized:
+        return None
+
     for location in VALID_LOCATIONS:
         if normalized == normalize_location_text(location):
             return location
@@ -74,6 +134,25 @@ def canonical_location(text):
     for alias, location in _LOCATION_ALIASES.items():
         if normalized == normalize_location_text(alias):
             return location
+
+    # Fuzzy match for speech-to-text pronunciation variations (stricter cutoff 0.84)
+    # Must match the first character to prevent cross-locality false matches (e.g. "balanagar" -> "lb nagar")
+    import difflib
+    valid_map = {normalize_location_text(loc): loc for loc in VALID_LOCATIONS}
+    same_initial_candidates = [
+        k for k in valid_map.keys() if k and normalized and k[0] == normalized[0]
+    ]
+    close_valid = difflib.get_close_matches(normalized, same_initial_candidates, n=1, cutoff=0.84)
+    if close_valid:
+        return valid_map[close_valid[0]]
+
+    alias_map = {normalize_location_text(alias): loc for alias, loc in _LOCATION_ALIASES.items()}
+    same_initial_aliases = [
+        k for k in alias_map.keys() if k and normalized and k[0] == normalized[0]
+    ]
+    close_alias = difflib.get_close_matches(normalized, same_initial_aliases, n=1, cutoff=0.84)
+    if close_alias:
+        return alias_map[close_alias[0]]
 
     return None
 
@@ -105,14 +184,14 @@ def find_location_mentions(text, ner_entities=()):
             for alias, location in _NORMALIZED_LOCATIONS + _NORMALIZED_ALIASES:
                 exact = phrase == alias
                 if not exact and (
-                    len(alias) < 5 or abs(len(alias) - len(phrase)) > 1
+                    len(alias) < 4 or abs(len(alias) - len(phrase)) > 3
                 ):
                     continue
                 if not exact and (
                     alias.startswith(phrase) or alias.endswith(phrase)
                 ):
                     continue
-                if not exact and SequenceMatcher(None, alias, phrase).ratio() < 0.86:
+                if not exact and SequenceMatcher(None, alias, phrase).ratio() < 0.75:
                     continue
                 candidates.append(
                     (

@@ -8,7 +8,7 @@ import urllib.request
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from geoalchemy2.functions import ST_SetSRID, ST_MakePoint
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
@@ -296,7 +296,17 @@ def geocode_location(
                 db_roads = (
                     db.query(Road)
                     .filter(Road.road_name.ilike(f"%{road_keyword}%"))
-                    .order_by(Road.road_name.asc(), Road.road_id.asc())
+                    .order_by(
+                        case(
+                            (func.lower(Road.road_name) == q_lower, 0),
+                            (func.lower(Road.road_name) == f"{road_keyword} road", 1),
+                            (func.lower(Road.road_name) == f"{road_keyword} main road", 2),
+                            (Road.road_name.ilike(f"{road_keyword}%"), 3),
+                            else_=4
+                        ),
+                        func.length(Road.road_name).asc(),
+                        Road.road_name.asc()
+                    )
                     .limit(limit)
                     .all()
                 )
