@@ -133,8 +133,27 @@ From the backend directory:
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Binding to `0.0.0.0` allows teammates on the same trusted LAN to reach this
+backend. Share this computer's LAN IP with them; they should set
+`VITE_API_BASE_URL=http://<backend-host-ip>:8000` in their local
+`frontend/.env` and restart Vite. Do not use `127.0.0.1` in their frontend
+configuration, since that points to each teammate's own computer.
+
+On Windows, allow inbound TCP port 8000 only from the trusted LAN subnet in an
+elevated PowerShell. Replace the example subnet with the subnet used by the
+backend host:
+
+```powershell
+New-NetFirewallRule -DisplayName "RoadSense Backend LAN 8000" `
+  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 `
+  -RemoteAddress "192.168.88.0/24" -Profile Public
+```
+
+Only share the backend on a network you trust. The computer running this
+backend must remain on and connected for teammates to use it.
 
 Confirm the intended shared database and required records before using
 suggestions or predictions:

@@ -16,7 +16,7 @@ as operational records or use a developer-specific database.
 ## Start from a clone (PowerShell)
 
 ```powershell
-Copy-Item backend/.env.example backend/.env
+Copy-Item backend\.env.example backend\.env
 ```
 
 Edit `backend/.env`: set `DATABASE_URL` to the same team URL used by every
@@ -31,9 +31,9 @@ Install and start the backend:
 
 ```powershell
 cd backend
-python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
 Edit `.env`:
@@ -44,7 +44,7 @@ Edit `.env`:
   files from step 2 (defaults already match the folder layout above)
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --host 0.0.0.0 --reload --port 8000
 ```
 
 Test it: open `http://localhost:8000/docs` — FastAPI's auto-generated,
@@ -59,14 +59,19 @@ interactive API explorer. Try `POST /api/auth/login` with
 ```bash
 cd .. # back to smart-traffic-dashboard root
 npm install
-cp .env.example .env
+Copy-Item .env.example .env
 ```
 
 Edit `.env`:
 ```
-VITE_API_BASE_URL=http://localhost:8000/api
+VITE_API_BASE_URL=http://<backend-host-ip>:8000
 VITE_USE_MOCK_DATA=false
 ```
+
+For shared LAN development, replace `<backend-host-ip>` with the LAN IP of the
+computer running the backend (for example, `192.168.88.4`). That computer must
+allow inbound port 8000 from the trusted LAN subnet in its firewall. Restart
+Vite after changing `.env`.
 
 ```bash
 npm run dev
