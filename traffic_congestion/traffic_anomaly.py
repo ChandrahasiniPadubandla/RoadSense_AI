@@ -98,15 +98,10 @@ def predict_anomaly(traffic_data: dict) -> dict:
     is_anomaly = bool(raw_pred == -1)
     status = "ANOMALY" if is_anomaly else "NORMAL"
 
-    # Confidence score calculation based on margin from decision boundary
-    # Decision score > 0 is normal, < 0 is anomaly
-    confidence = round(min(99.0, max(60.0, 75.0 + abs(decision_score) * 200.0)), 1)
-
     return {
         "status": status,
         "prediction": status,
         "is_anomaly": is_anomaly,
         "anomaly_score": round(decision_score, 4),
-        "confidence_score": confidence,
         "features_used": feature_row
     }
