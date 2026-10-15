@@ -7,7 +7,7 @@ import axios from 'axios';
 
 // In development, use Vite's proxy so API calls stay same-origin in the browser.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL;
-const CONFIGURED_API_ORIGIN = RAW_URL?.replace(/\/api\/?$/, '') || '';
+const CONFIGURED_API_ORIGIN = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.66:8000';
 export const API_BASE_URL = import.meta.env.DEV ? '' : CONFIGURED_API_ORIGIN;
 
 
