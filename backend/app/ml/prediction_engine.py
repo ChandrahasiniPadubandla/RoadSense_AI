@@ -571,6 +571,10 @@ def resolve_route_bundle(
 
     return {
         "road": road,
+        "start_road": start_road,
+        "end_road": end_road,
+        "start_road_id": getattr(start_road, "road_id", None) if start_road else None,
+        "end_road_id": getattr(end_road, "road_id", None) if end_road else None,
         "created_new_road": created_new_road,
         "newly_created_roads": newly_created_roads,
         "start_label": start_label,

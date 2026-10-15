@@ -295,24 +295,26 @@ def export_report(
         roads = db.query(Road).filter(Road.is_active == True).all()
 
         t_sub = (
-            db.query(TrafficPrediction.road_id, func.max(TrafficPrediction.created_at).label("max_ts"))
-            .group_by(TrafficPrediction.road_id)
+            db.query(TrafficPrediction.start_road_id.label("road_id"), func.max(TrafficPrediction.created_at).label("max_ts"))
+            .filter(TrafficPrediction.start_road_id.isnot(None))
+            .group_by(TrafficPrediction.start_road_id)
             .subquery()
         )
         latest_traffic_preds = {
-            tp.road_id: tp for tp in db.query(TrafficPrediction).join(
-                t_sub, and_(TrafficPrediction.road_id == t_sub.c.road_id, TrafficPrediction.created_at == t_sub.c.max_ts)
+            tp.start_road_id: tp for tp in db.query(TrafficPrediction).join(
+                t_sub, and_(TrafficPrediction.start_road_id == t_sub.c.road_id, TrafficPrediction.created_at == t_sub.c.max_ts)
             ).all()
         }
 
         a_sub = (
-            db.query(AccidentPrediction.road_id, func.max(AccidentPrediction.created_at).label("max_ts"))
-            .group_by(AccidentPrediction.road_id)
+            db.query(AccidentPrediction.start_road_id.label("road_id"), func.max(AccidentPrediction.created_at).label("max_ts"))
+            .filter(AccidentPrediction.start_road_id.isnot(None))
+            .group_by(AccidentPrediction.start_road_id)
             .subquery()
         )
         latest_acc_preds = {
-            ap.road_id: ap for ap in db.query(AccidentPrediction).join(
-                a_sub, and_(AccidentPrediction.road_id == a_sub.c.road_id, AccidentPrediction.created_at == a_sub.c.max_ts)
+            ap.start_road_id: ap for ap in db.query(AccidentPrediction).join(
+                a_sub, and_(AccidentPrediction.start_road_id == a_sub.c.road_id, AccidentPrediction.created_at == a_sub.c.max_ts)
             ).all()
         }
 

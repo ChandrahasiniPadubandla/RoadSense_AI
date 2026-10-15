@@ -4,7 +4,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 
 from app.database.connection import get_db
 from app.database.models import (
@@ -32,14 +32,28 @@ router = APIRouter(
 
 
 def _format_traffic_response(p: TrafficPrediction, road_name: Optional[str] = None) -> TrafficPredictionResponse:
-    r_name = road_name or (p.road.road_name if p.road else None)
+    if p.start_location and p.end_location:
+        r_name = f"{p.start_location} → {p.end_location}"
+    elif road_name:
+        r_name = road_name
+    elif p.start_road and p.start_road.road_name:
+        r_name = p.start_road.road_name
+    elif p.end_road and p.end_road.road_name:
+        r_name = p.end_road.road_name
+    else:
+        r_name = p.start_location or p.end_location or "Route Segment"
+
     target_dt = p.target_time or datetime.utcnow()
     est_time = format_estimated_time(target_dt)
     cong = p.predicted_congestion.upper() if p.predicted_congestion else None
 
     return TrafficPredictionResponse(
         prediction_id=p.prediction_id,
-        road_id=p.road_id,
+        start_road_id=p.start_road_id,
+        end_road_id=p.end_road_id,
+        start_location=p.start_location,
+        end_location=p.end_location,
+        distance_km=float(p.distance_km) if p.distance_km is not None else None,
         road_name=r_name,
         prediction_time=p.prediction_time,
         target_time=target_dt,
@@ -110,9 +124,13 @@ def predict_route_traffic(
     ml_result = trigger_ml_traffic_model(bundle)
     pred_record = None
 
-    if req.persist and bundle["road"] and getattr(bundle["road"], "road_id", None) is not None:
+    if req.persist:
         pred_record = TrafficPrediction(
-            road_id=bundle["road"].road_id,
+            start_road_id=bundle.get("start_road_id"),
+            end_road_id=bundle.get("end_road_id"),
+            start_location=bundle.get("start_label"),
+            end_location=bundle.get("end_label"),
+            distance_km=bundle.get("distance_km"),
             prediction_time=now,
             target_time=target_time,
             predicted_congestion=ml_result["congestion_level"],
@@ -122,13 +140,14 @@ def predict_route_traffic(
         )
         db.add(pred_record)
 
-        if ml_result["congestion_level"] == "SEVERE":
+        alert_road_id = bundle.get("start_road_id") or bundle.get("end_road_id")
+        if ml_result["congestion_level"] == "SEVERE" and alert_road_id:
             alert = Alert(
-                road_id=bundle["road"].road_id,
+                road_id=alert_road_id,
                 prediction_id=pred_record.prediction_id,
                 alert_type="PREDICTED_CONGESTION",
                 severity="CRITICAL",
-                message=f"Severe congestion predicted on {bundle['road'].road_name} for {ml_result['estimated_time']}.",
+                message=f"Severe congestion predicted between {bundle.get('start_label')} and {bundle.get('end_label')} for {ml_result['estimated_time']}.",
                 status="ACTIVE",
                 created_at=now
             )
@@ -183,7 +202,8 @@ def predict_route_traffic(
 
     return RouteTrafficPredictionResponse(
         prediction_id=pred_record.prediction_id if pred_record else None,
-        road_id=bundle["road"].road_id if bundle["road"] else None,
+        start_road_id=bundle.get("start_road_id"),
+        end_road_id=bundle.get("end_road_id"),
         road_name=bundle["road_conditions"]["road_name"],
         created_new_road=bundle.get("created_new_road", False),
         newly_created_roads=bundle.get("newly_created_roads", []),
@@ -223,30 +243,14 @@ def predict_route_traffic(
 def get_latest_traffic_predictions(
     db: Session = Depends(get_db)
 ):
-    subquery = (
-        db.query(
-            TrafficPrediction.road_id,
-            func.max(TrafficPrediction.created_at).label("max_created")
-        )
-        .group_by(TrafficPrediction.road_id)
-        .subquery()
-    )
-
     records = (
-        db.query(TrafficPrediction, Road.road_name)
-        .join(
-            subquery,
-            and_(
-                TrafficPrediction.road_id == subquery.c.road_id,
-                TrafficPrediction.created_at == subquery.c.max_created
-            )
-        )
-        .join(Road, TrafficPrediction.road_id == Road.road_id)
-        .order_by(TrafficPrediction.target_time.asc())
+        db.query(TrafficPrediction)
+        .order_by(TrafficPrediction.created_at.desc())
+        .limit(20)
         .all()
     )
 
-    return [_format_traffic_response(p, road_name) for p, road_name in records]
+    return [_format_traffic_response(p) for p in records]
 
 
 @router.get(
@@ -268,7 +272,12 @@ def get_road_traffic_predictions(
 
     records = (
         db.query(TrafficPrediction)
-        .filter(TrafficPrediction.road_id == road_id)
+        .filter(
+            or_(
+                TrafficPrediction.start_road_id == road_id,
+                TrafficPrediction.end_road_id == road_id
+            )
+        )
         .order_by(TrafficPrediction.target_time.desc())
         .limit(limit)
         .all()
@@ -292,24 +301,26 @@ def get_prediction_summary(
     roads = db.query(Road).filter(Road.is_active == True).all()
 
     t_sub = (
-        db.query(TrafficPrediction.road_id, func.max(TrafficPrediction.created_at).label("max_ts"))
-        .group_by(TrafficPrediction.road_id)
+        db.query(TrafficPrediction.start_road_id.label("road_id"), func.max(TrafficPrediction.created_at).label("max_ts"))
+        .filter(TrafficPrediction.start_road_id.isnot(None))
+        .group_by(TrafficPrediction.start_road_id)
         .subquery()
     )
     latest_traffic_preds = {
-        tp.road_id: tp for tp in db.query(TrafficPrediction).join(
-            t_sub, and_(TrafficPrediction.road_id == t_sub.c.road_id, TrafficPrediction.created_at == t_sub.c.max_ts)
+        tp.start_road_id: tp for tp in db.query(TrafficPrediction).join(
+            t_sub, and_(TrafficPrediction.start_road_id == t_sub.c.road_id, TrafficPrediction.created_at == t_sub.c.max_ts)
         ).all()
     }
 
     a_sub = (
-        db.query(AccidentPrediction.road_id, func.max(AccidentPrediction.created_at).label("max_ts"))
-        .group_by(AccidentPrediction.road_id)
+        db.query(AccidentPrediction.start_road_id.label("road_id"), func.max(AccidentPrediction.created_at).label("max_ts"))
+        .filter(AccidentPrediction.start_road_id.isnot(None))
+        .group_by(AccidentPrediction.start_road_id)
         .subquery()
     )
     latest_acc_preds = {
-        ap.road_id: ap for ap in db.query(AccidentPrediction).join(
-            a_sub, and_(AccidentPrediction.road_id == a_sub.c.road_id, AccidentPrediction.created_at == a_sub.c.max_ts)
+        ap.start_road_id: ap for ap in db.query(AccidentPrediction).join(
+            a_sub, and_(AccidentPrediction.start_road_id == a_sub.c.road_id, AccidentPrediction.created_at == a_sub.c.max_ts)
         ).all()
     }
 

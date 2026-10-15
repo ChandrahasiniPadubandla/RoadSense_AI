@@ -149,7 +149,7 @@ def test_accident_prediction_geocodes_and_creates_searched_road_if_missing():
         # Clean up test records from DB
         from app.database.models import AccidentPrediction, Alert
         db.query(Alert).filter(Alert.road_id == created_road.road_id).delete()
-        db.query(AccidentPrediction).filter(AccidentPrediction.road_id == created_road.road_id).delete()
+        db.query(AccidentPrediction).filter(AccidentPrediction.start_road_id == created_road.road_id).delete()
         db.delete(created_road)
         db.commit()
     finally:

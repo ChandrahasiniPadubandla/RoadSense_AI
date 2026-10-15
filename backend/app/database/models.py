@@ -307,7 +307,11 @@ class TrafficPrediction(Base):
     __tablename__ = "traffic_predictions"
 
     prediction_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
-    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False)
+    start_road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=True)
+    end_road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=True)
+    start_location = Column(String(255), nullable=True)
+    end_location = Column(String(255), nullable=True)
+    distance_km = Column(Numeric(6, 2), nullable=True)
     prediction_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     target_time = Column(DateTime, nullable=False)
     predicted_congestion = Column(String(20))
@@ -316,7 +320,8 @@ class TrafficPrediction(Base):
     model_version_id = Column(Uuid, ForeignKey("model_versions.model_version_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    road = relationship("Road")
+    start_road = relationship("Road", foreign_keys=[start_road_id])
+    end_road = relationship("Road", foreign_keys=[end_road_id])
     model_version = relationship("ModelVersion")
 
 
@@ -324,7 +329,11 @@ class AccidentPrediction(Base):
     __tablename__ = "accident_predictions"
 
     prediction_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
-    road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=False)
+    start_road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=True)
+    end_road_id = Column(Uuid, ForeignKey("roads.road_id"), nullable=True)
+    start_location = Column(String(255), nullable=True)
+    end_location = Column(String(255), nullable=True)
+    distance_km = Column(Numeric(6, 2), nullable=True)
     prediction_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     risk_percentage = Column(Numeric(5, 2))
     risk_level = Column(String(20))
@@ -332,7 +341,8 @@ class AccidentPrediction(Base):
     model_version_id = Column(Uuid, ForeignKey("model_versions.model_version_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    road = relationship("Road")
+    start_road = relationship("Road", foreign_keys=[start_road_id])
+    end_road = relationship("Road", foreign_keys=[end_road_id])
     model_version = relationship("ModelVersion")
 
 

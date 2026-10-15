@@ -100,10 +100,11 @@ def get_traffic_layer(
     # 2. Get latest AI traffic prediction for each road (primary source)
     latest_pred_sub = (
         db.query(
-            TrafficPrediction.road_id,
+            TrafficPrediction.start_road_id.label("road_id"),
             func.max(TrafficPrediction.created_at).label("max_created")
         )
-        .group_by(TrafficPrediction.road_id)
+        .filter(TrafficPrediction.start_road_id.isnot(None))
+        .group_by(TrafficPrediction.start_road_id)
         .subquery()
     )
 
@@ -112,7 +113,7 @@ def get_traffic_layer(
         .join(
             latest_pred_sub,
             and_(
-                TrafficPrediction.road_id == latest_pred_sub.c.road_id,
+                TrafficPrediction.start_road_id == latest_pred_sub.c.road_id,
                 TrafficPrediction.created_at == latest_pred_sub.c.max_created
             )
         )
@@ -120,7 +121,7 @@ def get_traffic_layer(
     )
 
     pred_by_road: dict[UUID, TrafficPrediction] = {
-        p.road_id: p for p in latest_predictions
+        p.start_road_id: p for p in latest_predictions if p.start_road_id is not None
     }
 
     # 3. Get latest traffic telemetry record for each road (secondary telemetry source)

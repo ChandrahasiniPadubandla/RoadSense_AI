@@ -5,7 +5,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 
 from app.database.connection import get_db
 from app.database.models import (
@@ -139,10 +139,24 @@ def predict_accident_risk_route(
 
 
 def _format_accident_response(p: AccidentPrediction, road_name: Optional[str] = None) -> AccidentPredictionResponse:
-    r_name = road_name or (p.road.road_name if p.road else None)
+    if p.start_location and p.end_location:
+        r_name = f"{p.start_location} → {p.end_location}"
+    elif road_name:
+        r_name = road_name
+    elif p.start_road and p.start_road.road_name:
+        r_name = p.start_road.road_name
+    elif p.end_road and p.end_road.road_name:
+        r_name = p.end_road.road_name
+    else:
+        r_name = p.start_location or p.end_location or "Route Segment"
+
     return AccidentPredictionResponse(
         prediction_id=p.prediction_id,
-        road_id=p.road_id,
+        start_road_id=p.start_road_id,
+        end_road_id=p.end_road_id,
+        start_location=p.start_location,
+        end_location=p.end_location,
+        distance_km=float(p.distance_km) if p.distance_km is not None else None,
         road_name=r_name,
         prediction_time=p.prediction_time,
         risk_percentage=float(p.risk_percentage),
@@ -201,9 +215,13 @@ def predict_route_accident(
     ml_result = trigger_ml_accident_model(bundle)
     pred_record = None
 
-    if req.persist and bundle["road"] and getattr(bundle["road"], "road_id", None) is not None:
+    if req.persist:
         pred_record = AccidentPrediction(
-            road_id=bundle["road"].road_id,
+            start_road_id=bundle.get("start_road_id"),
+            end_road_id=bundle.get("end_road_id"),
+            start_location=bundle.get("start_label"),
+            end_location=bundle.get("end_label"),
+            distance_km=bundle.get("distance_km"),
             prediction_time=now,
             risk_percentage=ml_result["risk_percentage"],
             risk_level=ml_result["risk_level"],
@@ -212,9 +230,10 @@ def predict_route_accident(
         )
         db.add(pred_record)
 
-        if ml_result["risk_level"] in ["HIGH", "SEVERE", "CRITICAL"]:
+        alert_road_id = bundle.get("start_road_id") or bundle.get("end_road_id")
+        if ml_result["risk_level"] in ["HIGH", "SEVERE", "CRITICAL"] and alert_road_id:
             alert = Alert(
-                road_id=bundle["road"].road_id,
+                road_id=alert_road_id,
                 prediction_id=pred_record.prediction_id,
                 alert_type="ACCIDENT_RISK_WARNING",
                 severity="CRITICAL" if ml_result["risk_level"] in ["CRITICAL", "SEVERE"] else "HIGH",
@@ -241,7 +260,7 @@ def predict_route_accident(
                 risk_level=ml_result["risk_level"],
                 risk_score=float(ml_result["risk_percentage"]),
                 accident_count=int(bundle.get("historical_accidents_count") or 1),
-                zone_id=bundle["road"].zone_id,
+                zone_id=bundle["road"].zone_id if bundle.get("road") else None,
                 calculated_at=now
             )
 
@@ -250,7 +269,8 @@ def predict_route_accident(
 
     return RouteAccidentPredictionResponse(
         prediction_id=pred_record.prediction_id if pred_record else None,
-        road_id=bundle["road"].road_id if bundle["road"] else None,
+        start_road_id=bundle.get("start_road_id"),
+        end_road_id=bundle.get("end_road_id"),
         road_name=bundle["road_conditions"]["road_name"],
         created_new_road=bundle.get("created_new_road", False),
         newly_created_roads=bundle.get("newly_created_roads", []),
@@ -329,7 +349,10 @@ def run_accident_prediction(
     pred_record = None
     if req.persist:
         pred_record = AccidentPrediction(
-            road_id=req.road_id,
+            start_road_id=road.road_id,
+            end_road_id=road.road_id,
+            start_location=road.road_name,
+            end_location=road.road_name,
             prediction_time=now,
             risk_percentage=ml_result["risk_percentage"],
             risk_level=ml_result["risk_level"],
@@ -418,7 +441,10 @@ def store_accident_prediction(
     risk_level = pred_in.risk_level.upper()
 
     pred = AccidentPrediction(
-        road_id=pred_in.road_id,
+        start_road_id=road.road_id,
+        end_road_id=road.road_id,
+        start_location=road.road_name,
+        end_location=road.road_name,
         prediction_time=now,
         risk_percentage=pred_in.risk_percentage,
         risk_level=risk_level,
@@ -497,7 +523,10 @@ def run_accident_pipeline(
         ml_result = trigger_ml_accident_model(bundle)
 
         pred = AccidentPrediction(
-            road_id=road.road_id,
+            start_road_id=road.road_id,
+            end_road_id=road.road_id,
+            start_location=road.road_name,
+            end_location=road.road_name,
             prediction_time=now,
             risk_percentage=ml_result["risk_percentage"],
             risk_level=ml_result["risk_level"],
@@ -568,30 +597,14 @@ def run_accident_pipeline(
 def get_latest_accident_predictions(
     db: Session = Depends(get_db)
 ):
-    subquery = (
-        db.query(
-            AccidentPrediction.road_id,
-            func.max(AccidentPrediction.created_at).label("max_created")
-        )
-        .group_by(AccidentPrediction.road_id)
-        .subquery()
-    )
-
     records = (
-        db.query(AccidentPrediction, Road.road_name)
-        .join(
-            subquery,
-            and_(
-                AccidentPrediction.road_id == subquery.c.road_id,
-                AccidentPrediction.created_at == subquery.c.max_created
-            )
-        )
-        .join(Road, AccidentPrediction.road_id == Road.road_id)
-        .order_by(AccidentPrediction.risk_percentage.desc())
+        db.query(AccidentPrediction)
+        .order_by(AccidentPrediction.created_at.desc())
+        .limit(20)
         .all()
     )
 
-    return [_format_accident_response(p, road_name) for p, road_name in records]
+    return [_format_accident_response(p) for p in records]
 
 
 @router.get(
@@ -613,7 +626,12 @@ def get_road_accident_predictions(
 
     records = (
         db.query(AccidentPrediction)
-        .filter(AccidentPrediction.road_id == road_id)
+        .filter(
+            or_(
+                AccidentPrediction.start_road_id == road_id,
+                AccidentPrediction.end_road_id == road_id
+            )
+        )
         .order_by(AccidentPrediction.prediction_time.desc())
         .limit(limit)
         .all()

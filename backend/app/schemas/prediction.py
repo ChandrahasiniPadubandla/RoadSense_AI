@@ -89,7 +89,11 @@ class TrafficPredictionCreate(BaseModel):
 class TrafficPredictionResponse(BaseModel):
     """Standard traffic prediction response stored in database."""
     prediction_id: UUID
-    road_id: UUID
+    start_road_id: Optional[UUID] = None
+    end_road_id: Optional[UUID] = None
+    start_location: Optional[str] = None
+    end_location: Optional[str] = None
+    distance_km: Optional[float] = None
     road_name: Optional[str] = None
     prediction_time: datetime
     target_time: datetime
@@ -191,7 +195,11 @@ class AccidentPredictionCreate(BaseModel):
 class AccidentPredictionResponse(BaseModel):
     """Standard accident prediction response stored in database."""
     prediction_id: UUID
-    road_id: UUID
+    start_road_id: Optional[UUID] = None
+    end_road_id: Optional[UUID] = None
+    start_location: Optional[str] = None
+    end_location: Optional[str] = None
+    distance_km: Optional[float] = None
     road_name: Optional[str] = None
     prediction_time: datetime
     risk_percentage: float
@@ -293,7 +301,8 @@ class RouteTrafficPredictionResponse(BaseModel):
     Outputs congestion_level and estimated_time window (e.g. '4:00 PM - 5:00 PM').
     """
     prediction_id: Optional[UUID] = None
-    road_id: Optional[UUID] = None
+    start_road_id: Optional[UUID] = None
+    end_road_id: Optional[UUID] = None
     road_name: str
     start_location: str
     end_location: str
@@ -345,7 +354,8 @@ class RouteAccidentPredictionResponse(BaseModel):
     Outputs risk_percentage and categorical risk_level.
     """
     prediction_id: Optional[UUID] = None
-    road_id: Optional[UUID] = None
+    start_road_id: Optional[UUID] = None
+    end_road_id: Optional[UUID] = None
     road_name: str
     start_location: str
     end_location: str

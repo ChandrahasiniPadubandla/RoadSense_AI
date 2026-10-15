@@ -314,7 +314,15 @@ CREATE TABLE model_versions (
 CREATE TABLE traffic_predictions (
     prediction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id UUID NOT NULL,
+    start_road_id UUID,
+
+    end_road_id UUID,
+
+    start_location VARCHAR(255),
+
+    end_location VARCHAR(255),
+
+    distance_km DECIMAL(6,2),
 
     prediction_time TIMESTAMP NOT NULL,
 
@@ -330,9 +338,15 @@ CREATE TABLE traffic_predictions (
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_traffic_prediction_road
-        FOREIGN KEY (road_id)
-        REFERENCES roads(road_id),
+    CONSTRAINT fk_traffic_prediction_start_road
+        FOREIGN KEY (start_road_id)
+        REFERENCES roads(road_id)
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_traffic_prediction_end_road
+        FOREIGN KEY (end_road_id)
+        REFERENCES roads(road_id)
+        ON DELETE SET NULL,
 
     CONSTRAINT fk_traffic_prediction_model
         FOREIGN KEY (model_version_id)
@@ -347,7 +361,15 @@ CREATE TABLE traffic_predictions (
 CREATE TABLE accident_predictions (
     prediction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    road_id UUID NOT NULL,
+    start_road_id UUID,
+
+    end_road_id UUID,
+
+    start_location VARCHAR(255),
+
+    end_location VARCHAR(255),
+
+    distance_km DECIMAL(6,2),
 
     prediction_time TIMESTAMP NOT NULL,
 
@@ -361,9 +383,15 @@ CREATE TABLE accident_predictions (
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_accident_prediction_road
-        FOREIGN KEY (road_id)
-        REFERENCES roads(road_id),
+    CONSTRAINT fk_accident_prediction_start_road
+        FOREIGN KEY (start_road_id)
+        REFERENCES roads(road_id)
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_accident_prediction_end_road
+        FOREIGN KEY (end_road_id)
+        REFERENCES roads(road_id)
+        ON DELETE SET NULL,
 
     CONSTRAINT fk_accident_prediction_model
         FOREIGN KEY (model_version_id)

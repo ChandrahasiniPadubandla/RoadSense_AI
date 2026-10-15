@@ -47,10 +47,11 @@ def get_dashboard_stats(
     # Subquery for the most recent AI traffic prediction for each road (primary source)
     latest_pred_sub = (
         db.query(
-            TrafficPrediction.road_id,
+            TrafficPrediction.start_road_id.label("road_id"),
             func.max(TrafficPrediction.created_at).label("max_created")
         )
-        .group_by(TrafficPrediction.road_id)
+        .filter(TrafficPrediction.start_road_id.isnot(None))
+        .group_by(TrafficPrediction.start_road_id)
         .subquery()
     )
 
@@ -59,14 +60,14 @@ def get_dashboard_stats(
         .join(
             latest_pred_sub,
             and_(
-                TrafficPrediction.road_id == latest_pred_sub.c.road_id,
+                TrafficPrediction.start_road_id == latest_pred_sub.c.road_id,
                 TrafficPrediction.created_at == latest_pred_sub.c.max_created
             )
         )
         .all()
     )
 
-    pred_by_road = {p.road_id: p for p in latest_predictions}
+    pred_by_road = {p.start_road_id: p for p in latest_predictions if p.start_road_id is not None}
 
     # Subquery for the most recent traffic record for each road (telemetry source)
     latest_traffic_sub = (

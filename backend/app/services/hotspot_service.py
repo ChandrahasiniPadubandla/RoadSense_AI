@@ -148,7 +148,7 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
         # Query real average prediction risk for roads in this zone
         avg_pred_risk = (
             db.query(func.avg(AccidentPrediction.risk_percentage))
-            .join(Road, Road.road_id == AccidentPrediction.road_id)
+            .join(Road, Road.road_id == AccidentPrediction.start_road_id)
             .filter(Road.zone_id == zone_id)
             .scalar()
         )
