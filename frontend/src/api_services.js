@@ -454,6 +454,9 @@ export async function getLatestAccidentPredictions() {
  *   { prediction_id, road_id, road_name, congestion_level, estimated_time,
  *     target_time, predicted_congestion, predicted_vehicle_count,
  *     confidence_score, class_probabilities, created_at }
+ *
+ * @deprecated Single-road predictions have been retired. Use predictRouteTraffic
+ * (POST /api/predictions/traffic/route) with start_location / end_location instead.
  */
 export async function predictTraffic(payload) {
   const { data } = await apiClient.post('/api/predictions/traffic/predict', payload);

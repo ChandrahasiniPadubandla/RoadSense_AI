@@ -1289,7 +1289,7 @@ export default function TrafficPrediction() {
 
               {
                 key: 'road_name',
-                header: 'Road',
+                header: 'Route (Origin → Destination)',
               },
 
               {
@@ -1337,7 +1337,7 @@ export default function TrafficPrediction() {
 
             ]}
 
-            rows={recent}
+            rows={recent.map((r) => ({ ...r, id: r.prediction_id }))}
 
             emptyMessage="No traffic predictions recorded yet."
 
