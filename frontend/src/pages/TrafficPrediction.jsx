@@ -1104,11 +1104,7 @@ export default function TrafficPrediction() {
         ? 'Unusual traffic pattern or unexpected volume surge detected along this corridor.'
         : 'Traffic patterns are conforming to normal historical parameters.'}
 
-      {result.anomaly_detection.anomaly_score != null && (
-        <span className="ml-1 font-mono text-gray-700 dark:text-gray-400">
-          (score: {result.anomaly_detection.anomaly_score.toFixed(4)})
-        </span>
-      )}
+      
     </p>
   </div>
 )}

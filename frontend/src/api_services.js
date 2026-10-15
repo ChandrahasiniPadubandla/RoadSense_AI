@@ -5,9 +5,10 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// Leave the base URL empty in local proxy mode so requests use the current origin.
+// In development, use Vite's proxy so API calls stay same-origin in the browser.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL;
-export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.62:8000';
+const CONFIGURED_API_ORIGIN = RAW_URL?.replace(/\/api\/?$/, '') || '';
+export const API_BASE_URL = import.meta.env.DEV ? '' : CONFIGURED_API_ORIGIN;
 
 
 // Single configured Axios instance
