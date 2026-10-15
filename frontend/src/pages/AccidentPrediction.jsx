@@ -2799,7 +2799,7 @@ export default function AccidentPrediction() {
 
                 key: 'road_name',
 
-                header: 'Road',
+                header: 'Route (Origin → Destination)',
 
               },
 
@@ -2941,7 +2941,7 @@ export default function AccidentPrediction() {
 
 
 
-            rows={recent}
+            rows={recent.map((r) => ({ ...r, id: r.prediction_id }))}
 
 
 
