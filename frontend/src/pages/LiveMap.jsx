@@ -23,6 +23,8 @@ import {
   predictRouteAccident,
 } from '../api_services';
 import VoiceAssistant from '../components/VoiceAssistant';
+import ThreeDTravelMarker from '../components/ThreeDTravelMarker';
+import { speak, cancelSpeech } from '../hooks/useSpeechRecognition';
 
 // Background traffic-road layer colors (unchanged 4-tier scale, used for the
 // city-wide road overlay you toggle in "Layers").
@@ -132,6 +134,50 @@ function createPinIcon(color, label) {
 const START_PIN = createPinIcon('#1E8E3E', 'A'); // Google Maps green
 const END_PIN = createPinIcon('#EA4335', 'B'); // Google Maps red
 const SEARCH_PIN = createPinIcon('#4285F4', ''); // Google Maps blue
+
+// Snap a GPS reading to the nearest point on the displayed route so the
+// navigation marker stays on the route line despite small GPS inaccuracies.
+function nearestPointOnRoute(point, coordinates, startSegmentIndex = 0) {
+  if (!coordinates || coordinates.length < 2) return null;
+
+  const [lat, lng] = point;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  let closest = null;
+  let closestDistanceMeters = Infinity;
+  let scannedRouteMeters = 0;
+
+  // Only inspect the next 500 m of route. This prevents a GPS fix near the
+  // destination from snapping the model there before the user starts moving.
+  for (let i = startSegmentIndex; i < coordinates.length - 1; i += 1) {
+    const [lat1, lng1] = coordinates[i];
+    const [lat2, lng2] = coordinates[i + 1];
+    const segmentMeters = haversineMeters(lat1, lng1, lat2, lng2);
+    if (scannedRouteMeters > 500) break;
+    scannedRouteMeters += segmentMeters;
+    const x1 = (lng1 - lng) * cosLat;
+    const y1 = lat1 - lat;
+    const x2 = (lng2 - lng) * cosLat;
+    const y2 = lat2 - lat;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / lengthSquared));
+    const snappedLat = lat1 + t * (lat2 - lat1);
+    const snappedLng = lng1 + t * (lng2 - lng1);
+    const distanceMeters = haversineMeters(lat, lng, snappedLat, snappedLng);
+
+    if (distanceMeters < closestDistanceMeters) {
+      closestDistanceMeters = distanceMeters;
+      closest = { position: [snappedLat, snappedLng], segmentIndex: i };
+    }
+  }
+
+  // Ignore GPS readings too far from the route; keep the marker at its last
+  // valid route position until the user reaches the route.
+  return closestDistanceMeters <= 120 ? closest : null;
+}
 
 // Turn-by-turn maneuver -> simple directional glyph (kept dependency-free;
 // swap for an icon set later if desired).
@@ -395,8 +441,13 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
   // ---------------------------------------------------------------------
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const currentStepIndexRef = useRef(0);
+  const [navHeading, setNavHeading] = useState(0);
   const [navError, setNavError] = useState('');
   const watchIdRef = useRef(null);
+  const announcedManeuversRef = useRef(new Set());
+  const routeProgressIndexRef = useRef(0);
+  const navigationRouteStartedRef = useRef(false);
 
   function startNavigation() {
     if (!navigator.geolocation) {
@@ -408,20 +459,72 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
       return;
     }
     setNavError('');
+    currentStepIndexRef.current = 0;
     setCurrentStepIndex(0);
+    announcedManeuversRef.current.clear();
+    routeProgressIndexRef.current = 0;
+    navigationRouteStartedRef.current = false;
+    const routeStart = routeGeometry?.[0] || [startPoint.lat, startPoint.lng];
+    setUserLocation({ lat: routeStart[0], lng: routeStart[1] });
+    setFlyTarget(routeStart);
     setIsNavigating(true);
+    speak('Navigation started. Follow the route.', 'en-IN');
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        setUserLocation({ lat, lng });
-        setFlyTarget([lat, lng]);
+        if (Number.isFinite(pos.coords.heading)) setNavHeading(pos.coords.heading);
+        const routeStartCoordinate = routeGeometry?.[0] || [startPoint.lat, startPoint.lng];
+        if (
+          !navigationRouteStartedRef.current &&
+          haversineMeters(lat, lng, routeStartCoordinate[0], routeStartCoordinate[1]) <= 150
+        ) {
+          navigationRouteStartedRef.current = true;
+        }
+
+        if (navigationRouteStartedRef.current && routeGeometry?.length > 1) {
+          const snapped = nearestPointOnRoute(
+            [lat, lng],
+            routeGeometry,
+            routeProgressIndexRef.current
+          );
+          if (snapped) {
+            routeProgressIndexRef.current = snapped.segmentIndex;
+            setUserLocation({ lat: snapped.position[0], lng: snapped.position[1] });
+            setFlyTarget(snapped.position);
+          }
+        }
+
+        // Speak each upcoming maneuver once, when the user is about 200 m away.
+        for (let i = currentStepIndexRef.current + 1; navigationRouteStartedRef.current && i < routeInfo.steps.length; i += 1) {
+          const step = routeInfo.steps[i];
+          if (!step.coordinates || announcedManeuversRef.current.has(i)) continue;
+          if (step.maneuver_type === 'arrive') continue;
+          const distanceToManeuver = haversineMeters(
+            lat,
+            lng,
+            step.coordinates[0],
+            step.coordinates[1]
+          );
+          if (distanceToManeuver <= 200) {
+            announcedManeuversRef.current.add(i);
+            const instruction = step.instruction || 'Continue along the route';
+            const distanceLabel = Math.max(50, Math.round(distanceToManeuver / 50) * 50);
+            speak(
+              distanceToManeuver <= 50
+                ? `Now, ${instruction}.`
+                : `In about ${distanceLabel} meters, ${instruction}.`,
+              'en-IN'
+            );
+            break;
+          }
+        }
 
         // Advance to whichever upcoming step's maneuver point is now
         // closest — a simple but effective way to track progress without
         // needing full route map-matching.
-        setCurrentStepIndex((prevIndex) => {
+        if (navigationRouteStartedRef.current) setCurrentStepIndex((prevIndex) => {
           const steps = routeInfo.steps;
           let bestIndex = prevIndex;
           let bestDist = Infinity;
@@ -439,6 +542,7 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
               bestIndex = Math.min(i + 1, steps.length - 1);
             }
           }
+          currentStepIndexRef.current = bestIndex;
           return bestIndex;
         });
       },
@@ -455,7 +559,12 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
       watchIdRef.current = null;
     }
     setIsNavigating(false);
+    currentStepIndexRef.current = 0;
     setCurrentStepIndex(0);
+    announcedManeuversRef.current.clear();
+    routeProgressIndexRef.current = 0;
+    navigationRouteStartedRef.current = false;
+    cancelSpeech();
   }
 
   useEffect(() => {
@@ -1324,22 +1433,30 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
           </Marker>
         )}
 
-        {/* "My location" - Google-Maps-style blue dot with halo */}
+        {/* Render the selected 3D model at the live GPS position snapped to route. */}
         {userLocation && (
-          <>
-            <CircleMarker
-              center={[userLocation.lat, userLocation.lng]}
-              radius={14}
-              pathOptions={{ color: 'transparent', fillColor: '#4285F4', fillOpacity: 0.18, weight: 0 }}
+          isNavigating ? (
+            <ThreeDTravelMarker
+              position={[userLocation.lat, userLocation.lng]}
+              mode={travelMode}
+              heading={navHeading}
             />
-            <CircleMarker
-              center={[userLocation.lat, userLocation.lng]}
-              radius={7}
-              pathOptions={{ color: '#ffffff', fillColor: '#4285F4', fillOpacity: 1, weight: 3 }}
-            >
-              <Tooltip>You are here</Tooltip>
-            </CircleMarker>
-          </>
+          ) : (
+            <>
+              <CircleMarker
+                center={[userLocation.lat, userLocation.lng]}
+                radius={14}
+                pathOptions={{ color: 'transparent', fillColor: '#4285F4', fillOpacity: 0.18, weight: 0 }}
+              />
+              <CircleMarker
+                center={[userLocation.lat, userLocation.lng]}
+                radius={7}
+                pathOptions={{ color: '#ffffff', fillColor: '#4285F4', fillOpacity: 1, weight: 3 }}
+              >
+                <Tooltip>You are here</Tooltip>
+              </CircleMarker>
+            </>
+          )
         )}
       </MapContainer>
 
