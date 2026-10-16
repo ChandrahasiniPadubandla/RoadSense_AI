@@ -5,10 +5,9 @@ import axios from 'axios';
 // Consolidates Dashboard Stats, Map Visualizations, Roads, and Auth API calls
 // -----------------------------------------------------------------------------
 
-// In development, use Vite's proxy so API calls stay same-origin in the browser.
+// Leave the base URL empty in local proxy mode so requests use the current origin.
 const RAW_URL = import.meta.env.VITE_API_BASE_URL;
-const CONFIGURED_API_ORIGIN = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.66:8000';
-export const API_BASE_URL = import.meta.env.DEV ? '' : CONFIGURED_API_ORIGIN;
+export const API_BASE_URL = RAW_URL?.replace(/\/api\/?$/, '') || 'http://192.168.0.62:8000';
 
 
 // Single configured Axios instance
@@ -122,37 +121,48 @@ export async function getDashboardTrend() {
   }
 }
 
+/** Convert the traffic-layer GeoJSON into the road rows used by tables. */
+export function roadsFromTrafficLayer(layer) {
+  if (!Array.isArray(layer?.features) || layer.features.length === 0) return [];
+
+  return layer.features.map((f) => {
+    const p = f.properties || {};
+    return {
+      id: p.road_id || f.id,
+      name: p.road_name || 'Road Segment',
+      roadType: p.road_type || 'Arterial',
+      vehicleCount: p.vehicle_count != null ? p.vehicle_count : '-',
+      avgSpeed: p.average_speed != null ? `${Math.round(p.average_speed)} km/h` : (p.speed_limit ? `${p.speed_limit} km/h` : '-'),
+      weather: p.weather_condition || 'Clear',
+      trafficLevel: p.congestion_level && p.congestion_level !== 'UNKNOWN' ? p.congestion_level.toUpperCase() : null,
+      confidenceScore: p.confidence_score,
+      isPredicted: p.is_predicted ?? false,
+      capacityUtilization: p.capacity_utilization,
+      lanes: p.number_of_lanes || 4,
+      speedLimit: p.speed_limit,
+      lat: f.geometry?.coordinates?.[0]?.[1],
+      lng: f.geometry?.coordinates?.[0]?.[0],
+    };
+  });
+}
+
 /**
- * Fetch roads list for dashboard table from /api/map/traffic-layer or /api/roads
- * Returns empty array if no roads found (NO dummy roads).
+ * Fetch road rows. Pass an already-fetched traffic layer to avoid requesting
+ * /api/map/traffic-layer a second time; if it has no roads, use /api/roads.
  */
-export async function getRoads() {
-  try {
-    const { data: layer } = await apiClient.get('/api/map/traffic-layer');
-    if (layer?.features && layer.features.length > 0) {
-      return layer.features.map((f) => {
-        const p = f.properties || {};
-        return {
-          id: p.road_id || f.id,
-          name: p.road_name || 'Road Segment',
-          roadType: p.road_type || 'Arterial',
-          vehicleCount: p.vehicle_count != null ? p.vehicle_count : '-',
-          avgSpeed: p.average_speed != null ? `${Math.round(p.average_speed)} km/h` : (p.speed_limit ? `${p.speed_limit} km/h` : '-'),
-          weather: p.weather_condition || 'Clear',
-          trafficLevel: p.congestion_level && p.congestion_level !== 'UNKNOWN' ? p.congestion_level.toUpperCase() : null,
-          confidenceScore: p.confidence_score,
-          isPredicted: p.is_predicted ?? false,
-          capacityUtilization: p.capacity_utilization,
-          lanes: p.number_of_lanes || 4,
-          speedLimit: p.speed_limit,
-          lat: f.geometry?.coordinates?.[0]?.[1],
-          lng: f.geometry?.coordinates?.[0]?.[0],
-        };
-      });
+export async function getRoads(trafficLayer) {
+  let layer = trafficLayer;
+  if (layer === undefined) {
+    try {
+      const response = await apiClient.get('/api/map/traffic-layer');
+      layer = response.data;
+    } catch (err) {
+      console.warn('Traffic layer fetch failed, falling back to /api/roads:', err.message);
     }
-  } catch (err) {
-    console.warn('Traffic layer fetch failed, falling back to /api/roads:', err.message);
   }
+
+  const roadsFromLayer = roadsFromTrafficLayer(layer);
+  if (roadsFromLayer.length > 0) return roadsFromLayer;
 
   try {
     const { data } = await apiClient.get('/api/roads');
@@ -454,9 +464,6 @@ export async function getLatestAccidentPredictions() {
  *   { prediction_id, road_id, road_name, congestion_level, estimated_time,
  *     target_time, predicted_congestion, predicted_vehicle_count,
  *     confidence_score, class_probabilities, created_at }
- *
- * @deprecated Single-road predictions have been retired. Use predictRouteTraffic
- * (POST /api/predictions/traffic/route) with start_location / end_location instead.
  */
 export async function predictTraffic(payload) {
   const { data } = await apiClient.post('/api/predictions/traffic/predict', payload);
