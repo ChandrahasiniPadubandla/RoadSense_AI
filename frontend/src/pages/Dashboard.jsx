@@ -112,7 +112,7 @@ function Kpi({ icon: Icon, label, value, unit, hint, tone = 'neutral', index }) 
 }
 
 /** One 3D block: footprint sits on the floor plane, sides rise along +Z. */
-function Tower({ x, y, h, color, w = 54 }) {
+function Tower({ x, y, h, color, hotspot, onHover, w = 54 }) {
   const side = (style, dir) => ({
     position: 'absolute',
     background: `linear-gradient(${dir}, ${color}2e, ${color}d9)`,
@@ -120,7 +120,11 @@ function Tower({ x, y, h, color, w = 54 }) {
     ...style,
   });
   return (
-    <div style={{ position: 'absolute', left: x, top: y, width: w, height: w, transformStyle: 'preserve-3d' }}>
+    <div
+      style={{ position: 'absolute', left: x, top: y, width: w, height: w, transformStyle: 'preserve-3d', cursor: 'pointer' }}
+      onPointerMove={(e) => onHover?.({ x: e.clientX, y: e.clientY, hotspot })}
+      onPointerLeave={() => onHover?.(null)}
+    >
       <div style={{ position: 'absolute', inset: -10, background: `${color}40`, filter: 'blur(12px)' }} />
       <div style={side({ left: 0, top: w, width: w, height: h, transformOrigin: 'top', transform: 'rotateX(90deg)' }, 'to bottom')} />
       <div style={side({ left: 0, top: 0, width: w, height: h, transformOrigin: 'top', transform: 'rotateX(90deg)', opacity: 0.6 }, 'to bottom')} />
@@ -132,7 +136,8 @@ function Tower({ x, y, h, color, w = 54 }) {
 }
 
 /** Drag-to-rotate 3D city of accident hotspots: taller tower = more accidents. */
-function HotspotScene({ hotspots, isDark }) {
+const HotspotScene = React.memo(function HotspotScene({ hotspots, isDark }) {
+  const [tooltip, setTooltip] = useState(null);
   const reduce = useReducedMotion();
   const rz = useMotionValue(-35);
   const dragX = useRef(null);
@@ -141,7 +146,7 @@ function HotspotScene({ hotspots, isDark }) {
     let raf;
     let last = performance.now();
     const tick = (t) => {
-      if (dragX.current == null) rz.set(rz.get() + (t - last) * 0.006);
+      if (dragX.current == null) rz.set(rz.get() + (t - last) * 0.003);
       last = t;
       raf = requestAnimationFrame(tick);
     };
@@ -179,10 +184,20 @@ function HotspotScene({ hotspots, isDark }) {
             }}
           />
           {items.map((h, i) => (
-            <Tower key={h.hotspot_id ?? i} x={TOWER_SPOTS[i][0]} y={TOWER_SPOTS[i][1]} color={TOWER_COLORS[i]} h={28 + ((h.accident_count || 0) / max) * 130} />
+            <Tower key={h.hotspot_id ?? i} x={TOWER_SPOTS[i][0]} y={TOWER_SPOTS[i][1]} color={TOWER_COLORS[i]} h={28 + ((h.accident_count || 0) / max) * 130} hotspot={h} onHover={setTooltip} />
           ))}
         </motion.div>
       </div>
+
+      {tooltip && (
+        <div className="pointer-events-none fixed z-[9999]" style={{ left: tooltip.x + 15, top: tooltip.y - 15 }}>
+          <div className="min-w-[220px] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
+            <div className="text-sm font-semibold text-slate-900 dark:text-white">📍 {tooltip.hotspot?.zone_name || 'Unknown Zone'}</div>
+            <div className="mt-3 text-xs uppercase tracking-wide text-slate-400">Accident Count</div>
+            <div className="text-2xl font-bold text-signal-red">{tooltip.hotspot?.accident_count || 0}</div>
+          </div>
+        </div>
+      )}
 
       {items.length === 0 && (
         <p className="absolute inset-0 flex items-center justify-center text-sm text-slate-400 dark:text-asphalt-400">No hotspots calculated yet.</p>
@@ -199,7 +214,7 @@ function HotspotScene({ hotspots, isDark }) {
       </div>
     </div>
   );
-}
+});
 
 function Donut({ data, height = 150, isDark }) {
   if (!data || data.length === 0) {
@@ -286,18 +301,17 @@ export default function Dashboard() {
 
   async function loadData() {
     setIsLoading(true);
+    getDashboardStats().then(setStats).catch((err) => console.error('Failed to load dashboard stats:', err));
+    getDashboardTrend().then(setHistory).catch((err) => console.error('Failed to load dashboard trend:', err));
+    getHotspots(6).then((data) => setHotspots(data || [])).catch((err) => console.error('Failed to load hotspots:', err));
     try {
-      const [statsRes, historyRes, accidentRes, trafficRes, hotspotsRes, anomaliesRes] = await Promise.all([
-        getDashboardStats(), getDashboardTrend(), getAccidentLayer(), getTrafficLayer(), getHotspots(6),
-        getAnomalies(5).catch(() => []),
+      const [accidentRes, trafficRes, anomaliesRes] = await Promise.all([
+        getAccidentLayer(), getTrafficLayer(), getAnomalies(5).catch(() => []),
       ]);
       const layerRoads = roadsFromTrafficLayer(trafficRes);
-      setStats(statsRes);
-      setHistory(historyRes);
       setRoads(layerRoads.length > 0 ? layerRoads : await getRoads(trafficRes));
       setAccidentFeatures(accidentRes?.features || []);
       setTrafficFeatures(trafficRes?.features || []);
-      setHotspots(hotspotsRes || []);
       setAnomalies(anomaliesRes || []);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
