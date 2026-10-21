@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class AuditLogCreate(BaseModel):
@@ -23,6 +23,8 @@ class AuditLogUpdate(BaseModel):
 
 
 class AuditLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     log_id: UUID
     user_id: UUID | None = None
     action: str | None = None
@@ -45,6 +47,3 @@ class AuditLogResponse(BaseModel):
         if self.timestamp is None:
             return None
         return self.timestamp.strftime("%I:%M %p").lstrip("0").lower()
-
-    class Config:
-        from_attributes = True

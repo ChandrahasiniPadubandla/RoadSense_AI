@@ -33,19 +33,14 @@ def create_traffic_record(
     traffic: TrafficCreate,
     db: Session = Depends(get_db)
 ):
-
     # Check whether road exists
-
     road = (
         db.query(Road)
-        .filter(
-            Road.road_id == traffic.road_id
-        )
+        .filter(Road.road_id == traffic.road_id)
         .first()
     )
 
     if not road:
-
         raise HTTPException(
             status_code=404,
             detail=f"Cannot record traffic: Road with ID '{traffic.road_id}' does not exist. Please verify the road ID."
@@ -67,9 +62,7 @@ def create_traffic_record(
     )
 
     db.add(new_record)
-
     db.commit()
-
     db.refresh(new_record)
 
     return new_record

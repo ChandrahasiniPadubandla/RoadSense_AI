@@ -102,6 +102,8 @@ class LoginRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: UUID
     username: str | None = None
     name: str
@@ -112,9 +114,6 @@ class UserResponse(BaseModel):
     is_active: bool
     is_email_verified: bool
     created_at: datetime | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class LoginResponse(BaseModel):

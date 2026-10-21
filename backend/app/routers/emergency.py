@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import EmergencyResponse, Accident, Road
+from app.database.models import EmergencyResponse, Accident, Road, User, Role
 from app.security import require_roles
 
 
@@ -66,7 +66,6 @@ def _serialize_emergency(emergency: EmergencyResponse, db: Session = None):
 
     assigned_user_summary = None
     if db is not None and emergency.assigned_user_id:
-        from app.database.models import User
         user = db.query(User).filter(User.user_id == emergency.assigned_user_id).first()
         if user:
             assigned_user_summary = {
@@ -79,43 +78,14 @@ def _serialize_emergency(emergency: EmergencyResponse, db: Session = None):
 
     return {
         "response_id": str(emergency.response_id),
-
-        "accident_id": (
-            str(emergency.accident_id)
-            if emergency.accident_id
-            else None
-        ),
-
+        "accident_id": str(emergency.accident_id) if emergency.accident_id else None,
         "accident": accident_summary,
-
-        "assigned_user_id": (
-            str(emergency.assigned_user_id)
-            if emergency.assigned_user_id
-            else None
-        ),
-
+        "assigned_user_id": str(emergency.assigned_user_id) if emergency.assigned_user_id else None,
         "assigned_user": assigned_user_summary,
-
         "response_status": emergency.response_status,
-
-        "assigned_at": (
-            emergency.assigned_at.isoformat()
-            if emergency.assigned_at
-            else None
-        ),
-
-        "arrived_at": (
-            emergency.arrived_at.isoformat()
-            if emergency.arrived_at
-            else None
-        ),
-
-        "resolved_at": (
-            emergency.resolved_at.isoformat()
-            if emergency.resolved_at
-            else None
-        ),
-
+        "assigned_at": emergency.assigned_at.isoformat() if emergency.assigned_at else None,
+        "arrived_at": emergency.arrived_at.isoformat() if emergency.arrived_at else None,
+        "resolved_at": emergency.resolved_at.isoformat() if emergency.resolved_at else None,
         "notes": emergency.notes,
     }
 
@@ -134,14 +104,9 @@ def create_emergency(
     emergency_data: EmergencyCreateRequest,
     db: Session = Depends(get_db)
 ):
-    # Check whether the accident exists
-    from app.database.models import Accident
-
     accident = (
         db.query(Accident)
-        .filter(
-            Accident.accident_id == emergency_data.accident_id
-        )
+        .filter(Accident.accident_id == emergency_data.accident_id)
         .first()
     )
 
@@ -183,16 +148,15 @@ def create_emergency(
 def get_responders(
     db: Session = Depends(get_db)
 ):
-    from app.database.models import User, Role
     users = (
-    db.query(User, Role.role_name)
-    .join(Role, User.role_id == Role.role_id)
-    .filter(
-        User.is_active == True,
-        Role.role_name == "EMERGENCY_RESPONSE"
-    )
-    .order_by(User.name.asc())
-    .all()
+        db.query(User, Role.role_name)
+        .join(Role, User.role_id == Role.role_id)
+        .filter(
+            User.is_active.is_(True),
+            Role.role_name == "EMERGENCY_RESPONSE"
+        )
+        .order_by(User.name.asc())
+        .all()
     )
     return [
         {

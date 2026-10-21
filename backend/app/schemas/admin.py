@@ -1,19 +1,20 @@
-from uuid import UUID
-from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from typing import Optional
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class RoleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     role_id: UUID
     role_name: str
     description: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
 
 class UserAdminResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: UUID
     username: str
     role_id: UUID
@@ -25,9 +26,6 @@ class UserAdminResponse(BaseModel):
     is_email_verified: bool
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
 class UserRoleUpdate(BaseModel):

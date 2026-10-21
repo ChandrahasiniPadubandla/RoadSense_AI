@@ -8,8 +8,13 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
 # Ensure .env is loaded
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+for _env_candidate in (
+    Path(__file__).resolve().parents[2] / ".env",
+    Path(__file__).resolve().parents[3] / ".env",
+):
+    if _env_candidate.is_file():
+        load_dotenv(_env_candidate)
+        break
 
 logger = logging.getLogger("Metrivon.live_traffic")
 

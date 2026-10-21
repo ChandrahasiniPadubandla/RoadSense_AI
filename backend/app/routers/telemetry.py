@@ -31,14 +31,14 @@ def get_public_readiness(db: Session = Depends(get_db)):
 )
 def get_public_telemetry(db: Session = Depends(get_db)):
     total_roads = db.query(Road).count()
-    active_roads = db.query(Road).filter(Road.is_active == True).count()
+    active_roads = db.query(Road).filter(Road.is_active.is_(True)).count()
     total_traffic = db.query(TrafficRecord).count()
     total_accidents = db.query(Accident).count()
     total_alerts = db.query(Alert).filter(Alert.status == "ACTIVE").count()
 
     real_roads = (
         db.query(Road)
-        .filter(Road.is_active == True)
+        .filter(Road.is_active.is_(True))
         .order_by(Road.road_name.asc())
         .limit(6)
         .all()

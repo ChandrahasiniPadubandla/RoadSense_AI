@@ -1,3 +1,5 @@
+import json
+import urllib.request
 from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,9 +25,6 @@ def fetch_osrm_linestring(
     Calls OSRM public API to generate a driving route LINESTRING WKTElement.
     Falls back gracefully to a 2-point LINESTRING if OSRM is unreachable.
     """
-    import json
-    import urllib.request
-
     url = f"https://router.project-osrm.org/route/v1/driving/{start_lon},{start_lat};{end_lon},{end_lat}?overview=full&geometries=geojson"
     req = urllib.request.Request(url, headers={"User-Agent": "Metrivon-AI/1.0"})
     try:

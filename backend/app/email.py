@@ -42,9 +42,28 @@ def _smtp_error_message(exc: Exception, email_kind: str) -> str:
     return f"Unable to send {email_kind} email: {details}"
 
 
+def _send_smtp_message(message: EmailMessage, email_kind: str) -> None:
+    host, _, username, password = _get_smtp_settings()
+    port = int(os.getenv("SMTP_PORT", "587"))
+    timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
+    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes", "on"}
+
+    try:
+        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
+            smtp.ehlo()
+            if use_tls:
+                smtp.starttls()
+                smtp.ehlo()
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(message)
+    except (OSError, smtplib.SMTPException) as exc:
+        raise EmailDeliveryError(_smtp_error_message(exc, email_kind)) from exc
+
+
 def send_password_reset_otp(recipient: str, otp: str) -> None:
     """Send a short-lived password-reset code to ``recipient``."""
-    host, sender, username, password = _get_smtp_settings()
+    _, sender, _, _ = _get_smtp_settings()
 
     message = EmailMessage()
     message["Subject"] = "Your Metrivon AI password reset code"
@@ -55,26 +74,12 @@ def send_password_reset_otp(recipient: str, otp: str) -> None:
         "It expires in 15 minutes. Do not share this code with anyone."
     )
 
-    port = int(os.getenv("SMTP_PORT", "587"))
-    timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
-    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes", "on"}
-
-    try:
-        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
-            smtp.ehlo()
-            if use_tls:
-                smtp.starttls()
-                smtp.ehlo()
-            if username:
-                smtp.login(username, password)
-            smtp.send_message(message)
-    except (OSError, smtplib.SMTPException) as exc:
-        raise EmailDeliveryError(_smtp_error_message(exc, "password reset")) from exc
+    _send_smtp_message(message, "password reset")
 
 
 def send_email_verification_otp(recipient: str, otp: str) -> None:
     """Send a short-lived email-verification code to ``recipient``."""
-    host, sender, username, password = _get_smtp_settings()
+    _, sender, _, _ = _get_smtp_settings()
 
     message = EmailMessage()
     message["Subject"] = "Verify your Metrivon AI email"
@@ -85,24 +90,4 @@ def send_email_verification_otp(recipient: str, otp: str) -> None:
         "It expires in 15 minutes. Do not share this code with anyone."
     )
 
-    port = int(os.getenv("SMTP_PORT", "587"))
-    timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
-    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes", "on"}
-
-    try:
-        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
-            smtp.ehlo()
-            if use_tls:
-                smtp.starttls()
-                smtp.ehlo()
-            if username:
-                smtp.login(username, password)
-            smtp.send_message(message)
-    except (OSError, smtplib.SMTPException) as exc:
-        raise EmailDeliveryError(_smtp_error_message(exc, "verification")) from exc
-
-
-
-
-
-
+    _send_smtp_message(message, "verification")

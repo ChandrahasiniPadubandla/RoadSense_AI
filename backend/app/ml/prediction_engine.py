@@ -6,15 +6,14 @@ from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
 
 from fastapi import HTTPException
-from app.database.models import Road, Accident, AccidentHotspot, TrafficRecord
+from app.database.models import Road, Accident, AccidentHotspot
 from app.services.geocoding import (
     geocode_location,
     reverse_geocode,
     find_nearest_road_by_coordinates,
     get_driving_route,
     get_accidents_along_route,
-    get_or_create_road_from_geocoding,
-    is_within_geocoding_boundary
+    is_within_geocoding_boundary,
 )
 from app.services.weather import get_live_weather
 from app.services.live_traffic import get_live_traffic_flow
@@ -596,9 +595,6 @@ def resolve_route_bundle(
         "ml_features": ml_features,
         "db": db
     }
-
-
-
 
 
 def normalize_model_road_type(rt: str) -> str:

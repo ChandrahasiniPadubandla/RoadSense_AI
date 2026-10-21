@@ -5,7 +5,7 @@ import socket
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
@@ -698,8 +698,6 @@ def _calculate_realistic_urban_duration(
     - Two-wheeler lane filtering speed advantages
     - Pedestrian sidewalk walking velocity
     """
-    from datetime import datetime, timezone, timedelta
-
     if dist_km <= 0.05:
         return 1.0
 
