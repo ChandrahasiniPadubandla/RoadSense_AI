@@ -7,12 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 
+from geoalchemy2.shape import to_shape
+
 from app.database.connection import get_db
 from app.database.models import (
     Road,
     Accident,
     AccidentPrediction,
-    Alert
+    Alert,
+    TrafficZone,
 )
 from app.schemas.prediction import (
     AccidentPredictionRunRequest,
@@ -98,7 +101,6 @@ def predict_accident_risk_route(
         h_lat, h_lng = None, None
         if road.start_location is not None:
             try:
-                from geoalchemy2.shape import to_shape
                 pt = to_shape(road.start_location)
                 h_lat, h_lng = float(pt.y), float(pt.x)
             except Exception:
@@ -107,7 +109,6 @@ def predict_accident_risk_route(
             zone = db.query(TrafficZone).filter(TrafficZone.zone_id == road.zone_id).first()
             if zone and zone.location is not None:
                 try:
-                    from geoalchemy2.shape import to_shape
                     pt = to_shape(zone.location)
                     h_lat, h_lng = float(pt.y), float(pt.x)
                 except Exception:
@@ -378,7 +379,6 @@ def run_accident_prediction(
             h_lat, h_lng = None, None
             if road.start_location is not None:
                 try:
-                    from geoalchemy2.shape import to_shape
                     pt = to_shape(road.start_location)
                     h_lat, h_lng = float(pt.y), float(pt.x)
                 except Exception:
@@ -469,7 +469,6 @@ def store_accident_prediction(
         h_lat, h_lng = None, None
         if road.start_location is not None:
             try:
-                from geoalchemy2.shape import to_shape
                 pt = to_shape(road.start_location)
                 h_lat, h_lng = float(pt.y), float(pt.x)
             except Exception:
@@ -478,7 +477,6 @@ def store_accident_prediction(
             zone = db.query(TrafficZone).filter(TrafficZone.zone_id == road.zone_id).first()
             if zone and zone.location is not None:
                 try:
-                    from geoalchemy2.shape import to_shape
                     pt = to_shape(zone.location)
                     h_lat, h_lng = float(pt.y), float(pt.x)
                 except Exception:
@@ -512,7 +510,7 @@ def store_accident_prediction(
 def run_accident_pipeline(
     db: Session = Depends(get_db)
 ):
-    roads = db.query(Road).filter(Road.is_active == True).all()
+    roads = db.query(Road).filter(Road.is_active.is_(True)).all()
     now = datetime.now()
 
     predictions_count = 0
@@ -552,7 +550,6 @@ def run_accident_pipeline(
             h_lat, h_lng = None, None
             if road.start_location is not None:
                 try:
-                    from geoalchemy2.shape import to_shape
                     pt = to_shape(road.start_location)
                     h_lat, h_lng = float(pt.y), float(pt.x)
                 except Exception:

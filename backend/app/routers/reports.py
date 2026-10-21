@@ -292,7 +292,7 @@ def export_report(
     # 4. PREDICTIONS SAFETY SUMMARY REPORT
     # =========================================================
     elif rtype == "predictions":
-        roads = db.query(Road).filter(Road.is_active == True).all()
+        roads = db.query(Road).filter(Road.is_active.is_(True)).all()
 
         t_sub = (
             db.query(TrafficPrediction.start_road_id.label("road_id"), func.max(TrafficPrediction.created_at).label("max_ts"))
@@ -372,7 +372,7 @@ def export_report(
     # =========================================================
     elif rtype == "summary":
         total_roads = db.query(Road).count()
-        active_roads = db.query(Road).filter(Road.is_active == True).count()
+        active_roads = db.query(Road).filter(Road.is_active.is_(True)).count()
         total_accidents = db.query(Accident).count()
         fatal_accidents = db.query(Accident).filter(Accident.severity.ilike("FATAL")).count()
         severe_accidents = db.query(Accident).filter(Accident.severity.ilike("SEVERE")).count()

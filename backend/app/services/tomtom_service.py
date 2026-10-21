@@ -10,16 +10,17 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.schemas.tomtom import (
-    TomTomLocationPoint,
-    TomTomHistoricalTrafficResponse,
-    TomTomLiveTrafficResponse
-)
+from app.schemas.tomtom import TomTomLocationPoint
 from app.services.geocoding import geocode_location
 
 # Ensure .env is loaded
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+for _env_candidate in (
+    Path(__file__).resolve().parents[2] / ".env",
+    Path(__file__).resolve().parents[3] / ".env",
+):
+    if _env_candidate.is_file():
+        load_dotenv(_env_candidate)
+        break
 
 logger = logging.getLogger("Metrivon.tomtom_service")
 

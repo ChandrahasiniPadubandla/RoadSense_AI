@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
@@ -14,8 +13,6 @@ from app.ml.prediction_engine import (
     normalize_model_road_condition,
     normalize_model_weather,
 )
-
-logger = logging.getLogger("Metrivon.accident_risk_features")
 
 
 class AccidentRiskFeatureService:

@@ -136,7 +136,7 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
     )
 
     # 2. Process each real zone with recorded accidents
-    for zone_id, zone_name, loc_geo, db_acc_count in real_zone_accidents:
+    for zone_id, _zone_name, loc_geo, db_acc_count in real_zone_accidents:
         lat, lon = None, None
         if loc_geo is not None:
             try:
@@ -163,15 +163,13 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
         # Standardized risk level threshold matching prediction_engine.py
         calc_risk_level = resolve_risk_level(calc_risk_score)
 
-        total_accidents = db_acc_count
-
         hotspot = upsert_accident_hotspot(
             db=db,
             latitude=lat,
             longitude=lon,
             risk_level=calc_risk_level,
             risk_score=calc_risk_score,
-            accident_count=total_accidents,
+            accident_count=int(db_acc_count),
             zone_id=zone_id,
             calculated_at=now,
         )

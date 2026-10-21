@@ -1,4 +1,3 @@
-import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -17,8 +16,6 @@ from app.services.geocoding import (
     find_nearest_road_by_coordinates,
     get_driving_route
 )
-
-logger = logging.getLogger("Metrivon.geocoding_router")
 
 router = APIRouter(
     prefix="/geo",

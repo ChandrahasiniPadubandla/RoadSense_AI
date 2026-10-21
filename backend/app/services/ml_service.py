@@ -1,8 +1,11 @@
-from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 from app.database.connection import SessionLocal
-from app.database.models import Road, TrafficRecord
+from app.database.models import Accident, Road, TrafficAnomaly, TrafficRecord
+from app.ml.prediction_engine import resolve_route_bundle, trigger_ml_anomaly_model
 from app.schemas.ml import (
     AnomalyPredictionRequest,
     AnomalyPredictionResponse,
@@ -50,8 +53,6 @@ class MLService:
         self,
         request: AnomalyPredictionRequest,
     ) -> AnomalyPredictionResponse:
-        from app.ml.prediction_engine import trigger_ml_anomaly_model
-
         road = None
         traffic = None
         road_name = None
@@ -68,7 +69,6 @@ class MLService:
                 road = None
 
         if not road and (request.start_location or request.end_location or request.start_latitude):
-            from app.ml.prediction_engine import resolve_route_bundle
             db_bundle = SessionLocal()
             try:
                 bundle = resolve_route_bundle(
@@ -127,7 +127,6 @@ class MLService:
 
         hour = request.hour
         if hour is None:
-            from datetime import datetime, timezone
             hour = traffic.timestamp.hour if (traffic and traffic.timestamp) else datetime.now(timezone.utc).hour
 
         historical_accidents = getattr(request, "historical_accidents", None)
@@ -135,7 +134,6 @@ class MLService:
             if road and hasattr(road, "historical_accidents") and road.historical_accidents is not None:
                 historical_accidents = int(road.historical_accidents)
             elif road:
-                from app.database.models import Accident
                 db_acc = SessionLocal()
                 try:
                     historical_accidents = db_acc.query(Accident).filter(Accident.road_id == road.road_id).count()
@@ -161,8 +159,6 @@ class MLService:
         is_anomaly = ml_result["is_anomaly"]
 
         if request.persist and road:
-            from datetime import datetime
-            from app.database.models import TrafficAnomaly
             db = SessionLocal()
             try:
                 anomaly_record = TrafficAnomaly(

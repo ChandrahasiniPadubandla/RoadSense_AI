@@ -298,7 +298,7 @@ def get_road_traffic_predictions(
 def get_prediction_summary(
     db: Session = Depends(get_db)
 ):
-    roads = db.query(Road).filter(Road.is_active == True).all()
+    roads = db.query(Road).filter(Road.is_active.is_(True)).all()
 
     t_sub = (
         db.query(TrafficPrediction.start_road_id.label("road_id"), func.max(TrafficPrediction.created_at).label("max_ts"))

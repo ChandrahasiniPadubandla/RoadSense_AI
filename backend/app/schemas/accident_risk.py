@@ -1,7 +1,7 @@
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AccidentRiskPredictionRequest(BaseModel):
@@ -28,7 +28,5 @@ class AccidentRiskPredictionResponse(BaseModel):
     accident_risk_level: str = Field(..., min_length=1)
     created_new_road: bool = False
     model_status: str = "loaded"
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 

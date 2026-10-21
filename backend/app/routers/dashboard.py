@@ -42,7 +42,7 @@ def get_dashboard_stats(
     - average_system_speed: average speed across active roads
     """
     total_roads = db.query(Road).count()
-    active_roads = db.query(Road).filter(Road.is_active == True).count()
+    active_roads = db.query(Road).filter(Road.is_active.is_(True)).count()
 
     # Subquery for the most recent AI traffic prediction for each road (primary source)
     latest_pred_sub = (
@@ -94,7 +94,7 @@ def get_dashboard_stats(
     traffic_by_road = {r.road_id: r for r in latest_records}
 
     # High traffic roads evaluated primarily from AI predictions
-    active_road_records = db.query(Road).filter(Road.is_active == True).all()
+    active_road_records = db.query(Road).filter(Road.is_active.is_(True)).all()
     high_traffic_roads = 0
     for r in active_road_records:
         pred = pred_by_road.get(r.road_id)

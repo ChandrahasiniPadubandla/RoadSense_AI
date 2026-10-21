@@ -85,7 +85,7 @@ def get_traffic_layer(
     roads = (
         db.query(Road)
         .filter(
-            Road.is_active == True,
+            Road.is_active.is_(True),
             or_(
                 Road.route_geometry.isnot(None),
                 and_(

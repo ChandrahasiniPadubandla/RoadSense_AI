@@ -1,7 +1,8 @@
-from uuid import UUID
-from typing import Optional, Dict, Any, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # =========================================================
@@ -105,8 +106,7 @@ class TrafficPredictionResponse(BaseModel):
     model_version_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TrafficEstimateRequest(BaseModel):
@@ -208,8 +208,7 @@ class AccidentPredictionResponse(BaseModel):
     model_version_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AccidentEstimateRequest(BaseModel):

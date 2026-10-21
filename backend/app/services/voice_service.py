@@ -25,15 +25,11 @@ if _VOICE_DIR.is_dir() and str(_VOICE_DIR) not in sys.path:
 
 try:
     from location_catalog import (
-        VALID_LOCATIONS,
-        _LOCATION_ALIASES,
         canonical_location,
         extract_route_locations as catalog_extract_route,
         find_location_mentions,
     )
 except ImportError:
-    VALID_LOCATIONS = ()
-    _LOCATION_ALIASES = {}
     canonical_location = lambda x: None
     catalog_extract_route = lambda text, ents=(): (None, None)
     find_location_mentions = lambda text, ents=(): []
