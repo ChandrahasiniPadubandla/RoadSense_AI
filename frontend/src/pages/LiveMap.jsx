@@ -1440,6 +1440,7 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
               position={[userLocation.lat, userLocation.lng]}
               mode={travelMode}
               heading={navHeading}
+              size={80}
             />
           ) : (
             <>
@@ -2189,9 +2190,9 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
       </button>
 
       {/* ------------------------------------------------------------- */}
-      {/* Floating Legend - top-right, collapsible                       */}
+      {/* Floating Legend - bottom-right, collapsible                    */}
       {/* ------------------------------------------------------------- */}
-      <div className="absolute right-3 top-3 z-[1000] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
+      <div className="absolute bottom-14 right-3 z-[1000] max-h-[calc(100%-7rem)] w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
         <button
           onClick={() => setLegendOpen((v) => !v)}
           className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold text-slate-900 dark:text-asphalt-100"
