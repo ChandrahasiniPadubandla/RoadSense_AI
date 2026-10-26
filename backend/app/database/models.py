@@ -235,6 +235,7 @@ class TrafficPrediction(Base):
     predicted_congestion = Column(String(20))
     predicted_vehicle_count = Column(Integer)
     confidence_score = Column(Numeric(5, 2))
+    estimated_time = Column(String(100), nullable=True)
     model_version_id = Column(Uuid, ForeignKey("model_versions.model_version_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
 

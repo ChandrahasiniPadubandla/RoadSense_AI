@@ -44,7 +44,19 @@ def _format_traffic_response(p: TrafficPrediction, road_name: Optional[str] = No
         r_name = p.start_location or p.end_location or "Route Segment"
 
     target_dt = p.target_time or datetime.utcnow()
-    est_time = format_estimated_time(target_dt)
+    # Prioritize authentic predicted estimated_time stored in the record
+    if getattr(p, "estimated_time", None):
+        est_time = p.estimated_time
+    elif p.distance_km and float(p.distance_km) > 0:
+        dist_km = float(p.distance_km)
+        # Calculate transit duration matching prediction_engine (approx. 30 km/h in city corridor)
+        calc_transit_mins = round((dist_km / 30.0) * 60.0, 1)
+        actual_duration_mins = max(5.0, calc_transit_mins)
+        end_dt = target_dt + timedelta(minutes=actual_duration_mins)
+        est_time = f"{target_dt.strftime('%I:%M %p').lstrip('0')} - {end_dt.strftime('%I:%M %p').lstrip('0')}"
+    else:
+        est_time = format_estimated_time(target_dt)
+
     cong = p.predicted_congestion.upper() if p.predicted_congestion else None
 
     return TrafficPredictionResponse(
@@ -136,6 +148,7 @@ def predict_route_traffic(
             predicted_congestion=ml_result["congestion_level"],
             predicted_vehicle_count=int(bundle["previous_records"]["vehicle_count"]),
             confidence_score=ml_result.get("confidence_score"),
+            estimated_time=ml_result.get("estimated_time"),
             created_at=now
         )
         db.add(pred_record)
