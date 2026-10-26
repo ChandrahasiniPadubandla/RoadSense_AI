@@ -254,12 +254,13 @@ def predict_route_traffic(
     summary="Get Latest Traffic Predictions Across Roads"
 )
 def get_latest_traffic_predictions(
+    limit: int = Query(default=250, ge=1, le=1000, description="Max predictions to return"),
     db: Session = Depends(get_db)
 ):
     records = (
         db.query(TrafficPrediction)
         .order_by(TrafficPrediction.created_at.desc())
-        .limit(20)
+        .limit(limit)
         .all()
     )
 

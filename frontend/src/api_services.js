@@ -474,9 +474,11 @@ export async function predictTraffic(payload) {
  * Fetch the latest stored traffic congestion prediction per road.
  * GET /api/predictions/traffic/latest -> TrafficPredictionResponse[]
  */
-export async function getLatestTrafficPredictions() {
+export async function getLatestTrafficPredictions(limit = 250) {
   try {
-    const { data } = await apiClient.get('/api/predictions/traffic/latest');
+    const { data } = await apiClient.get('/api/predictions/traffic/latest', {
+      params: { limit },
+    });
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching /api/predictions/traffic/latest:', error);
