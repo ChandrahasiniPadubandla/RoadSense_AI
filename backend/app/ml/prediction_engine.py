@@ -29,7 +29,7 @@ def format_estimated_time(target_time: datetime, duration_minutes: int = 60) -> 
     end_str = end_time.strftime("%I:%M %p").lstrip("0")
     start_hr = target_time.strftime("%I %p").lstrip("0").lower()
     end_hr = end_time.strftime("%I %p").lstrip("0").lower()
-    return f"{start_str} - {end_str} ({start_hr} to {end_hr})"
+    return f"{start_str} - {end_str}"
 
 
 def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
