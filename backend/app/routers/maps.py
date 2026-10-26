@@ -1,3 +1,4 @@
+import time
 from uuid import UUID
 from datetime import datetime, timedelta
 from typing import Optional, Any
@@ -21,6 +22,10 @@ router = APIRouter(
     prefix="/map",
     tags=["Map Visualization"]
 )
+
+_TRAFFIC_LAYER_CACHE = {"ts": 0.0, "data": None}
+_HOTSPOTS_LAYER_CACHE = {"ts": 0.0, "data": None}
+_MAP_CACHE_TTL = 15.0  # 15 seconds
 
 
 def _get_congestion_color(level: Optional[str], density: Optional[float]) -> str:
@@ -81,6 +86,10 @@ def get_traffic_layer(
     by current live traffic congestion conditions (Green, Yellow, Orange, Red)
     for direct integration with Leaflet (`L.geoJSON(...)`) or MapLibre.
     """
+    now_ts = time.time()
+    if _TRAFFIC_LAYER_CACHE["data"] is not None and (now_ts - _TRAFFIC_LAYER_CACHE["ts"]) < _MAP_CACHE_TTL:
+        return _TRAFFIC_LAYER_CACHE["data"]
+
     # 1. Fetch active roads that have geometry or coordinates
     roads = (
         db.query(Road)
@@ -237,10 +246,13 @@ def get_traffic_layer(
         }
         features.append(feature)
 
-    return {
+    res = {
         "type": "FeatureCollection",
         "features": features
     }
+    _TRAFFIC_LAYER_CACHE["ts"] = now_ts
+    _TRAFFIC_LAYER_CACHE["data"] = res
+    return res
 
 
 @router.get(
@@ -321,6 +333,10 @@ def get_hotspots_layer(
     Returns GeoJSON Point features with risk scores and accident counts
     for rendering hazard zones or heatmap overlays on the map.
     """
+    now_ts = time.time()
+    if _HOTSPOTS_LAYER_CACHE["data"] is not None and (now_ts - _HOTSPOTS_LAYER_CACHE["ts"]) < _MAP_CACHE_TTL:
+        return _HOTSPOTS_LAYER_CACHE["data"]
+
     hotspots = db.query(AccidentHotspot).filter(AccidentHotspot.location.isnot(None)).all()
 
     features = []
@@ -350,10 +366,13 @@ def get_hotspots_layer(
         }
         features.append(feature)
 
-    return {
+    res = {
         "type": "FeatureCollection",
         "features": features
     }
+    _HOTSPOTS_LAYER_CACHE["ts"] = now_ts
+    _HOTSPOTS_LAYER_CACHE["data"] = res
+    return res
 
 
 @router.get(

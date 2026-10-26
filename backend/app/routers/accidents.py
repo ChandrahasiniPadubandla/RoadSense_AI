@@ -1,6 +1,7 @@
+from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, joinedload
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.shape import to_shape
 
@@ -100,10 +101,24 @@ def create_accident(
 # GET ALL ACCIDENTS
 @router.get("", response_model=list[AccidentResponse])
 def get_all_accidents(
+    limit: Optional[int] = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    severity: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
+    query = (
+        db.query(Accident)
+        .options(joinedload(Accident.road))
+        .order_by(Accident.accident_datetime.desc())
+    )
+    if severity:
+        query = query.filter(Accident.severity.ilike(f"%{severity}%"))
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
 
-    accidents = db.query(Accident).all()
+    accidents = query.all()
     return [_format_accident_response(accident) for accident in accidents]
 
 

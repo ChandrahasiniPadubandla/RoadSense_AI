@@ -84,10 +84,15 @@ def predict_accident_hotspots(
     """
     persisted_hotspots = sync_empirical_hotspots(db=db, top_n=request.top_n)
 
+    zone_ids = [h.zone_id for h in persisted_hotspots if h.zone_id]
+    zones_by_id = {
+        z.zone_id: z for z in db.query(TrafficZone).filter(TrafficZone.zone_id.in_(zone_ids)).all()
+    } if zone_ids else {}
+
     items = []
     for h in persisted_hotspots:
         lat, lon = _read_point(h.location)
-        zone = db.query(TrafficZone).filter(TrafficZone.zone_id == h.zone_id).first() if h.zone_id else None
+        zone = zones_by_id.get(h.zone_id)
         items.append(
             HotspotItem(
                 road_id=str(h.zone_id) if h.zone_id else "N/A",

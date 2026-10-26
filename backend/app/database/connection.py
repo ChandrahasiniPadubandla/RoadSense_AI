@@ -12,7 +12,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set")
 
-use_null_pool = os.getenv("DB_POOL_MODE", "null").strip().lower() in {"null", "none", "supabase", "disable"}
+use_null_pool = os.getenv("DB_POOL_MODE", "queue").strip().lower() in {"null", "none", "disable"}
 engine_kwargs = {
     "echo": os.getenv("DATABASE_ECHO", "false").lower() == "true",
     "pool_pre_ping": True,
@@ -22,10 +22,10 @@ if use_null_pool:
     engine_kwargs["poolclass"] = NullPool
 else:
     engine_kwargs.update({
-        "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),
-        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "0")),
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "5")),
         "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
-        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "1800")),
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "300")),
         "poolclass": QueuePool,
     })
 

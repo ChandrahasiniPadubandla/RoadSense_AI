@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 
 def register_middlewares(app: FastAPI) -> None:
@@ -17,6 +18,7 @@ def register_middlewares(app: FastAPI) -> None:
         allow_headers=["*"],
         expose_headers=["X-Total-Count"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     @app.middleware("http")
     async def api_prefix_compatibility_middleware(request: Request, call_next):

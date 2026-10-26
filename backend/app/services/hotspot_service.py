@@ -40,6 +40,7 @@ def upsert_accident_hotspot(
     accident_count: int = 0,
     zone_id: Optional[UUID] = None,
     calculated_at: Optional[datetime] = None,
+    existing: Optional[AccidentHotspot] = None,
 ) -> AccidentHotspot:
     """
     Inserts or updates an accident hotspot in the `accident_hotspots` table.
@@ -64,9 +65,8 @@ def upsert_accident_hotspot(
     if latitude is not None and longitude is not None:
         loc_point = WKTElement(f"POINT({longitude} {latitude})", srid=4326)
 
-    # 1. Match existing hotspot by zone_id
-    existing = None
-    if zone_id:
+    # 1. Match existing hotspot by zone_id (use preloaded instance if supplied)
+    if existing is None and zone_id:
         existing = (
             db.query(AccidentHotspot)
             .filter(AccidentHotspot.zone_id == zone_id)
@@ -115,7 +115,7 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
     """
     Computes top accident hotspots strictly from REAL database accident records
     (`accidents`, `accident_predictions`, `roads`, and `traffic_zones`).
-    No local CSV, machine-specific file, or synthetic data is used.
+    Optimized with bulk pre-fetching to prevent N+1 remote database roundtrips.
     """
     persisted = []
     now = datetime.utcnow()
@@ -132,10 +132,29 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
         .outerjoin(Accident, Accident.road_id == Road.road_id)
         .group_by(TrafficZone.zone_id, TrafficZone.zone_name, TrafficZone.location)
         .order_by(func.count(Accident.accident_id).desc())
+        .limit(top_n)
         .all()
     )
 
-    # 2. Process each real zone with recorded accidents
+    # 2. Bulk-query average prediction risk for all zones in a SINGLE query
+    pred_risk_rows = (
+        db.query(
+            Road.zone_id,
+            func.avg(AccidentPrediction.risk_percentage)
+        )
+        .join(AccidentPrediction, Road.road_id == AccidentPrediction.start_road_id)
+        .filter(Road.zone_id.isnot(None))
+        .group_by(Road.zone_id)
+        .all()
+    )
+    zone_pred_risks = {row[0]: float(row[1]) for row in pred_risk_rows if row[1] is not None}
+
+    # 3. Bulk-query existing hotspots to avoid querying inside the loop
+    existing_hotspots = {
+        h.zone_id: h for h in db.query(AccidentHotspot).filter(AccidentHotspot.zone_id.isnot(None)).all()
+    }
+
+    # 4. Process each real zone with recorded accidents
     for zone_id, _zone_name, loc_geo, db_acc_count in real_zone_accidents:
         lat, lon = None, None
         if loc_geo is not None:
@@ -145,22 +164,13 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
             except Exception:
                 pass
 
-        # Query real average prediction risk for roads in this zone
-        avg_pred_risk = (
-            db.query(func.avg(AccidentPrediction.risk_percentage))
-            .join(Road, Road.road_id == AccidentPrediction.start_road_id)
-            .filter(Road.zone_id == zone_id)
-            .scalar()
-        )
+        avg_pred_risk = zone_pred_risks.get(zone_id)
 
-        # Determine the score from database-backed predictions or the observed
-        # accident count when no prediction has been stored yet.
         if avg_pred_risk is not None:
             calc_risk_score = float(avg_pred_risk)
         else:
             calc_risk_score = min(90.0, 35.0 + db_acc_count * 5.0)
 
-        # Standardized risk level threshold matching prediction_engine.py
         calc_risk_level = resolve_risk_level(calc_risk_score)
 
         hotspot = upsert_accident_hotspot(
@@ -172,9 +182,8 @@ def sync_empirical_hotspots(db: Session, top_n: int = 20) -> List[AccidentHotspo
             accident_count=int(db_acc_count),
             zone_id=zone_id,
             calculated_at=now,
+            existing=existing_hotspots.get(zone_id),
         )
-        # This synchronization is authoritative: older versions could have
-        # folded checkout-local CSV values into these persisted columns.
         hotspot.accident_count = int(db_acc_count)
         hotspot.risk_score = round(float(calc_risk_score), 2)
         hotspot.risk_level = calc_risk_level

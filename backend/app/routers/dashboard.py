@@ -1,6 +1,7 @@
+import time
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, text
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -19,6 +20,9 @@ router = APIRouter(
     prefix="/dashboard",
     tags=["Dashboard"]
 )
+
+_STATS_CACHE = {"ts": 0.0, "data": None}
+_CACHE_TTL_SECS = 15.0
 
 
 @router.get(
@@ -41,10 +45,37 @@ def get_dashboard_stats(
     - total_traffic_records: total traffic observations
     - average_system_speed: average speed across active roads
     """
-    total_roads = db.query(Road).count()
-    active_roads = db.query(Road).filter(Road.is_active.is_(True)).count()
+    now_ts = time.time()
+    if _STATS_CACHE["data"] is not None and (now_ts - _STATS_CACHE["ts"]) < _CACHE_TTL_SECS:
+        return _STATS_CACHE["data"]
 
-    # Subquery for the most recent AI traffic prediction for each road (primary source)
+    now = datetime.now()
+    since_24h = now - timedelta(hours=24)
+
+    # 1. Consolidate ALL scalar counts into 1 single round-trip SQL query
+    counts_res = db.execute(
+        text("""
+            SELECT
+                (SELECT COUNT(*) FROM roads) AS total_roads,
+                (SELECT COUNT(*) FROM roads WHERE is_active = true) AS active_roads,
+                (SELECT COUNT(*) FROM accidents) AS total_accidents,
+                (SELECT COUNT(*) FROM accidents WHERE accident_datetime >= :since_24h) AS accidents_today,
+                (SELECT COUNT(*) FROM accidents WHERE severity IN ('SEVERE', 'FATAL', 'Severe', 'Fatal')) AS accident_alerts,
+                (SELECT COUNT(*) FROM accident_hotspots WHERE risk_level IN ('HIGH', 'CRITICAL', 'High', 'Critical', 'SEVERE', 'Severe')) AS hotspot_count,
+                (SELECT COUNT(*) FROM traffic_records) AS total_traffic_records
+        """),
+        {"since_24h": since_24h}
+    ).mappings().first()
+
+    total_roads = counts_res["total_roads"] or 0
+    active_roads = counts_res["active_roads"] or 0
+    total_accidents = counts_res["total_accidents"] or 0
+    accidents_today = counts_res["accidents_today"] or 0
+    accident_alerts = counts_res["accident_alerts"] or 0
+    hotspot_count = counts_res["hotspot_count"] or 0
+    total_traffic_records = counts_res["total_traffic_records"] or 0
+
+    # 2. Latest AI traffic predictions (fetching only required columns)
     latest_pred_sub = (
         db.query(
             TrafficPrediction.start_road_id.label("road_id"),
@@ -56,7 +87,7 @@ def get_dashboard_stats(
     )
 
     latest_predictions = (
-        db.query(TrafficPrediction)
+        db.query(TrafficPrediction.start_road_id, TrafficPrediction.predicted_congestion)
         .join(
             latest_pred_sub,
             and_(
@@ -66,10 +97,9 @@ def get_dashboard_stats(
         )
         .all()
     )
+    pred_by_road = {p[0]: p[1] for p in latest_predictions if p[0] is not None}
 
-    pred_by_road = {p.start_road_id: p for p in latest_predictions if p.start_road_id is not None}
-
-    # Subquery for the most recent traffic record for each road (telemetry source)
+    # 3. Latest traffic observations (fetching only required columns)
     latest_traffic_sub = (
         db.query(
             TrafficRecord.road_id,
@@ -80,7 +110,7 @@ def get_dashboard_stats(
     )
 
     latest_records = (
-        db.query(TrafficRecord)
+        db.query(TrafficRecord.road_id, TrafficRecord.average_speed, TrafficRecord.congestion_level)
         .join(
             latest_traffic_sub,
             and_(
@@ -90,54 +120,30 @@ def get_dashboard_stats(
         )
         .all()
     )
+    traffic_by_road = {r[0]: r for r in latest_records}
 
-    traffic_by_road = {r.road_id: r for r in latest_records}
-
-    # High traffic roads evaluated primarily from AI predictions
-    active_road_records = db.query(Road).filter(Road.is_active.is_(True)).all()
+    # 4. Evaluate high traffic roads
+    active_road_ids = [r[0] for r in db.query(Road.road_id).filter(Road.is_active.is_(True)).all()]
     high_traffic_roads = 0
-    for r in active_road_records:
-        pred = pred_by_road.get(r.road_id)
-        tr = traffic_by_road.get(r.road_id)
+    for r_id in active_road_ids:
+        pred_cong = pred_by_road.get(r_id)
+        tr = traffic_by_road.get(r_id)
         cong = None
-        if pred and pred.predicted_congestion:
-            cong = pred.predicted_congestion.upper()
-        elif tr and tr.congestion_level:
-            cong = tr.congestion_level.upper()
+        if pred_cong:
+            cong = pred_cong.upper()
+        elif tr and tr[2]:
+            cong = tr[2].upper()
         if cong in ["HIGH", "SEVERE"]:
             high_traffic_roads += 1
 
     valid_speeds = [
-        float(r.average_speed)
+        float(r[1])
         for r in latest_records
-        if r.average_speed is not None and float(r.average_speed) > 0
+        if r[1] is not None and float(r[1]) > 0
     ]
     avg_speed = round(sum(valid_speeds) / len(valid_speeds), 1) if valid_speeds else None
 
-    # Accidents
-    total_accidents = db.query(Accident).count()
-
-    now = datetime.now()
-    since_24h = now - timedelta(hours=24)
-    accidents_today = (
-        db.query(Accident)
-        .filter(Accident.accident_datetime >= since_24h)
-        .count()
-    )
-
-    accident_alerts = (
-        db.query(Accident)
-        .filter(Accident.severity.in_(["SEVERE", "FATAL", "Severe", "Fatal"]))
-        .count()
-    )
-
-    # High-risk zones: hotspots or zones associated with accidents
-    hotspot_count = (
-        db.query(AccidentHotspot)
-        .filter(AccidentHotspot.risk_level.in_(["HIGH", "CRITICAL", "High", "Critical", "SEVERE", "Severe"]))
-        .count()
-    )
-
+    # 5. High-risk zones
     if hotspot_count > 0:
         high_risk_zones = hotspot_count
     else:
@@ -150,9 +156,7 @@ def get_dashboard_stats(
         )
         high_risk_zones = zone_accident_count if zone_accident_count > 0 else db.query(TrafficZone).count()
 
-    total_traffic_records = db.query(TrafficRecord).count()
-
-    return DashboardStatsResponse(
+    result = DashboardStatsResponse(
         active_roads=active_roads,
         total_roads=total_roads,
         high_traffic_roads=high_traffic_roads,
@@ -164,6 +168,9 @@ def get_dashboard_stats(
         average_system_speed=avg_speed,
         timestamp=now
     )
+    _STATS_CACHE["ts"] = now_ts
+    _STATS_CACHE["data"] = result
+    return result
 
 
 @router.get(
