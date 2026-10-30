@@ -61,15 +61,30 @@ class AnomalyPredictionResponse(BaseModel):
 
 
 class HotspotItem(BaseModel):
-    road_id: str
+    road_id: Optional[str] = "N/A"
     location: str
+    start_location: Optional[str] = None
+    end_location: Optional[str] = None
+    start_latitude: Optional[float] = None
+    start_longitude: Optional[float] = None
+    end_latitude: Optional[float] = None
+    end_longitude: Optional[float] = None
     latitude: float
     longitude: float
     accident_count: int
     risk_level: str
+    average_risk: Optional[float] = None
+    risk_score: Optional[float] = None
+    hotspot_id: Optional[str] = None
 
 
 class HotspotRequest(BaseModel):
+    start_location: Optional[str] = Field(default=None, description="Start location name, e.g. 'Jubilee Hills'")
+    end_location: Optional[str] = Field(default=None, description="End location name, e.g. 'Bachupally'")
+    start_latitude: Optional[float] = Field(default=None, description="Start latitude coordinate")
+    start_longitude: Optional[float] = Field(default=None, description="Start longitude coordinate")
+    end_latitude: Optional[float] = Field(default=None, description="End latitude coordinate")
+    end_longitude: Optional[float] = Field(default=None, description="End longitude coordinate")
     top_n: int = Field(default=15, ge=1, le=100)
 
 

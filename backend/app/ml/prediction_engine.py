@@ -17,6 +17,7 @@ from app.services.geocoding import (
 )
 from app.services.weather import get_live_weather
 from app.services.live_traffic import get_live_traffic_flow
+from app.services.hotspot_service import find_hotspot_for_route
 
 
 def format_estimated_time(target_time: datetime, duration_minutes: int = 60) -> str:
@@ -519,20 +520,17 @@ def resolve_route_bundle(
         live_traffic=live_traffic
     )
 
-    database_hotspot = None
-    if road.zone_id:
-        hotspot = (
-            db.query(AccidentHotspot)
-            .filter(AccidentHotspot.zone_id == road.zone_id)
-            .order_by(AccidentHotspot.accident_count.desc(), AccidentHotspot.calculated_at.desc())
-            .first()
-        )
-        if hotspot is not None:
-            database_hotspot = {
-                "accident_count": int(hotspot.accident_count or 0),
-                "risk_score": float(hotspot.risk_score) if hotspot.risk_score is not None else None,
-                "risk_level": hotspot.risk_level,
-            }
+    # Look up hotspot for this corridor using start_location and end_location (and coordinates)
+    database_hotspot = find_hotspot_for_route(
+        db=db,
+        start_location=start_label,
+        end_location=end_label,
+        start_lat=s_lat,
+        start_lng=s_lng,
+        end_lat=e_lat,
+        end_lng=e_lng,
+        zone_id=road.zone_id if road else None,
+    )
 
     previous_records = {
         "vehicle_count": baseline["vehicle_count"],
