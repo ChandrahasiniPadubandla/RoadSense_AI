@@ -680,14 +680,27 @@ export async function updateAlert(alertId, payload) {
 // 11. ACCIDENT HOTSPOTS (real DB-backed list — see backend/app/routers/accident_hotspots.py)
 // -----------------------------------------------------------------------------
 
-export async function getHotspots(limit = 20) {
-  try {
-    const { data } = await apiClient.get('/api/hotspots', { params: { limit } });
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error('Error fetching /api/hotspots:', error);
-    return [];
-  }
+export async function getHotspots(limit = 20, filters = {}) {
+  const { data } = await apiClient.get('/api/hotspots', {
+    params: {
+      limit,
+      start_location: filters.start_location?.trim() || undefined,
+      end_location: filters.end_location?.trim() || undefined,
+    },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+export async function checkHotspotRoute(payload) {
+  const { data } = await apiClient.get('/api/hotspots/check', {
+    params: payload,
+  });
+  return data;
+}
+
+export async function predictHotspots(payload = {}) {
+  const { data } = await apiClient.post('/api/hotspots/predict', payload);
+  return data;
 }
 
 // -----------------------------------------------------------------------------
