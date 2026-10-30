@@ -31,9 +31,7 @@ def get_dataset_path() -> str:
     """Finds the dataset file across potential local locations."""
     candidates = [
         os.path.join(BASE_DIR, "dataset", "hyderabad_traffic_accident_15000.csv"),
-        os.path.join(BASE_DIR, "dataset", "hyderabad_traffic_accident_balanced_15000.csv"),
         os.path.join("dataset", "hyderabad_traffic_accident_15000.csv"),
-        os.path.join("dataset", "hyderabad_traffic_accident_balanced_15000.csv"),
         os.path.join("predict_accident_risk", "dataset", "hyderabad_traffic_accident_15000.csv"),
     ]
     for path in candidates:
