@@ -320,7 +320,9 @@ export default function HotspotsPage() {
             }`}
           >
             <p className="font-semibold">{routeResult.is_hotspot ? 'Hotspot route' : 'Not currently a hotspot'}</p>
-            <p className="mt-1">{routeResult.message}</p>
+            {routeResult.is_hotspot && routeResult.message && (
+              <p className="mt-1">{routeResult.message}</p>
+            )}
             {routeResult.found && (
               <p className="mt-1">
                 Risk: {routeResult.risk_level} · Accidents: {routeResult.accident_count}
