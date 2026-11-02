@@ -883,7 +883,14 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            from predict_accident_risk import predict_accident_risk
+            try:
+                from predict_accident_risk.predict_accident_risk import predict_accident_risk as predict_fn
+            except (ImportError, AttributeError):
+                import predict_accident_risk
+                if hasattr(predict_accident_risk, "predict_accident_risk"):
+                    predict_fn = predict_accident_risk.predict_accident_risk
+                else:
+                    predict_fn = predict_accident_risk
 
             road_data = bundle["road_conditions"]
             weather_data = bundle["weather_conditions"]
@@ -999,7 +1006,7 @@ def trigger_ml_accident_model(bundle: Dict[str, Any]) -> Dict[str, Any]:
                 "congestion_level": cong_level
             }
 
-            result = predict_accident_risk(record)
+            result = predict_fn(record)
             raw_risk_pct = float(result["accident_risk"])
             conf_score = float(result.get("confidence_score", 95.0))
 

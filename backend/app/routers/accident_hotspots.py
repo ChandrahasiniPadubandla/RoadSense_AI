@@ -139,10 +139,14 @@ def check_route_hotspot(
     start_longitude: Optional[float] = Query(None, description="Optional start longitude"),
     end_latitude: Optional[float] = Query(None, description="Optional end latitude"),
     end_longitude: Optional[float] = Query(None, description="Optional end longitude"),
+    force_predict: bool = Query(False, description="Force real-time ML model re-prediction"),
+    hour: Optional[int] = Query(None, ge=0, le=23, description="Specific hour of day (0-23) for dynamic prediction"),
+    weather: Optional[str] = Query(None, description="Weather condition, e.g. 'Clear', 'Rain'"),
     db: Session = Depends(get_db),
 ):
     """
     Directly evaluates whether the given start and end locations form an accident hotspot corridor.
+    Supports real-time re-prediction with dynamic hour and weather conditions.
     """
     found = find_hotspot_for_route(
         db=db,
@@ -152,6 +156,9 @@ def check_route_hotspot(
         start_lng=start_longitude,
         end_lat=end_latitude,
         end_lng=end_longitude,
+        force_predict=force_predict,
+        hour=hour,
+        weather=weather,
     )
     if found:
         acc_cnt = int(found.get("accident_count") or 0)
@@ -164,20 +171,15 @@ def check_route_hotspot(
         prob = found.get("hotspot_probability")
         dist = found.get("distance_km")
 
+        dist_str = f" ({dist} km)" if dist else ""
+        prob_str = f" ({prob:.1f}% hotspot probability)" if prob is not None else ""
+        hist_str = f" Corridor has {acc_cnt} recorded historical accidents." if acc_cnt > 0 else " (New corridor, 0 past recorded crashes)."
+
         if is_hotspot:
-            if source == "ml_model_prediction":
-                prob_str = f" ({prob:.1f}% hotspot probability)" if prob is not None else ""
-                msg = f"AI / ML Model Prediction: Route corridor {s_name} -> {e_name} is classified as an accident hotspot{prob_str} with {score:.1f}% predicted risk ({risk_lvl})."
-            else:
-                msg = f"Historical Accident Hotspot: Route corridor {s_name} -> {e_name} has {acc_cnt} recorded accidents with {score:.1f}% risk ({risk_lvl})."
+            msg = f"AI / ML Model Prediction: Route corridor {s_name} -> {e_name}{dist_str} is classified as an accident hotspot{prob_str} with {score:.1f}% predicted risk ({risk_lvl}).{hist_str}"
         else:
-            if source == "ml_model_prediction":
-                prob_str = f", Hotspot Probability: {prob:.1f}%" if prob is not None else ""
-                dist_str = f" ({dist} km)" if dist else ""
-                msg = f"AI / ML Model Prediction: Route corridor {s_name} -> {e_name}{dist_str} is normal / low risk (Predicted Risk: {score:.1f}% - {risk_lvl}{prob_str}). Corridor does not meet accident hotspot thresholds."
-            else:
-                score_str = f", Score: {score:.1f}%" if score is not None else ""
-                msg = f"Route corridor {s_name} -> {e_name} does not meet accident hotspot thresholds (Risk: {risk_lvl}{score_str}). Corridor is normal / low risk."
+            prob_sub = f", Hotspot Probability: {prob:.1f}%" if prob is not None else ""
+            msg = f"AI / ML Model Prediction: Route corridor {s_name} -> {e_name}{dist_str} is normal / low risk (Predicted Risk: {score:.1f}% - {risk_lvl}{prob_sub}). Corridor does not meet accident hotspot thresholds.{hist_str}"
 
         return {
             "is_hotspot": is_hotspot,

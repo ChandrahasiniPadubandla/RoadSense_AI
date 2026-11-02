@@ -230,7 +230,7 @@ def load_or_train_model(model_path: Optional[str] = None) -> Dict[str, Any]:
 
 def detect_all_hotspots(
     dataset_path: Optional[str] = None,
-    save_csv: bool = True,
+    save_csv: bool = False,
     output_csv_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
@@ -281,18 +281,25 @@ def predict_new_route_hotspot(
     end_latitude: Optional[float] = None,
     end_longitude: Optional[float] = None,
     road_type: str = "Arterial Road",
-    hour: int = 18,
-    day_of_week: str = "Friday",
+    hour: Optional[int] = None,
+    day_of_week: Optional[str] = None,
     vehicle_count: Optional[int] = None,
     average_speed: Optional[float] = None,
     traffic_density: Optional[float] = None,
     road_capacity: int = 1400,
-    weather: str = "Clear",
-    rainfall: float = 0.0,
-    road_condition: str = "Good",
+    weather: Optional[str] = None,
+    rainfall: Optional[float] = None,
+    road_condition: Optional[str] = None,
     congestion_level: Optional[str] = None,
     model_artifact: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    from datetime import datetime
+    now = datetime.now()
+    cur_hour = hour if hour is not None else now.hour
+    cur_day = day_of_week if day_of_week is not None else now.strftime("%A")
+    cur_weather = weather or "Clear"
+    cur_rainfall = rainfall if rainfall is not None else (12.0 if cur_weather in ["Rain", "Thunderstorm"] else 0.0)
+    cur_cond = road_condition or ("Wet" if cur_rainfall > 1.0 else "Good")
     """
     Uses the Machine Learning Model (trained on the dataset CSV) to predict whether
     a BRAND NEW route is an accident hotspot, and calculates its predicted risk percentage
@@ -315,7 +322,7 @@ def predict_new_route_hotspot(
         dist = 2.5  # reasonable urban corridor baseline
 
     # 3. Dynamic baseline traffic features if not explicitly provided
-    dens = traffic_density if traffic_density is not None else (75.0 if hour in [8, 9, 10, 17, 18, 19, 20] else 45.0)
+    dens = traffic_density if traffic_density is not None else (75.0 if cur_hour in [8, 9, 10, 17, 18, 19, 20] else 45.0)
     spd = average_speed if average_speed is not None else (25.0 if dens > 70.0 else 42.0)
     veh = vehicle_count if vehicle_count is not None else int(road_capacity * (dens / 100.0))
     cong = congestion_level if congestion_level is not None else ("HIGH" if dens > 70.0 else ("MEDIUM" if dens > 45.0 else "LOW"))
@@ -327,15 +334,15 @@ def predict_new_route_hotspot(
         "end_longitude": float(e_lng),
         "distance_km": float(dist),
         "road_type": road_type,
-        "hour": int(hour),
-        "day_of_week": day_of_week,
+        "hour": int(cur_hour),
+        "day_of_week": cur_day,
         "vehicle_count": int(veh),
         "average_speed": float(spd),
         "traffic_density": float(dens),
         "road_capacity": int(road_capacity),
-        "weather": weather,
-        "rainfall": float(rainfall),
-        "road_condition": road_condition,
+        "weather": cur_weather,
+        "rainfall": float(cur_rainfall),
+        "road_condition": cur_cond,
         "congestion_level": cong,
     }
 
@@ -356,8 +363,8 @@ def predict_new_route_hotspot(
         contributing_factors.append(f"Elevated traffic density ({dens:.1f}%) on corridor")
     if spd < 25.0:
         contributing_factors.append(f"Severe speed slowdown ({spd:.1f} km/h)")
-    if rainfall > 1.0:
-        contributing_factors.append(f"Adverse weather / rain conditions ({rainfall} mm)")
+    if cur_rainfall > 1.0:
+        contributing_factors.append(f"Adverse weather / rain conditions ({cur_rainfall} mm)")
     if dist > 8.0:
         contributing_factors.append(f"Extended multi-junction arterial corridor ({dist:.1f} km)")
     if not contributing_factors:
@@ -398,6 +405,12 @@ def detect_hotspot(
     end_latitude: Optional[float] = None,
     end_longitude: Optional[float] = None,
     hotspots_df: Optional[pd.DataFrame] = None,
+    hour: Optional[int] = None,
+    day_of_week: Optional[str] = None,
+    weather: Optional[str] = None,
+    rainfall: Optional[float] = None,
+    traffic_density: Optional[float] = None,
+    force_ml: bool = False,
 ) -> Dict[str, Any]:
     """
     Evaluates whether the route between start_location and end_location is an accident hotspot:
@@ -409,7 +422,7 @@ def detect_hotspot(
         if os.path.exists(HISTORICAL_CSV_PATH):
             hotspots_df = pd.read_csv(HISTORICAL_CSV_PATH)
         else:
-            hotspots_df = detect_all_hotspots(save_csv=True)
+            hotspots_df = detect_all_hotspots(save_csv=False)
 
     clean_start = str(start_location).strip().lower()
     clean_end = str(end_location).strip().lower()
@@ -435,54 +448,44 @@ def detect_hotspot(
         matched_row = reverse_match.iloc[0]
         is_reverse = True
 
-    # 2. If matched in historical CSV records
-    if matched_row is not None:
-        acc_count = int(matched_row["accidents"])
-        avg_risk = float(matched_row["average_risk"])
-        risk_level = str(matched_row["risk"])
-        hotspot_id = int(matched_row["hotspot_id"])
-        is_hotspot = acc_count >= 15 or risk_level in ["HIGH", "SEVERE"]
-
-        s_lat = float(matched_row["start_latitude"])
-        s_lng = float(matched_row["start_longitude"])
-        e_lat = float(matched_row["end_latitude"])
-        e_lng = float(matched_row["end_longitude"])
-        dist = haversine_distance(s_lat, s_lng, e_lat, e_lng)
-
-        return {
-            "found": True,
-            "is_hotspot": is_hotspot,
-            "hotspot_id": hotspot_id,
-            "source": "historical_empirical_csv",
-            "is_new_route": False,
-            "start_location": str(matched_row["start_location"]),
-            "end_location": str(matched_row["end_location"]),
-            "is_reverse": is_reverse,
-            "start_latitude": s_lat,
-            "start_longitude": s_lng,
-            "end_latitude": e_lat,
-            "end_longitude": e_lng,
-            "distance_km": dist,
-            "accidents": acc_count,
-            "average_risk": round(avg_risk, 2),
-            "predicted_risk": round(avg_risk, 2),
-            "hotspot_probability": min(100.0, round(50.0 + (acc_count / 1.5), 1)),
-            "risk": risk_level,
-            "message": (
-                f"Accident Hotspot #{hotspot_id}: {matched_row['start_location']} -> {matched_row['end_location']} "
-                f"with {acc_count} recorded accidents and {avg_risk:.2f}% average risk ({risk_level})."
-            )
-        }
-
-    # 3. Route NOT in CSV -> Predict for this NEW ROUTE using the ML model trained on the CSV!
-    return predict_new_route_hotspot(
+    # 2. Always run ML Model prediction for live, dynamic corridor assessment
+    pred = predict_new_route_hotspot(
         start_location=start_location,
         end_location=end_location,
         start_latitude=start_latitude,
         start_longitude=start_longitude,
         end_latitude=end_latitude,
         end_longitude=end_longitude,
+        hour=hour,
+        day_of_week=day_of_week,
+        weather=weather,
+        rainfall=rainfall,
+        traffic_density=traffic_density,
     )
+
+    # 3. Enrich with historical empirical database/CSV statistics if available
+    if matched_row is not None:
+        acc_count = int(matched_row["accidents"])
+        avg_risk = float(matched_row["average_risk"])
+        pred["has_historical_data"] = True
+        pred["historical_accidents"] = acc_count
+        pred["historical_risk"] = round(avg_risk, 2)
+        pred["is_new_route"] = False
+        pred["hotspot_id"] = int(matched_row["hotspot_id"])
+        if acc_count >= 15 or avg_risk >= 55.0:
+            pred["is_hotspot"] = True
+        pred["message"] = (
+            f"AI / ML Model Prediction: Route corridor {start_location} -> {end_location} ({pred['distance_km']} km) "
+            f"has {pred['predicted_risk']:.1f}% predicted risk ({pred['risk']}, {pred['hotspot_probability']:.1f}% probability). "
+            f"Corridor has {acc_count} recorded historical accidents ({avg_risk:.1f}% avg risk)."
+        )
+    else:
+        pred["has_historical_data"] = False
+        pred["historical_accidents"] = 0
+        pred["historical_risk"] = None
+        pred["is_new_route"] = True
+
+    return pred
 
 
 def main():
