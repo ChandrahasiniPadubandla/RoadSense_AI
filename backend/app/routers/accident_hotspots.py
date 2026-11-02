@@ -156,19 +156,45 @@ def check_route_hotspot(
     if found:
         acc_cnt = int(found.get("accident_count") or 0)
         risk_lvl = found.get("risk_level") or "LOW"
-        is_hotspot = acc_cnt >= 15 or risk_lvl in ["HIGH", "SEVERE", "CRITICAL"]
+        is_hotspot = found.get("is_hotspot") if "is_hotspot" in found else (acc_cnt >= 15 or risk_lvl in ["HIGH", "SEVERE", "CRITICAL"])
+        score = found.get("risk_score")
+        s_name = found.get("start_location") or start_location
+        e_name = found.get("end_location") or end_location
+        source = found.get("source") or "ml_model_prediction"
+        prob = found.get("hotspot_probability")
+        dist = found.get("distance_km")
+
+        if is_hotspot:
+            if source == "ml_model_prediction":
+                prob_str = f" ({prob:.1f}% hotspot probability)" if prob is not None else ""
+                msg = f"AI / ML Model Prediction: Route corridor {s_name} -> {e_name} is classified as an accident hotspot{prob_str} with {score:.1f}% predicted risk ({risk_lvl})."
+            else:
+                msg = f"Historical Accident Hotspot: Route corridor {s_name} -> {e_name} has {acc_cnt} recorded accidents with {score:.1f}% risk ({risk_lvl})."
+        else:
+            if source == "ml_model_prediction":
+                prob_str = f", Hotspot Probability: {prob:.1f}%" if prob is not None else ""
+                dist_str = f" ({dist} km)" if dist else ""
+                msg = f"AI / ML Model Prediction: Route corridor {s_name} -> {e_name}{dist_str} is normal / low risk (Predicted Risk: {score:.1f}% - {risk_lvl}{prob_str}). Corridor does not meet accident hotspot thresholds."
+            else:
+                score_str = f", Score: {score:.1f}%" if score is not None else ""
+                msg = f"Route corridor {s_name} -> {e_name} does not meet accident hotspot thresholds (Risk: {risk_lvl}{score_str}). Corridor is normal / low risk."
+
         return {
             "is_hotspot": is_hotspot,
             "found": True,
             "hotspot_id": found.get("hotspot_id"),
-            "start_location": found.get("start_location"),
-            "end_location": found.get("end_location"),
+            "start_location": s_name,
+            "end_location": e_name,
             "accident_count": acc_cnt,
-            "risk_score": found.get("risk_score"),
+            "risk_score": score,
             "risk_level": risk_lvl,
+            "hotspot_probability": prob,
+            "distance_km": dist,
+            "source": source,
+            "contributing_factors": found.get("contributing_factors") or [],
             "latitude": found.get("latitude"),
             "longitude": found.get("longitude"),
-            "message": f"Route corridor {found.get('start_location')} -> {found.get('end_location')} is an accident hotspot ({acc_cnt} accidents, {risk_lvl})."
+            "message": msg,
         }
     return {
         "is_hotspot": False,

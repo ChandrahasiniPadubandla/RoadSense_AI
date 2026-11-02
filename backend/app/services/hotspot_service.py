@@ -211,7 +211,7 @@ def find_hotspot_for_route(
             .order_by(AccidentHotspot.accident_count.desc(), AccidentHotspot.risk_score.desc())
             .first()
         )
-        if db_match:
+        if db_match and (int(db_match.accident_count or 0) >= 15 or db_match.risk_level in ["HIGH", "SEVERE", "CRITICAL"]):
             lat, lon = _read_point(db_match.location)
             return {
                 "hotspot_id": str(db_match.hotspot_id),
@@ -220,6 +220,7 @@ def find_hotspot_for_route(
                 "accident_count": int(db_match.accident_count or 0),
                 "risk_score": float(db_match.risk_score) if db_match.risk_score is not None else None,
                 "risk_level": db_match.risk_level or resolve_risk_level(db_match.risk_score or 0.0),
+                "source": "database",
                 "latitude": lat,
                 "longitude": lon,
             }
@@ -337,6 +338,62 @@ def find_hotspot_for_route(
                 "latitude": lat,
                 "longitude": lon,
             }
+
+    # 5. NEW ROUTE ML PREDICTION: Evaluate brand new route corridors using the trained ML model!
+    if clean_s and clean_e:
+        try:
+            from predict_accident_risk.accident_hotspot_detection import detect_hotspot
+            ml_pred = detect_hotspot(
+                start_location=start_location,
+                end_location=end_location,
+                start_latitude=start_lat,
+                start_longitude=start_lng,
+                end_latitude=end_lat,
+                end_longitude=end_lng,
+            )
+            if ml_pred and ml_pred.get("found"):
+                is_hs = ml_pred.get("is_hotspot", False)
+                risk_sc = float(ml_pred.get("predicted_risk", 0.0))
+                risk_lv = ml_pred.get("risk", "LOW")
+                hotspot_id = None
+                lat = ml_pred.get("start_latitude")
+                lon = ml_pred.get("start_longitude")
+
+                if is_hs:
+                    persisted = upsert_accident_hotspot(
+                        db=db,
+                        start_location=ml_pred.get("start_location"),
+                        end_location=ml_pred.get("end_location"),
+                        start_latitude=ml_pred.get("start_latitude"),
+                        start_longitude=ml_pred.get("start_longitude"),
+                        end_latitude=ml_pred.get("end_latitude"),
+                        end_longitude=ml_pred.get("end_longitude"),
+                        risk_level=risk_lv,
+                        risk_score=risk_sc,
+                        accident_count=1,
+                        zone_id=zone_id,
+                    )
+                    db.commit()
+                    hotspot_id = str(persisted.hotspot_id)
+                    lat, lon = _read_point(persisted.location)
+
+                return {
+                    "hotspot_id": hotspot_id,
+                    "start_location": ml_pred.get("start_location"),
+                    "end_location": ml_pred.get("end_location"),
+                    "accident_count": ml_pred.get("accidents") or 0,
+                    "risk_score": risk_sc,
+                    "risk_level": risk_lv,
+                    "hotspot_probability": ml_pred.get("hotspot_probability"),
+                    "distance_km": ml_pred.get("distance_km"),
+                    "contributing_factors": ml_pred.get("contributing_factors") or [],
+                    "is_hotspot": is_hs,
+                    "source": ml_pred.get("source") or "ml_model_prediction",
+                    "latitude": lat,
+                    "longitude": lon,
+                }
+        except Exception as exc:
+            logger.warning("ML hotspot route prediction fallback failed: %s", exc)
 
     return None
 
