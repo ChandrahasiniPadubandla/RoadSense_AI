@@ -330,48 +330,7 @@ export default function HotspotsPage() {
         )}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-asphalt-700 dark:bg-asphalt-900">
-        <h3 className="font-semibold text-slate-900 dark:text-asphalt-100">Filter hotspot list</h3>
-        <form
-          className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setAppliedLocationFilter({
-              start_location: locationFilter.start_location.trim(),
-              end_location: locationFilter.end_location.trim(),
-            });
-          }}
-        >
-          <LocationAutocomplete
-            id="filter-start-location"
-            label="Start location"
-            value={locationFilter.start_location}
-            onChange={(value) => setLocationFilter((filter) => ({ ...filter, start_location: value }))}
-            placeholder="Search starting point…"
-          />
-          <LocationAutocomplete
-            id="filter-end-location"
-            label="End location"
-            value={locationFilter.end_location}
-            onChange={(value) => setLocationFilter((filter) => ({ ...filter, end_location: value }))}
-            placeholder="Search destination…"
-          />
-          <button type="submit" className={`${buttonClass} self-end`}>
-            <Search className="h-4 w-4" />
-            Apply filters
-          </button>
-          <button
-            type="button"
-            className="self-end rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-asphalt-600 dark:text-asphalt-200 dark:hover:bg-asphalt-800"
-            onClick={() => {
-              setLocationFilter(emptyLocationFilter);
-              setAppliedLocationFilter(emptyLocationFilter);
-            }}
-          >
-            Clear
-          </button>
-        </form>
-      </section>
+      
 
       {!isLoading && !loadError && (
         <div className="flex flex-wrap items-center gap-2">
