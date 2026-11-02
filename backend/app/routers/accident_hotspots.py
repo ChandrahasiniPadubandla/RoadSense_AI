@@ -63,7 +63,7 @@ def list_accident_hotspots(
             )
         )
     elif clean_s:
-        query = query.filter(
+        query = query.filter( 
             or_(
                 func.lower(AccidentHotspot.start_location).ilike(f"%{clean_s}%"),
                 func.lower(AccidentHotspot.end_location).ilike(f"%{clean_s}%"),
