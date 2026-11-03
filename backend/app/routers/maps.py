@@ -14,9 +14,10 @@ from app.database.models import (
     TrafficPrediction,
     Accident,
     AccidentHotspot,
+    TrafficZone,
     TrafficAnomaly
 )
-from app.services.hotspot_service import resolve_risk_level
+from app.services.hotspot_service import resolve_risk_level, resolve_hotspot_zone
 
 router = APIRouter(
     prefix="/map",
@@ -337,10 +338,16 @@ def get_hotspots_layer(
     if _HOTSPOTS_LAYER_CACHE["data"] is not None and (now_ts - _HOTSPOTS_LAYER_CACHE["ts"]) < _MAP_CACHE_TTL:
         return _HOTSPOTS_LAYER_CACHE["data"]
 
-    hotspots = db.query(AccidentHotspot).filter(AccidentHotspot.location.isnot(None)).all()
+    hotspots = (
+        db.query(AccidentHotspot, TrafficZone)
+        .outerjoin(TrafficZone, TrafficZone.zone_id == AccidentHotspot.zone_id)
+        .filter(AccidentHotspot.location.isnot(None))
+        .all()
+    )
 
     features = []
-    for h in hotspots:
+    for h, zone in hotspots:
+        zone = zone or resolve_hotspot_zone(db, h)
         try:
             pt = to_shape(h.location)
         except Exception:
@@ -358,6 +365,12 @@ def get_hotspots_layer(
             "properties": {
                 "hotspot_id": str(h.hotspot_id),
                 "zone_id": str(h.zone_id) if h.zone_id else None,
+                "zone_name": ((zone.zone_name or "").strip() or None) if zone else None,
+                "zone_label": (
+                    (zone.zone_name or "").strip()
+                    or (f"Zone {h.zone_id}" if h.zone_id else None)
+                    or "Unassigned zone"
+                ),
                 "accident_count": h.accident_count,
                 "risk_score": score,
                 "risk_level": risk_level,

@@ -356,10 +356,11 @@ export default function HotspotsPage() {
           columns={[
             {
               key: 'location',
-              header: 'Location / route',
-              render: (hotspot) => hotspot.start_location && hotspot.end_location
-                ? `${hotspot.start_location} → ${hotspot.end_location}`
-                : hotspot.zone_name || 'Unnamed zone',
+              header: 'Area',
+              render: (hotspot) => hotspot.zone_label?.trim()
+                || hotspot.zone_name?.trim()
+                || (hotspot.zone_id ? `Zone ${hotspot.zone_id}` : null)
+                || 'Unassigned zone',
             },
             { key: 'accident_count', header: 'Accidents', render: (hotspot) => hotspot.accident_count ?? 0 },
             {

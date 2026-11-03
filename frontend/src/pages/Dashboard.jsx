@@ -192,7 +192,7 @@ const HotspotScene = React.memo(function HotspotScene({ hotspots, isDark }) {
       {tooltip && (
         <div className="pointer-events-none fixed z-[9999]" style={{ left: tooltip.x + 15, top: tooltip.y - 15 }}>
           <div className="min-w-[220px] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-asphalt-700 dark:bg-asphalt-900">
-            <div className="text-sm font-semibold text-slate-900 dark:text-white">📍 {tooltip.hotspot?.zone_name || 'Unknown Zone'}</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white">📍 {tooltip.hotspot?.zone_label || tooltip.hotspot?.zone_name || (tooltip.hotspot?.zone_id ? `Zone ${tooltip.hotspot.zone_id}` : 'Unassigned zone')}</div>
             <div className="mt-3 text-xs uppercase tracking-wide text-slate-400">Accident Count</div>
             <div className="text-2xl font-bold text-signal-red">{tooltip.hotspot?.accident_count || 0}</div>
           </div>
@@ -206,7 +206,7 @@ const HotspotScene = React.memo(function HotspotScene({ hotspots, isDark }) {
         {items.map((h, i) => (
           <span key={h.hotspot_id ?? i} className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-sm" style={{ background: TOWER_COLORS[i], boxShadow: `0 0 8px ${TOWER_COLORS[i]}` }} />
-            {h.zone_name || 'Unnamed zone'}
+            {h.zone_label || h.zone_name || (h.zone_id ? `Zone ${h.zone_id}` : 'Unassigned zone')}
             <span className="data-num font-semibold text-slate-900 dark:text-asphalt-100">{h.accident_count}</span>
           </span>
         ))}

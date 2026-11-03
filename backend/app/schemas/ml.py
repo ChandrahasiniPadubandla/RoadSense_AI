@@ -62,6 +62,7 @@ class AnomalyPredictionResponse(BaseModel):
 
 class HotspotItem(BaseModel):
     road_id: Optional[str] = "N/A"
+    zone_id: Optional[str] = None
     location: str
     start_location: Optional[str] = None
     end_location: Optional[str] = None
@@ -90,4 +91,4 @@ class HotspotRequest(BaseModel):
 
 class HotspotResponse(BaseModel):
     hotspots: list[HotspotItem]
-    model_status: str = "mock"
+    model_status: str = "database-persisted"

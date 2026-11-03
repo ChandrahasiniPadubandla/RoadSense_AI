@@ -12,18 +12,6 @@ from app.database.models import AccidentHotspot, TrafficZone, Road, Accident, Ac
 
 logger = logging.getLogger("Metrivon")
 
-CSV_HOTSPOT_PATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "..",
-        "predict_accident_risk",
-        "accident_hotspots.csv"
-    )
-)
-
-
 def resolve_risk_level(risk_score: float) -> str:
     """
     Determines categorical risk level strictly and consistently from risk score,
@@ -53,6 +41,42 @@ def _read_point(geo_value):
         return None, None
 
 
+def resolve_hotspot_zone(db: Session, hotspot: AccidentHotspot) -> Optional[TrafficZone]:
+    if hotspot.zone_id:
+        zone = db.query(TrafficZone).filter(TrafficZone.zone_id == hotspot.zone_id).first()
+        if zone:
+            return zone
+
+    latitude = longitude = None
+    if hotspot.location is not None:
+        latitude, longitude = _read_point(hotspot.location)
+    if (
+        latitude is None
+        and hotspot.start_latitude is not None
+        and hotspot.start_longitude is not None
+    ):
+        latitude = float(hotspot.start_latitude)
+        longitude = float(hotspot.start_longitude)
+    if latitude is None or longitude is None:
+        return None
+
+    point = func.ST_SetSRID(
+        func.ST_MakePoint(longitude, latitude),
+        4326,
+    )
+    return (
+        db.query(TrafficZone)
+        .filter(TrafficZone.location.isnot(None))
+        .order_by(
+            func.ST_Distance(
+                func.geography(TrafficZone.location),
+                func.geography(point),
+            )
+        )
+        .first()
+    )
+
+
 def upsert_accident_hotspot(
     db: Session,
     latitude: Optional[float] = None,
@@ -71,9 +95,15 @@ def upsert_accident_hotspot(
     end_longitude: Optional[float] = None,
 ) -> AccidentHotspot:
     """
-    Inserts or updates an accident hotspot in the `accident_hotspots` table.
-    Supports both route corridor hotspots (start_location -> end_location) and zone hotspots.
+    Inserts or updates an accident hotspot linked to an existing traffic zone.
     """
+    if zone_id is None:
+        raise ValueError("A persisted traffic-zone ID is required for an accident hotspot.")
+    zone = db.query(TrafficZone).filter(TrafficZone.zone_id == zone_id).first()
+    if zone is None:
+        raise ValueError(f"Traffic zone {zone_id} does not exist.")
+    zone_id = zone.zone_id
+
     now = calculated_at or datetime.utcnow()
     safe_risk_level = resolve_risk_level(risk_score)
 
@@ -98,22 +128,26 @@ def upsert_accident_hotspot(
     if existing is None and start_location and end_location:
         clean_s = start_location.strip().lower()
         clean_e = end_location.strip().lower()
-        existing = (
-            db.query(AccidentHotspot)
-            .filter(
-                or_(
-                    and_(
-                        func.lower(AccidentHotspot.start_location).ilike(f"%{clean_s}%"),
-                        func.lower(AccidentHotspot.end_location).ilike(f"%{clean_e}%"),
-                    ),
-                    and_(
-                        func.lower(AccidentHotspot.start_location).ilike(f"%{clean_e}%"),
-                        func.lower(AccidentHotspot.end_location).ilike(f"%{clean_s}%"),
-                    )
+        route_query = db.query(AccidentHotspot).filter(
+            or_(
+                and_(
+                    func.lower(AccidentHotspot.start_location).ilike(f"%{clean_s}%"),
+                    func.lower(AccidentHotspot.end_location).ilike(f"%{clean_e}%"),
+                ),
+                and_(
+                    func.lower(AccidentHotspot.start_location).ilike(f"%{clean_e}%"),
+                    func.lower(AccidentHotspot.end_location).ilike(f"%{clean_s}%"),
                 )
             )
-            .first()
         )
+        if zone_id:
+            route_query = route_query.filter(
+                or_(
+                    AccidentHotspot.zone_id == zone_id,
+                    AccidentHotspot.zone_id.is_(None),
+                )
+            )
+        existing = route_query.first()
 
     # 2. Match existing hotspot by zone_id
     if existing is None and zone_id:
@@ -125,7 +159,15 @@ def upsert_accident_hotspot(
 
     # 3. Match by proximity to known real coordinates
     if not existing and latitude is not None and longitude is not None:
-        nearby_hotspots = db.query(AccidentHotspot).all()
+        nearby_query = db.query(AccidentHotspot)
+        if zone_id:
+            nearby_query = nearby_query.filter(
+                or_(
+                    AccidentHotspot.zone_id == zone_id,
+                    AccidentHotspot.zone_id.is_(None),
+                )
+            )
+        nearby_hotspots = nearby_query.all()
         for h in nearby_hotspots:
             if h.location is not None:
                 h_lat, h_lng = _read_point(h.location)
@@ -183,7 +225,7 @@ def find_hotspot_for_route(
     start_lng: Optional[float] = None,
     end_lat: Optional[float] = None,
     end_lng: Optional[float] = None,
-    zone_id: Optional[int] = None,
+    zone_id: Optional[UUID] = None,
     force_predict: bool = False,
     hour: Optional[int] = None,
     weather: Optional[str] = None,
@@ -234,35 +276,30 @@ def find_hotspot_for_route(
                     )
                     .first()
                 )
+                matched_zone = (
+                    db.query(TrafficZone)
+                    .filter(TrafficZone.zone_id == db_match.zone_id)
+                    .first()
+                    if db_match and db_match.zone_id
+                    else None
+                )
                 hotspot_id = str(db_match.hotspot_id) if db_match else None
                 acc_cnt = ml_pred.get("historical_accidents") or (int(db_match.accident_count or 0) if db_match else 0)
                 is_hs = ml_pred.get("is_hotspot", False)
                 risk_sc = float(ml_pred.get("predicted_risk", 0.0))
                 risk_lv = ml_pred.get("risk", "LOW")
 
-                # If it's a hotspot and not yet in DB, persist it
-                if is_hs and not db_match:
-                    persisted = upsert_accident_hotspot(
-                        db=db,
-                        start_location=ml_pred.get("start_location"),
-                        end_location=ml_pred.get("end_location"),
-                        start_latitude=ml_pred.get("start_latitude"),
-                        start_longitude=ml_pred.get("start_longitude"),
-                        end_latitude=ml_pred.get("end_latitude"),
-                        end_longitude=ml_pred.get("end_longitude"),
-                        risk_level=risk_lv,
-                        risk_score=risk_sc,
-                        accident_count=acc_cnt if acc_cnt > 0 else 1,
-                        zone_id=zone_id,
-                    )
-                    db.commit()
-                    hotspot_id = str(persisted.hotspot_id)
-
                 lat = ml_pred.get("start_latitude")
                 lon = ml_pred.get("start_longitude")
 
                 return {
                     "hotspot_id": hotspot_id,
+                    "zone_id": str(db_match.zone_id) if db_match and db_match.zone_id else None,
+                    "zone_name": (
+                        (matched_zone.zone_name or "").strip() or None
+                        if matched_zone
+                        else None
+                    ),
                     "start_location": ml_pred.get("start_location") or start_location,
                     "end_location": ml_pred.get("end_location") or end_location,
                     "accident_count": acc_cnt,
@@ -286,59 +323,12 @@ def find_hotspot_for_route(
 
 def sync_empirical_hotspots(db: Session, top_n: int = 50) -> List[AccidentHotspot]:
     """
-    Synchronizes accident hotspots into the PostgreSQL database.
-    Integrates route-level hotspots (start_location -> end_location) from
-    accident_hotspots.csv as well as real zone-level accident records.
+    Synchronizes accident hotspots using records already stored in the database.
     """
     persisted = []
     now = datetime.utcnow()
 
-    # 1. First, sync route-level hotspots (from CSV if present, or in-memory from dataset)
-    try:
-        df = None
-        if os.path.exists(CSV_HOTSPOT_PATH):
-            try:
-                import pandas as pd
-                df = pd.read_csv(CSV_HOTSPOT_PATH)
-            except Exception:
-                df = None
-        else:
-            try:
-                from predict_accident_risk.accident_hotspot_detection import detect_all_hotspots
-                df = detect_all_hotspots(save_csv=False)
-            except Exception:
-                df = None
-
-        if df is not None:
-            for _, row in df.head(top_n).iterrows():
-                s_name = str(row["start_location"])
-                e_name = str(row["end_location"])
-                s_lat = float(row["start_latitude"])
-                s_lng = float(row["start_longitude"])
-                e_lat = float(row["end_latitude"])
-                e_lng = float(row["end_longitude"])
-                acc_cnt = int(row["accidents"])
-                avg_risk = float(row["average_risk"])
-                r_lvl = str(row["risk"])
-
-                h = upsert_accident_hotspot(
-                    db=db,
-                    start_location=s_name,
-                    end_location=e_name,
-                    start_latitude=s_lat,
-                    start_longitude=s_lng,
-                    end_latitude=e_lat,
-                    end_longitude=e_lng,
-                    risk_level=r_lvl,
-                    risk_score=avg_risk,
-                    accident_count=acc_cnt,
-                    calculated_at=now,
-                )
-                persisted.append(h)
-    except Exception as exc:
-        logger.warning("Could not sync route hotspots: %s", exc)
-
-    # 2. Also ensure real recorded zone accident counts from PostgreSQL are represented
+    # Persist only hotspots tied to existing traffic-zone rows.
     real_zone_accidents = (
         db.query(
             TrafficZone.zone_id,
@@ -350,7 +340,7 @@ def sync_empirical_hotspots(db: Session, top_n: int = 50) -> List[AccidentHotspo
         .outerjoin(Accident, Accident.road_id == Road.road_id)
         .group_by(TrafficZone.zone_id, TrafficZone.zone_name, TrafficZone.location)
         .order_by(func.count(Accident.accident_id).desc())
-        .limit(20)
+        .limit(max(1, min(top_n, 20)))
         .all()
     )
 

@@ -7,7 +7,12 @@ from sqlalchemy import or_, and_, func
 from app.database.connection import get_db
 from app.database.models import AccidentHotspot, TrafficZone
 from app.schemas.ml import HotspotRequest, HotspotResponse, HotspotItem
-from app.services.hotspot_service import sync_empirical_hotspots, resolve_risk_level, find_hotspot_for_route
+from app.services.hotspot_service import (
+    sync_empirical_hotspots,
+    resolve_risk_level,
+    find_hotspot_for_route,
+    resolve_hotspot_zone,
+)
 
 
 router = APIRouter(
@@ -81,37 +86,23 @@ def list_accident_hotspots(
 
     rows = query.order_by(AccidentHotspot.accident_count.desc(), AccidentHotspot.risk_score.desc()).limit(limit).all()
 
-    # If database has no route hotspots yet and start/end locations are provided, seed / find them
-    if not rows and clean_s and clean_e:
-        found = find_hotspot_for_route(db=db, start_location=start_location, end_location=end_location)
-        if found:
-            return [{
-                "hotspot_id": found.get("hotspot_id"),
-                "zone_id": None,
-                "zone_name": None,
-                "start_location": found.get("start_location"),
-                "end_location": found.get("end_location"),
-                "start_latitude": None,
-                "start_longitude": None,
-                "end_latitude": None,
-                "end_longitude": None,
-                "accident_count": found.get("accident_count"),
-                "risk_score": found.get("risk_score"),
-                "risk_level": found.get("risk_level"),
-                "latitude": found.get("latitude"),
-                "longitude": found.get("longitude"),
-                "calculated_at": None,
-            }]
-
     results = []
     for hotspot, zone in rows:
+        zone = zone or resolve_hotspot_zone(db, hotspot)
         lat, lon = _read_point(hotspot.location if hotspot.location is not None else (zone.location if zone else None))
         score = float(hotspot.risk_score) if hotspot.risk_score is not None else None
         level = resolve_risk_level(score) if score is not None else (hotspot.risk_level or "LOW")
+        zone_id = str(hotspot.zone_id) if hotspot.zone_id else None
+        zone_name = (zone.zone_name or "").strip() if zone else ""
         results.append({
             "hotspot_id": str(hotspot.hotspot_id),
-            "zone_id": str(hotspot.zone_id) if hotspot.zone_id else None,
-            "zone_name": zone.zone_name if zone else None,
+            "zone_id": zone_id,
+            "zone_name": zone_name or None,
+            "zone_label": (
+                zone_name
+                or (f"Zone {zone_id}" if zone_id else None)
+                or "Unassigned zone"
+            ),
             "start_location": hotspot.start_location,
             "end_location": hotspot.end_location,
             "start_latitude": float(hotspot.start_latitude) if hotspot.start_latitude is not None else None,
@@ -223,7 +214,7 @@ def predict_accident_hotspots(
     db: Session = Depends(get_db),
 ) -> HotspotResponse:
     """
-    Computes top accident hotspots from database and dataset records,
+    Computes top accident hotspots from database records,
     stores them into the `accident_hotspots` database table with their resolved
     start/end locations, geography points, and traffic zones.
     If start_location and end_location are passed in the request, evaluates
@@ -245,9 +236,16 @@ def predict_accident_hotspots(
             s_lng = request.start_longitude
             e_lat = request.end_latitude
             e_lng = request.end_longitude
+            zone_id = found.get("zone_id")
+            zone_label = (
+                found.get("zone_name")
+                or (f"Zone {zone_id}" if zone_id else None)
+                or f"{found.get('start_location')} -> {found.get('end_location')}"
+            )
             item = HotspotItem(
                 road_id="N/A",
-                location=f"{found.get('start_location')} -> {found.get('end_location')}",
+                zone_id=zone_id,
+                location=zone_label,
                 start_location=found.get("start_location"),
                 end_location=found.get("end_location"),
                 start_latitude=s_lat,
@@ -275,17 +273,21 @@ def predict_accident_hotspots(
     for h in persisted_hotspots:
         lat, lon = _read_point(h.location)
         zone = zones_by_id.get(h.zone_id)
-        if h.start_location and h.end_location:
+        if zone:
+            zone_name = (zone.zone_name or "").strip()
+            loc_label = zone_name or f"Zone {h.zone_id}"
+        elif h.zone_id:
+            loc_label = f"Zone {h.zone_id}"
+        elif h.start_location and h.end_location:
             loc_label = f"{h.start_location} -> {h.end_location}"
-        elif zone:
-            loc_label = zone.zone_name
         else:
-            loc_label = "Monitored Zone"
+            loc_label = "Unassigned zone"
 
         score = float(h.risk_score) if h.risk_score is not None else None
         items.append(
             HotspotItem(
                 road_id=str(h.zone_id) if h.zone_id else "N/A",
+                zone_id=str(h.zone_id) if h.zone_id else None,
                 location=loc_label,
                 start_location=h.start_location,
                 end_location=h.end_location,

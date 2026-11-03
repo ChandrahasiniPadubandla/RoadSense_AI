@@ -29,6 +29,7 @@ from app.ml.prediction_engine import (
     trigger_ml_accident_model,
 )
 from app.routers.dashboard import get_dashboard_stats
+from app.services.hotspot_service import resolve_hotspot_zone
 
 
 def _find_road(db, name: str) -> Optional[Road]:
@@ -192,10 +193,21 @@ def get_accident_hotspots(limit: int = 5) -> str:
         )
         if not rows:
             return "No accident hotspot data has been calculated yet in Metrivon AI."
-        lines = [
-            f"- {zone_name or 'Unnamed zone'}: {h.accident_count or 0} recorded accidents, risk level {h.risk_level or 'unknown'}"
-            for h, zone_name in rows
-        ]
+        lines = []
+        for hotspot, zone_name in rows:
+            label = (zone_name or "").strip()
+            if not label:
+                zone = resolve_hotspot_zone(db, hotspot)
+                label = (zone.zone_name or "").strip() if zone else ""
+            label = label or (
+                f"Zone {hotspot.zone_id}" if hotspot.zone_id else None
+            ) or (
+                "Unassigned zone"
+            )
+            lines.append(
+                f"- {label}: {hotspot.accident_count or 0} recorded accidents, "
+                f"risk level {hotspot.risk_level or 'unknown'}"
+            )
         return "Top accident hotspots (real, calculated data):\n" + "\n".join(lines)
     finally:
         db.close()
