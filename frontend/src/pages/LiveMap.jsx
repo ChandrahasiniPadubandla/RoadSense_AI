@@ -208,7 +208,7 @@ function getCategoryBadge(category) {
   }
   return { icon: '📍', badge: 'Location', color: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20' };
 }
-
+// make the link in chatbot to show route in the live map 
 export default function LiveMap() {
   const [searchParams] = useSearchParams();
   const routeStartQuery = searchParams.get('start_location')?.trim() || '';
