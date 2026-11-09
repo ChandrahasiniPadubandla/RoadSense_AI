@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import {
   MapContainer,
@@ -209,6 +210,10 @@ function getCategoryBadge(category) {
 }
 
 export default function LiveMap() {
+  const [searchParams] = useSearchParams();
+  const routeStartQuery = searchParams.get('start_location')?.trim() || '';
+  const routeEndQuery = searchParams.get('end_location')?.trim() || '';
+
   const [trafficLayer, setTrafficLayer] = useState({ features: [] });
   const [accidentLayer, setAccidentLayer] = useState({ features: [] });
   const [hotspotsLayer, setHotspotsLayer] = useState({ features: [] });
@@ -266,6 +271,69 @@ const [destinationUpdating, setDestinationUpdating] = useState(false);
   const [routeTraffic, setRouteTraffic] = useState(null);
   const [routeAccidentRisk, setRouteAccidentRisk] = useState(null);
   const [predictionsLoading, setPredictionsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!routeStartQuery || !routeEndQuery) return undefined;
+
+    let cancelled = false;
+    setDirectionsMode(true);
+    setStartQuery(routeStartQuery);
+    setEndQuery(routeEndQuery);
+    setRouteError('');
+
+    async function loadSharedRoute() {
+      try {
+        const [startResults, endResults] = await Promise.all([
+          geocodeSearch(routeStartQuery),
+          geocodeSearch(routeEndQuery),
+        ]);
+        if (cancelled) return;
+
+        function resolvePoint(query, results) {
+          const normalizedQuery = query.toLocaleLowerCase();
+          const suggestion = results.find((result) =>
+            [result.primary_name, result.name, result.display_name]
+              .some((name) => name?.trim().toLocaleLowerCase() === normalizedQuery)
+          ) || results[0];
+
+          if (!suggestion || !Number.isFinite(suggestion.latitude) || !Number.isFinite(suggestion.longitude)) {
+            return null;
+          }
+
+          return suggestionToPoint(suggestion);
+        }
+
+        const start = resolvePoint(routeStartQuery, startResults);
+        const end = resolvePoint(routeEndQuery, endResults);
+        if (!start || !end) {
+          setRouteError(
+            !start
+              ? `Could not find a map location for "${routeStartQuery}".`
+              : `Could not find a map location for "${routeEndQuery}".`
+          );
+          return;
+        }
+
+        setStartPoint(start);
+        setEndPoint(end);
+        setStartQuery(start.label);
+        setEndQuery(end.label);
+        await runRoute(start, end);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load shared map route:', error);
+          setRouteError('Could not load this route. Please try again from the directions panel.');
+        }
+      }
+    }
+
+    loadSharedRoute();
+    return () => {
+      cancelled = true;
+    };
+    // Route loading is keyed to the URL parameters; helper functions are recreated on render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeStartQuery, routeEndQuery]);
 
   // ---------------------------------------------------------------------
   // Prediction / Departure Time Controls (Active & Present by Default)
