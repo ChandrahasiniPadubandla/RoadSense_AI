@@ -2,6 +2,7 @@ import os
 import hashlib
 import hmac
 import secrets
+from typing import Optional
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -64,6 +65,28 @@ def create_access_token(user_id: UUID | str | int) -> str:
 
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
+
+
+def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)
+) -> Optional[UUID]:
+    if not credentials:
+        return None
+    token = credentials.credentials
+    try:
+        secret_key, algorithm = get_jwt_settings()
+        payload = jwt.decode(
+            token,
+            secret_key,
+            algorithms=[algorithm]
+        )
+        user_id_raw = payload.get("user_id")
+        if user_id_raw is None:
+            return None
+        return UUID(str(user_id_raw))
+    except Exception:
+        return None
 
 
 def get_current_user(

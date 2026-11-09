@@ -567,3 +567,34 @@ ON traffic_predictions(road_id);
 
 CREATE INDEX idx_accident_predictions_road
 ON accident_predictions(road_id);
+
+
+-- =========================================================
+-- 16. CHAT MESSAGES (AI ASSISTANT CONVERSATION HISTORY)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID,
+    conversation_id VARCHAR(100),
+    role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+    content TEXT NOT NULL,
+    intent VARCHAR(50),
+    model_triggered VARCHAR(100),
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_chat_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
+ON chat_messages(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id
+ON chat_messages(conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at
+ON chat_messages(created_at);

@@ -1,0 +1,241 @@
+﻿question,intent
+Predict the chance of a road accident on my route.,accident_prediction
+Estimate accident risk near Banjara Hills.,accident_prediction
+How likely is a crash on the road from Uppal to Madhapur?,accident_prediction
+Assess the risk of an accident for my trip.,accident_prediction
+Could there be an accident near Hitech City today?,accident_prediction
+Check the road safety risk between Miyapur and Ameerpet.,accident_prediction
+What is the predicted crash risk near Secunderabad?,accident_prediction
+Tell me how risky it is to drive this route.,accident_prediction
+Calculate the chance of a collision on this road.,accident_prediction
+Is my journey likely to have accident hazards?,accident_prediction
+Give an accident-risk estimate for Kondapur.,accident_prediction
+Predict whether driving conditions could lead to a crash.,accident_prediction
+How high is the expected accident risk near LB Nagar?,accident_prediction
+Can you assess crash likelihood for this journey?,accident_prediction
+Show the predicted road accident risk for my selected route.,accident_prediction
+Is there an increased chance of a collision near Ameerpet?,accident_prediction
+Estimate the possibility of a road crash this evening.,accident_prediction
+Check if the road from Gachibowli to Madhapur is accident-prone right now.,accident_prediction
+What accident risk should I expect on this trip?,accident_prediction
+Predict the safety risk for the drive to Jubilee Hills.,accident_prediction
+How likely is an accident on the route to Charminar?,accident_prediction
+Can you forecast crash risk near the airport road?,accident_prediction
+Assess the chance of a traffic accident at this location.,accident_prediction
+Is the route to Kukatpally at high risk for crashes?,accident_prediction
+Give me a safety-risk prediction for driving through Mehdipatnam.,accident_prediction
+Estimate the likelihood of an accident during my commute.,accident_prediction
+Would you predict a high crash risk on this road?,accident_prediction
+Check the chance of an accident around Raidurg.,accident_prediction
+What is the expected accident likelihood between these locations?,accident_prediction
+Can you predict road crash risk for the next trip?,accident_prediction
+Tell me whether this journey has a serious accident risk.,accident_prediction
+How safe is this route based on its predicted accident risk?,accident_prediction
+Forecast the chance of a collision near the junction.,accident_prediction
+Is accident risk expected to be high on my way to work?,accident_prediction
+Estimate the chance that a driver may crash on this road.,accident_prediction
+Run an accident-risk prediction for the route I selected.,accident_prediction
+What is the predicted chance of a road collision near Nagole?,accident_prediction
+Check the expected crash risk for travel through Hyderabad.,accident_prediction
+Could you estimate road accident probability for this location?,accident_prediction
+Tell me the accident risk forecast for my drive.,accident_prediction
+Predict traffic congestion between Miyapur and Hitech City.,traffic_prediction
+Will I hit a traffic jam on my route?,traffic_prediction
+Forecast traffic conditions near Gachibowli this evening.,traffic_prediction
+Estimate how long the drive from Uppal to Madhapur may take.,traffic_prediction
+Will traffic be heavy near Secunderabad later?,traffic_prediction
+Predict congestion on my commute to the city center.,traffic_prediction
+How busy will the roads be around Banjara Hills?,traffic_prediction
+Can you forecast delays on the route to LB Nagar?,traffic_prediction
+Tell me what traffic to expect between Kondapur and Ameerpet.,traffic_prediction
+Will my trip be slowed by congestion?,traffic_prediction
+Estimate future traffic flow near Hitech City.,traffic_prediction
+Is a traffic jam likely on the way to Jubilee Hills?,traffic_prediction
+Predict the congestion level for my planned journey.,traffic_prediction
+How much delay should I expect driving to Charminar?,traffic_prediction
+Forecast whether the road will be crowded at 6 pm.,traffic_prediction
+Will the route from Madhapur to Gachibowli be congested?,traffic_prediction
+What will traffic conditions look like near Raidurg?,traffic_prediction
+Estimate road congestion for my trip tomorrow morning.,traffic_prediction
+Can you predict the traffic load around Kukatpally?,traffic_prediction
+Should I expect a slow drive to the airport?,traffic_prediction
+Forecast the expected travel time to Mehdipatnam.,traffic_prediction
+Will rush-hour traffic affect my journey?,traffic_prediction
+Predict whether this route will have heavy congestion.,traffic_prediction
+How severe is the expected congestion near Ameerpet?,traffic_prediction
+Give me a traffic forecast for the road to Nagole.,traffic_prediction
+Is heavy traffic expected between these two locations?,traffic_prediction
+Estimate how crowded the roads will be this afternoon.,traffic_prediction
+Can you predict travel delays on the outer ring road?,traffic_prediction
+What is the expected congestion for my upcoming drive?,traffic_prediction
+Tell me if my route will have traffic bottlenecks.,traffic_prediction
+Predict traffic buildup near the market district.,traffic_prediction
+What congestion level should I expect on this road?,traffic_prediction
+Forecast the traffic situation for my evening commute.,traffic_prediction
+How long might the journey take if congestion increases?,traffic_prediction
+Is traffic expected to be worse on my route after work?,traffic_prediction
+Estimate the expected congestion level near the junction.,traffic_prediction
+Predict road congestion from Dilsukhnagar to LB Nagar.,traffic_prediction
+Will the road be clear enough for a quick trip?,traffic_prediction
+Give a congestion prediction for the route I entered.,traffic_prediction
+Can you estimate future traffic around Hyderabad?,traffic_prediction
+Which Hyderabad junctions have the most recorded accidents?,hotspot_query
+Find historical accident hotspots near Banjara Hills.,hotspot_query
+Where do crashes happen most often in this area?,hotspot_query
+Show roads with the highest number of past collisions.,hotspot_query
+List accident-prone locations around Secunderabad.,hotspot_query
+Which intersections have a history of repeated crashes?,hotspot_query
+Identify the most dangerous junctions based on accident records.,hotspot_query
+Where have the most road accidents been reported?,hotspot_query
+Rank locations by their historical accident frequency.,hotspot_query
+Show me the accident black spots in Hyderabad.,hotspot_query
+Which roads have recorded repeated collisions?,hotspot_query
+Find the areas with the highest past crash counts.,hotspot_query
+Tell me where accidents have occurred frequently over time.,hotspot_query
+Highlight historical crash clusters near Hitech City.,hotspot_query
+Which junction should be considered an accident hotspot?,hotspot_query
+Show accident hotspots between Madhapur and Gachibowli.,hotspot_query
+Where are the recurring road collision locations?,hotspot_query
+Find intersections with many previous accident reports.,hotspot_query
+Which parts of the city have the worst accident history?,hotspot_query
+Map the locations with repeated road crashes.,hotspot_query
+Give me a list of historically accident-prone roads.,hotspot_query
+Where have collisions been concentrated in past records?,hotspot_query
+Identify high-frequency accident locations near LB Nagar.,hotspot_query
+Which areas have the most reported crashes in the dataset?,hotspot_query
+Find junctions that repeatedly appear in accident reports.,hotspot_query
+Show the top crash locations based on historical data.,hotspot_query
+Where should drivers be cautious due to frequent past accidents?,hotspot_query
+Which road segments have a record of many collisions?,hotspot_query
+Locate the most common accident sites around Ameerpet.,hotspot_query
+Tell me the historically riskiest intersections.,hotspot_query
+Are there known accident clusters near Kukatpally?,hotspot_query
+Which neighborhoods have experienced repeated traffic crashes?,hotspot_query
+Show locations ranked by past accident reports.,hotspot_query
+Find crash-prone areas using accident history.,hotspot_query
+Where in Hyderabad are accidents recorded most frequently?,hotspot_query
+What are the main accident hotspots near Charminar?,hotspot_query
+Identify roads with a high history of collisions.,hotspot_query
+Which locations have had recurring accident incidents?,hotspot_query
+Can you find the junctions with the most past crashes?,hotspot_query
+Show me where accident reports are concentrated.,hotspot_query
+Detect unusual vehicle movement near Secunderabad right now.,anomaly_query
+Are vehicles moving much slower than normal on this road?,anomaly_query
+Find abnormal traffic patterns around the junction.,anomaly_query
+Check for unexpected changes in vehicle speeds.,anomaly_query
+Is anything unusual happening in the current traffic flow?,anomaly_query
+Identify vehicles traveling far below the normal speed.,anomaly_query
+Look for a sudden traffic-flow anomaly near Hitech City.,anomaly_query
+Are there any abnormal slowdowns on this road?,anomaly_query
+Detect irregular vehicle behavior in the live traffic data.,anomaly_query
+Flag traffic speeds that differ from the usual pattern.,anomaly_query
+Has vehicle movement suddenly become abnormal near Uppal?,anomaly_query
+Find unexpected stops or speed changes in traffic.,anomaly_query
+Check whether current road activity looks unusual.,anomaly_query
+Are any vehicles behaving differently from surrounding traffic?,anomaly_query
+Spot a traffic anomaly on the road to Madhapur.,anomaly_query
+Is the current vehicle speed pattern outside its normal range?,anomaly_query
+Look for traffic patterns that do not match the usual flow.,anomaly_query
+Detect an unexpected disruption in traffic movement.,anomaly_query
+Are there vehicles moving abnormally slowly near the junction?,anomaly_query
+Find unusual changes in road flow around Banjara Hills.,anomaly_query
+Check for irregular traffic activity in the latest readings.,anomaly_query
+Has traffic speed deviated from its normal level?,anomaly_query
+Identify any outlier vehicle speeds on this route.,anomaly_query
+Is there an unexpected queue forming on the road?,anomaly_query
+Detect an abnormal traffic condition near Gachibowli.,anomaly_query
+Do current vehicle movements show anything out of the ordinary?,anomaly_query
+Find sudden speed drops in the traffic stream.,anomaly_query
+Check for unusual vehicle behavior around the area.,anomaly_query
+Is traffic moving differently from its normal pattern today?,anomaly_query
+Report any anomalous road activity in the live feed.,anomaly_query
+Are there unexpected gaps or bunching between vehicles?,anomaly_query
+Flag a possible traffic-flow irregularity near Ameerpet.,anomaly_query
+Look for vehicles with speeds that are unusually high or low.,anomaly_query
+Has the road developed an irregular movement pattern?,anomaly_query
+Find abnormal changes in traffic density right now.,anomaly_query
+Is there any unusual vehicle activity on the route?,anomaly_query
+Check whether the latest speed readings contain outliers.,anomaly_query
+Detect a sudden deviation in traffic behavior near Kondapur.,anomaly_query
+Are vehicles stopping unexpectedly along this road?,anomaly_query
+Tell me if the current traffic pattern is anomalous.,anomaly_query
+What is the weather like in Hyderabad?,weather_prediction
+What is the current weather near Hitech City?,weather_prediction
+Tell me the temperature in Banjara Hills.,weather_prediction
+Is it raining around Secunderabad?,weather_prediction
+Check the live weather at Uppal.,weather_prediction
+What are the weather conditions near Miyapur right now?,weather_prediction
+Will it rain near Gachibowli today?,weather_prediction
+How windy is it around LB Nagar?,weather_prediction
+Give me the live weather for Ameerpet.,weather_prediction
+What is the visibility like in Kukatpally?,weather_prediction
+Is there heavy rain near Charminar?,weather_prediction
+Tell me the humidity around Madhapur.,weather_prediction
+Is the weather clear near Nagole?,weather_prediction
+Check temperature and rainfall in Kondapur.,weather_prediction
+What is the current weather at my location?,weather_prediction
+How hot is it in Jubilee Hills now?,weather_prediction
+What is the wind speed near the airport?,weather_prediction
+Give me current weather conditions around Mehdipatnam.,weather_prediction
+Is it cloudy in Dilsukhnagar?,weather_prediction
+What is the live temperature near Raidurg?,weather_prediction
+Tell me if I should expect rain in Ameerpet.,weather_prediction
+How is the weather in Habsiguda right now?,weather_prediction
+Check the weather near Nagole.,weather_prediction
+What is the rainfall near Secunderabad today?,weather_prediction
+Is visibility poor around Kukatpally?,weather_prediction
+Show current weather conditions in Boduppal.,weather_prediction
+What is the wind speed near Kompally?,weather_prediction
+Will the weather be rainy in Hyderabad today?,weather_prediction
+Get live weather for Kachiguda.,weather_prediction
+Tell me the current conditions at LB Nagar.,weather_prediction
+Is it hot near Ameerpet right now?,weather_prediction
+What is the temperature and visibility around Uppal?,weather_prediction
+Can you check if it is raining in Hitech City?,weather_prediction
+How humid is it near Banjara Hills?,weather_prediction
+Give me a weather update for Secunderabad.,weather_prediction
+What are the live conditions in Madhapur?,weather_prediction
+Is there rain near Gachibowli right now?,weather_prediction
+Check wind and temperature at Charminar.,weather_prediction
+What is the weather around Mehdipatnam today?,weather_prediction
+Tell me about weather conditions near Kondapur.,weather_prediction
+What is traffic like at Uppal right now?,traffic_prediction
+Check congestion around Kachiguda.,traffic_prediction
+What is the predicted congestion near Habsiguda?,traffic_prediction
+Tell me the traffic level in Boduppal.,traffic_prediction
+Predict traffic congestion around Kompally.,traffic_prediction
+Is there a traffic jam at Nagole?,traffic_prediction
+Give me a traffic update for Ameerpet.,traffic_prediction
+Predict traffic conditions near Dilsukhnagar.,traffic_prediction
+What is the accident risk near Habsiguda?,accident_prediction
+Check accident danger at Kukatpally.,accident_prediction
+How risky is the road around Uppal for accidents?,accident_prediction
+Tell me the accident risk level in Ameerpet.,accident_prediction
+Is there a high crash risk near Nagole?,accident_prediction
+Assess accident risk around Kachiguda.,accident_prediction
+What is the road safety risk at Madhapur?,accident_prediction
+Check the chance of a crash in Kompally.,accident_prediction
+Are there accident hotspots near Habsiguda?,hotspot_query
+Show major accident zones around Nagole.,hotspot_query
+Find crash hotspots in Kukatpally.,hotspot_query
+List accident-prone places near Ameerpet.,hotspot_query
+Which roads near Uppal are accident hotspots?,hotspot_query
+Show dangerous accident areas around Kompally.,hotspot_query
+Where are the accident hotspots in Kachiguda?,hotspot_query
+Find the major crash locations near Boduppal.,hotspot_query
+Is traffic behaving unusually in Kusaiguda?,anomaly_query
+Detect unusual traffic near Habsiguda.,anomaly_query
+Check for abnormal traffic around Uppal.,anomaly_query
+Are there traffic anomalies in Nagole?,anomaly_query
+Find unusual vehicle activity at Ameerpet.,anomaly_query
+Is anything abnormal happening on roads in Kompally?,anomaly_query
+Check whether traffic is unusual around Kachiguda.,anomaly_query
+Detect traffic irregularities near Boduppal.,anomaly_query
+What is the live weather at Habsiguda?,weather_prediction
+Is it raining in Kachiguda right now?,weather_prediction
+Check the temperature around Uppal.,weather_prediction
+How is the visibility near Nagole?,weather_prediction
+Tell me current weather in Kompally.,weather_prediction
+What is the wind speed at Boduppal?,weather_prediction
+Give me a weather update for Kukatpally.,weather_prediction
+Is it cloudy around Ameerpet?,weather_prediction

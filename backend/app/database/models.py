@@ -284,3 +284,23 @@ class AuditLog(Base):
     details = Column(Text)
 
     user = relationship("User")
+
+
+class ChatHistory(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = {"extend_existing": True}
+
+    message_id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(Uuid, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=True, index=True)
+    conversation_id = Column(String(100), nullable=True, index=True)
+    role = Column(String(20), nullable=False)
+    content = Column(Text, nullable=False)
+    intent = Column(String(50), nullable=True)
+    model_triggered = Column(String(100), nullable=True)
+    metadata_json = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+    user = relationship("User")
+
+
+ChatMessageRecord = ChatHistory
