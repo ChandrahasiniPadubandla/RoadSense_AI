@@ -205,7 +205,7 @@ export default function UserManagement() {
             { key: 'name', header: 'Name' },
             {
               key: 'username',
-              header: 'Username',
+              header: 'UserID',
               render: (u) => <span className="font-mono text-xs">{u.username || '—'}</span>,
             },
             { key: 'email', header: 'Email' },
